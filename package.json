@@ -1,0 +1,64 @@
+{
+  "name": "orca",
+  "version": "0.0.0",
+  "description": "An AI agent CLI that clones a messy student/hackathon repo, detects its stack, generates Docker + docker-compose configs, shows a service-graph diagram for human approval before running anything, then builds/runs the containers with a self-healing retry loop that explains each fix in plain English.",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "docker",
+    "docker-compose",
+    "ai-agent",
+    "devtools",
+    "hackathon",
+    "containerization",
+    "self-healing"
+  ],
+  "bin": {
+    "orca": "./dist/cli/index.js"
+  },
+  "main": "./dist/core/pipeline.js",
+  "exports": {
+    ".": "./dist/core/pipeline.js"
+  },
+  "files": [
+    "dist",
+    "src/templates"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -w -p tsconfig.json",
+    "start": "node ./dist/cli/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "chalk": "^5.3.0",
+    "cli-table3": "^0.6.5",
+    "commander": "^12.1.0",
+    "execa": "^9.5.1",
+    "handlebars": "^4.7.8",
+    "ora": "^8.1.1",
+    "simple-git": "^3.27.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "@typescript-eslint/eslint-plugin": "^8.16.0",
+    "@typescript-eslint/parser": "^8.16.0",
+    "eslint": "^9.16.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.4.1",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.16.0",
+    "vitest": "^2.1.6"
+  }
+}
