@@ -1,38 +1,56 @@
-{{!--
-  STAGE 1 template — docker-compose skeleton rendered from a ServicePlan.
-  Hand-written; the plan (STAGE 4) supplies services/ports/depends_on/healthchecks.
-  TODO(stage-1): finalize once ServiceNode -> compose mapping is validated.
---}}
 name: {{projectName}}
 
 services:
 {{#each services}}
-  {{this.id}}:
-    {{#if this.source.image}}image: {{this.source.image}}{{/if}}
-    {{#if this.source.context}}build:
-      context: {{this.source.context}}
-      dockerfile: {{this.source.dockerfile}}{{/if}}
+  {{name}}:
+{{#if build}}
+    build:
+      context: {{build.context}}
+      dockerfile: {{build.dockerfile}}
+{{/if}}
+{{#if image}}
+    image: {{image}}
+{{/if}}
+{{#if (hasItems ports)}}
     ports:
-{{#each this.ports}}
-      - "{{this.host}}:{{this.container}}"
+{{#each ports}}
+      - "{{this}}"
 {{/each}}
+{{/if}}
+{{#if (hasItems environment)}}
     environment:
-{{#each this.environment}}
-      {{@key}}: "{{this}}"
+{{#each environment}}
+      {{@key}}: "{{{this}}}"
 {{/each}}
+{{/if}}
+{{#if (hasItems dependsOn)}}
     depends_on:
-{{#each this.dependsOn}}
-      {{this.serviceId}}:
-        condition: {{this.condition}}
+{{#each dependsOn}}
+      - {{this}}
 {{/each}}
+{{/if}}
+{{#if (hasItems volumes)}}
+    volumes:
+{{#each volumes}}
+      - "{{this}}"
 {{/each}}
+{{/if}}
+    networks:
+      - {{../networkName}}
+{{#if healthcheck}}
+    healthcheck:
+      test: [{{{quoteJoin healthcheck.test}}}]
+      interval: {{healthcheck.interval}}
+      timeout: {{healthcheck.timeout}}
+      retries: {{healthcheck.retries}}
+{{/if}}
 
-networks:
-{{#each networks}}
-  {{this}}: {}
 {{/each}}
+networks:
+  {{networkName}}:
+    driver: bridge
 
 volumes:
-{{#each volumes}}
-  {{this}}: {}
+{{#each namedVolumes}}
+  {{this}}:
 {{/each}}

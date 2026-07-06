@@ -14,9 +14,20 @@ coverage/
 *.local
 
 # ORCA runtime workspaces (cloned target repos live here)
+# NOTE: this matches the directory named exactly ".orca" — it does NOT match the
+# committed ".orca-golden/" reference folders in examples/*, which must stay tracked.
 .orca/
 tmp/
 *.log
+
+# Python artifacts from running the Django sample (source + migrations stay tracked)
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+db.sqlite3
 
 # OS / editor cruft
 .DS_Store
