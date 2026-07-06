@@ -1,0 +1,38 @@
+{{!--
+  STAGE 1 template — docker-compose skeleton rendered from a ServicePlan.
+  Hand-written; the plan (STAGE 4) supplies services/ports/depends_on/healthchecks.
+  TODO(stage-1): finalize once ServiceNode -> compose mapping is validated.
+--}}
+name: {{projectName}}
+
+services:
+{{#each services}}
+  {{this.id}}:
+    {{#if this.source.image}}image: {{this.source.image}}{{/if}}
+    {{#if this.source.context}}build:
+      context: {{this.source.context}}
+      dockerfile: {{this.source.dockerfile}}{{/if}}
+    ports:
+{{#each this.ports}}
+      - "{{this.host}}:{{this.container}}"
+{{/each}}
+    environment:
+{{#each this.environment}}
+      {{@key}}: "{{this}}"
+{{/each}}
+    depends_on:
+{{#each this.dependsOn}}
+      {{this.serviceId}}:
+        condition: {{this.condition}}
+{{/each}}
+{{/each}}
+
+networks:
+{{#each networks}}
+  {{this}}: {}
+{{/each}}
+
+volumes:
+{{#each volumes}}
+  {{this}}: {}
+{{/each}}

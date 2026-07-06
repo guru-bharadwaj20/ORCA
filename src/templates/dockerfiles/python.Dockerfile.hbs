@@ -1,0 +1,18 @@
+{{!--
+  STAGE 1 template — Python/Django backend Dockerfile.
+  Hand-written skeleton; the AI (STAGE 3) only fills the {{variables}} below.
+  TODO(stage-1): finalize base image + install strategy (pip vs poetry).
+--}}
+# syntax=docker/dockerfile:1
+FROM python:{{pythonVersion}}-slim AS base
+WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+
+# TODO(stage-1): install deps with {{packageManager}}
+COPY {{manifestFiles}} ./
+RUN {{installCommand}}
+
+COPY . .
+
+EXPOSE {{port}}
+CMD {{startCommand}}
