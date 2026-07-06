@@ -1,18 +1,27 @@
-{{!--
-  STAGE 1 template — Python/Django backend Dockerfile.
-  Hand-written skeleton; the AI (STAGE 3) only fills the {{variables}} below.
-  TODO(stage-1): finalize base image + install strategy (pip vs poetry).
---}}
 # syntax=docker/dockerfile:1
-FROM python:{{pythonVersion}}-slim AS base
-WORKDIR /app
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+# ORCA Stage 1 — Python service (Django app), dev mode.
+FROM {{baseImage}}
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+WORKDIR {{workdir}}
 
-# TODO(stage-1): install deps with {{packageManager}}
-COPY {{manifestFiles}} ./
-RUN {{installCommand}}
+{{#if systemPackages}}
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends {{{join systemPackages " "}}} \
+    && rm -rf /var/lib/apt/lists/*
+
+{{/if}}
+COPY {{{join dependencyFiles " "}}} ./
+RUN {{{installCommand}}}
 
 COPY . .
 
 EXPOSE {{port}}
-CMD {{startCommand}}
+
+{{#if entrypointScript}}
+COPY {{entrypointScript}} /usr/local/bin/orca-entrypoint
+RUN chmod +x /usr/local/bin/orca-entrypoint
+ENTRYPOINT ["/usr/local/bin/orca-entrypoint"]
+
+{{/if}}
+CMD {{{startCommand}}}

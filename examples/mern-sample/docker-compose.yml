@@ -1,0 +1,57 @@
+name: orca-mern-sample
+
+services:
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - "mongo-data:/data/db"
+    networks:
+      - orca-mern-net
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    environment:
+      NODE_ENV: "development"
+      PORT: "5000"
+      MONGO_URL: "mongodb://mongo:27017/orca"
+    depends_on:
+      - mongo
+    volumes:
+      - "./server:/app"
+      - "/app/node_modules"
+    networks:
+      - orca-mern-net
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL: "http://localhost:5000"
+    depends_on:
+      - server
+    volumes:
+      - "./client:/app"
+      - "/app/node_modules"
+    networks:
+      - orca-mern-net
+
+networks:
+  orca-mern-net:
+    driver: bridge
+
+volumes:
+  mongo-data:
