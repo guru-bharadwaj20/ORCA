@@ -2,20 +2,23 @@
  * Uses the LLM to infer the environment variables the app expects (DB URLs, secrets,
  * ports) from code references and the README, so ORCA can generate a sensible .env.
  *
- * STAGE: 3 (ai)
+ * STAGE: 3 (ai) — REAL code.
  * Inputs: a `DetectionResult` + README/source hints.
  * Outputs: validated `InferredEnv` (key/value/required/reason per variable).
  */
 
 import type { DetectionResult } from '../detect/types.js';
 import type { CostLedger } from '../core/context.js';
-import type { InferredEnv } from './schema.js';
+import { ai } from './client.js';
+import { buildInferEnvPrompt } from './prompts/infer-env.js';
+import { InferredEnvSchema, type InferredEnv } from './schema.js';
 
-// TODO(stage-3): build the infer-env prompt, call the client, validate with the schema.
+/** Build the infer-env prompt and run it through the provider router (validated). */
 export async function inferEnv(
-  _detection: DetectionResult,
-  _readme: string,
-  _ledger: CostLedger
+  detection: DetectionResult,
+  readme: string,
+  ledger: CostLedger
 ): Promise<InferredEnv> {
-  throw new Error('not implemented');
+  const prompt = buildInferEnvPrompt(detection, readme);
+  return ai.complete(prompt, InferredEnvSchema, ledger, { schemaName: 'InferredEnv' });
 }

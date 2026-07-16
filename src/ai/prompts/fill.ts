@@ -1,7 +1,7 @@
 /**
  * Prompt builder for the "fill template variables" task.
  *
- * STAGE: 3 (ai)
+ * STAGE: 3 (ai) — REAL code.
  * Inputs: detection facts + the template's required variables + README text.
  * Outputs: a { system, user } prompt pair for the client.
  */
@@ -14,7 +14,66 @@ export interface PromptPair {
   user: string;
 }
 
-// TODO(stage-3): compose the fill-template prompt with strict, schema-shaped output.
-export function buildFillPrompt(_detection: DetectionResult, _readme: string): PromptPair {
-  throw new Error('not implemented');
+/** Hard limit on README text included in a prompt, to bound token spend. */
+const MAX_README_CHARS = 6000;
+
+/** Truncate long grounding text with an explicit marker so the model knows it's cut. */
+export function truncate(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars)}\n[...truncated by ORCA...]`;
+}
+
+/** The slice of a DetectionResult worth showing the model (keeps prompts small). */
+export function detectionSummary(detection: DetectionResult): string {
+  const component = (c: DetectionResult['frontend']) =>
+    c === null
+      ? null
+      : {
+          role: c.role,
+          rootDir: c.rootDir,
+          language: c.language,
+          framework: c.framework,
+          packageManager: c.packageManager,
+          dependencies: c.dependencies.slice(0, 30),
+          ports: c.ports,
+          entrypoint: c.entrypoint,
+        };
+  return JSON.stringify(
+    {
+      languages: detection.languages,
+      frontend: component(detection.frontend),
+      backend: component(detection.backend),
+      databases: detection.databases,
+      warnings: detection.warnings.map((w) => w.message),
+    },
+    null,
+    2
+  );
+}
+
+const FILL_SYSTEM = `You are ORCA, a tool that containerizes small student/hackathon repos (React/Vite frontend, Express or Django backend, Postgres or MongoDB) for local development with hot reload — never production builds.
+
+You are given (a) static detection facts about the repo, (b) the Dockerfile template that will be used and its deterministic default variables, and (c) the repo's README. Your job is to confirm or refine the default variable values using the README and detection facts as ground truth. Only change a default when the repo gives concrete evidence (e.g. the README names a different start command, Node version, or port).
+
+Respond with ONLY a JSON object of this exact shape — no markdown fences, no commentary:
+{"variables": {"<name>": "<string value>"}, "notes": ["<short reason for each change you made>"]}
+
+Rules:
+- Allowed variable names: baseImage, workdir, packageManager, dependencyFiles, installCommand, buildCommand, startCommand, port, systemPackages, entrypointScript.
+- Every value MUST be a JSON string. Represent list values (dependencyFiles, systemPackages) as space-separated strings; represent port as a numeric string.
+- Include every variable you want set (start from the provided defaults); omit optional variables that should be unset.
+- Use well-known official base images only (node:*-slim, python:*-slim).
+- Dev servers must bind 0.0.0.0 so Docker can publish the port.`;
+
+/** Compose the fill-template prompt with strict, schema-shaped output. */
+export function buildFillPrompt(detection: DetectionResult, readme: string): PromptPair {
+  const user = [
+    '## Detection facts',
+    detectionSummary(detection),
+    '',
+    '## Repo README',
+    readme.trim() === '' ? '(no README found)' : truncate(readme, MAX_README_CHARS),
+  ].join('\n');
+
+  return { system: FILL_SYSTEM, user };
 }
