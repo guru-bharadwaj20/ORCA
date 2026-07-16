@@ -7,10 +7,11 @@
 > approval **before** running anything, then builds/runs the containers with a
 > self-healing retry loop that explains each fix in plain English.
 
-> 🏗️ **Build status:** early days. **Stage 0** (scaffold) and **Stage 1** (the manual
-> container foundation — real templates, runnable samples, golden snapshot tests) are
-> done. Later stages (detection, AI, plan/approve, build/self-heal, CLI) are still
-> stubs that `throw new Error("not implemented")`. See [Stage progress](#stage-progress).
+> 🏗️ **Build status:** early days. **Stage 0** (scaffold), **Stage 1** (the manual
+> container foundation — real templates, runnable samples, golden snapshot tests), and
+> **Stage 2** (static, AI-free stack detection) are done. Later stages (AI, plan/approve,
+> build/self-heal, CLI) are still stubs that `throw new Error("not implemented")`.
+> See [Stage progress](#stage-progress).
 
 ## Why ORCA
 
@@ -158,40 +159,55 @@ This section records what exists and what is real vs. a stub. It is a map of the
 
 ### Stage progress
 
-| Stage | Area | Status |
-| --- | --- | --- |
-| 0 | Scaffold (structure, shared data contracts, configs) | 🟢 Complete |
-| 1 | Templates + samples + golden snapshot tests | 🟢 Complete |
-| 2 | Detection (`src/detect/*`) | 🟡 Stub |
-| 3 | AI template-filling (`src/ai/*`) | 🟡 Stub |
-| 4 | Plan / approve (`src/plan/*`) | 🟡 Stub |
-| 5 | Build + self-heal (`src/build/*`, `src/generate/*`) | 🟡 Stub |
-| 6 | Orchestrate (`src/orchestrate/*`) | 🟡 Stub |
-| 7 | CLI (`src/cli/*`, `src/core/pipeline.ts`) | 🟡 Stub |
+| Stage | Area                                                 | Status      |
+| ----- | ---------------------------------------------------- | ----------- |
+| 0     | Scaffold (structure, shared data contracts, configs) | 🟢 Complete |
+| 1     | Templates + samples + golden snapshot tests          | 🟢 Complete |
+| 2     | Detection (`src/detect/*`)                           | 🟢 Complete |
+| 3     | AI template-filling (`src/ai/*`)                     | 🟡 Stub     |
+| 4     | Plan / approve (`src/plan/*`)                        | 🟡 Stub     |
+| 5     | Build + self-heal (`src/build/*`, `src/generate/*`)  | 🟡 Stub     |
+| 6     | Orchestrate (`src/orchestrate/*`)                    | 🟡 Stub     |
+| 7     | CLI (`src/cli/*`, `src/core/pipeline.ts`)            | 🟡 Stub     |
 
 ### Real implementations
 
 **Shared data contracts (Stage 0):**
 
-| File | What it defines |
-| --- | --- |
-| 🟢 [`src/detect/types.ts`](src/detect/types.ts) | `DetectionResult` and all detection sub-types (STAGE 2 contract) |
-| 🟢 [`src/plan/types.ts`](src/plan/types.ts) | `ServicePlan` / `ServiceNode` service-graph model (STAGE 4 contract) |
-| 🟢 [`src/core/context.ts`](src/core/context.ts) | `RunContext` shared state + `createRunContext()` factory + defaults |
+| File                                            | What it defines                                                      |
+| ----------------------------------------------- | -------------------------------------------------------------------- |
+| 🟢 [`src/detect/types.ts`](src/detect/types.ts) | `DetectionResult` and all detection sub-types (STAGE 2 contract)     |
+| 🟢 [`src/plan/types.ts`](src/plan/types.ts)     | `ServicePlan` / `ServiceNode` service-graph model (STAGE 4 contract) |
+| 🟢 [`src/core/context.ts`](src/core/context.ts) | `RunContext` shared state + `createRunContext()` factory + defaults  |
 
 **Stage 1 — the manual container foundation:**
 
-| File | What it does |
-| --- | --- |
-| 🟢 [`src/templates/types.ts`](src/templates/types.ts) | **NEW** — `DockerfileVars` / `ServiceSpec` / `ComposeVars` render-context contract (the shape Stage 3 must produce) |
-| 🟢 [`src/templates/render.ts`](src/templates/render.ts) | **NEW** — pure Handlebars renderer: `renderDockerfile()` / `renderCompose()` (no output I/O) |
-| 🟢 [`src/templates/registry.ts`](src/templates/registry.ts) | `selectDockerfileTemplate()` + `defaultDockerfileVars()` + `describeComponent()` (pure lookup over `DetectionResult`) |
-| 🟢 [`src/templates/dockerfiles/node.Dockerfile.hbs`](src/templates/dockerfiles/node.Dockerfile.hbs) | Node template — covers the React client and the Express server |
-| 🟢 [`src/templates/dockerfiles/python.Dockerfile.hbs`](src/templates/dockerfiles/python.Dockerfile.hbs) | Python template — Django app (systemPackages + migrate entrypoint) |
-| 🟢 [`src/templates/compose/docker-compose.hbs`](src/templates/compose/docker-compose.hbs) | Compose template — iterates services (build vs image), env, ports, depends_on, volumes, healthcheck |
-| 🟢 `examples/mern-sample/**` | Runnable React+Vite / Express / MongoDB app + `.orca-golden/` reference |
-| 🟢 `examples/django-postgres-sample/**` | Runnable Django / Postgres app + `.orca-golden/` reference |
-| 🟢 `tests/templates/**` | Golden snapshot, compose-YAML, and registry tests (18 assertions, nothing mocked) |
+| File                                                                                                    | What it does                                                                                                          |
+| ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| 🟢 [`src/templates/types.ts`](src/templates/types.ts)                                                   | **NEW** — `DockerfileVars` / `ServiceSpec` / `ComposeVars` render-context contract (the shape Stage 3 must produce)   |
+| 🟢 [`src/templates/render.ts`](src/templates/render.ts)                                                 | **NEW** — pure Handlebars renderer: `renderDockerfile()` / `renderCompose()` (no output I/O)                          |
+| 🟢 [`src/templates/registry.ts`](src/templates/registry.ts)                                             | `selectDockerfileTemplate()` + `defaultDockerfileVars()` + `describeComponent()` (pure lookup over `DetectionResult`) |
+| 🟢 [`src/templates/dockerfiles/node.Dockerfile.hbs`](src/templates/dockerfiles/node.Dockerfile.hbs)     | Node template — covers the React client and the Express server                                                        |
+| 🟢 [`src/templates/dockerfiles/python.Dockerfile.hbs`](src/templates/dockerfiles/python.Dockerfile.hbs) | Python template — Django app (systemPackages + migrate entrypoint)                                                    |
+| 🟢 [`src/templates/compose/docker-compose.hbs`](src/templates/compose/docker-compose.hbs)               | Compose template — iterates services (build vs image), env, ports, depends_on, volumes, healthcheck                   |
+| 🟢 `examples/mern-sample/**`                                                                            | Runnable React+Vite / Express / MongoDB app + `.orca-golden/` reference                                               |
+| 🟢 `examples/django-postgres-sample/**`                                                                 | Runnable Django / Postgres app + `.orca-golden/` reference                                                            |
+| 🟢 `tests/templates/**`                                                                                 | Golden snapshot, compose-YAML, and registry tests (18 assertions, nothing mocked)                                     |
+
+**Stage 2 — static, AI-free stack detection:**
+
+| File                                                              | What it does                                                                                                     |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| 🟢 [`src/detect/manifest.ts`](src/detect/manifest.ts)             | **NEW** — shared package.json / requirements.txt / pyproject.toml dependency readers                             |
+| 🟢 [`src/detect/language.ts`](src/detect/language.ts)             | Languages from file extensions + manifest presence, evidence-ordered                                             |
+| 🟢 [`src/detect/packageManager.ts`](src/detect/packageManager.ts) | Lockfiles in priority order (pnpm → yarn → npm, poetry), then manifest fallbacks                                 |
+| 🟢 [`src/detect/framework.ts`](src/detect/framework.ts)           | react / express / django from dependency manifests                                                               |
+| 🟢 [`src/detect/services.ts`](src/detect/services.ts)             | Client libraries → postgres / mongodb / redis (+ default ports + which lib revealed it)                          |
+| 🟢 [`src/detect/entrypoint.ts`](src/detect/entrypoint.ts)         | Start command: package.json scripts (dev > start > serve) → Procfile → manage.py                                 |
+| 🟢 [`src/detect/ports.ts`](src/detect/ports.ts)                   | Ports from `.env` / Dockerfile `EXPOSE` / code literals, else framework default                                  |
+| 🟢 [`src/detect/index.ts`](src/detect/index.ts)                   | `detectStack()` — locates component roots, aggregates detectors, decides `isSupported` + `confidence` + warnings |
+| 🟢 [`src/utils/fs.ts`](src/utils/fs.ts)                           | Filesystem helpers the detectors walk/read through (safe reads, ignore-aware walk)                               |
+| 🟢 `tests/detect/` + `tests/fixtures/`                            | Fixture-driven tests: MERN repo, Django+Postgres repo, unsupported (Rust) repo                                   |
 
 Other real-but-thin Stage 0 code: 🟢 [`src/utils/errors.ts`](src/utils/errors.ts) (typed error
 classes), 🟢 [`src/config/settings.ts`](src/config/settings.ts) (`DEFAULT_SETTINGS`; `loadSettings()`
@@ -200,31 +216,30 @@ is a stub), 🟢 [`src/ai/schema.ts`](src/ai/schema.ts) (zod schemas; `validateA
 
 ### Real configuration files
 
-| File | Purpose |
-| --- | --- |
-| 🟢 `package.json` | ESM package, `orca` bin, all deps declared (adds `yaml` for the compose-parse test) |
-| 🟢 `tsconfig.json` | Strict TS, `NodeNext` module + resolution, `dist/` output |
-| 🟢 `eslint.config.js` · `.prettierrc` | Lint + format |
-| 🟢 `vitest.config.ts` | Node test env, coverage, `.js`→`.ts` extension-alias so tests can import the sources |
-| 🟢 `.gitignore` | node_modules, dist, coverage, `.env`, `.orca/`, Python caches/venvs — **never** `.orca-golden/`, templates, samples |
-| 🟢 `.env.example` · `LICENSE` · `.devcontainer/devcontainer.json` | BYOK key, MIT, dogfood devcontainer |
+| File                                                              | Purpose                                                                                                             |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| 🟢 `package.json`                                                 | ESM package, `orca` bin, all deps declared (adds `yaml` for the compose-parse test)                                 |
+| 🟢 `tsconfig.json`                                                | Strict TS, `NodeNext` module + resolution, `dist/` output                                                           |
+| 🟢 `eslint.config.js` · `.prettierrc`                             | Lint + format                                                                                                       |
+| 🟢 `vitest.config.ts`                                             | Node test env, coverage, `.js`→`.ts` extension-alias so tests can import the sources                                |
+| 🟢 `.gitignore`                                                   | node_modules, dist, coverage, `.env`, `.orca/`, Python caches/venvs — **never** `.orca-golden/`, templates, samples |
+| 🟢 `.env.example` · `LICENSE` · `.devcontainer/devcontainer.json` | BYOK key, MIT, dogfood devcontainer                                                                                 |
 
 ### Stub source files (later stages)
 
-| Stage | Files (all 🟡 stubs) |
-| --- | --- |
-| 0/1 clone | `src/clone/workspace.ts` |
-| 2 detect | `src/detect/{language,framework,packageManager,services,entrypoint,ports,index}.ts` |
-| 3 ai | `src/ai/{client,fillTemplate,inferEnv}.ts`, `src/ai/prompts/{fill,infer-env,heal}.ts` |
-| 4 plan | `src/plan/{servicePlan,diagram,review}.ts` |
-| 5 build | `src/build/{docker,runner,selfHeal,diagnosisLog}.ts`, `src/generate/writeConfigs.ts` |
-| 6 orchestrate | `src/orchestrate/{healthchecks,dependsOn,envFiles}.ts` |
-| 7 cli | `src/cli/index.ts`, `src/cli/commands/run.ts`, `src/cli/output/index.ts` |
-| core | `src/core/pipeline.ts` |
-| utils | `src/utils/{fs,logging}.ts` |
+| Stage         | Files (all 🟡 stubs)                                                                  |
+| ------------- | ------------------------------------------------------------------------------------- |
+| 0/1 clone     | `src/clone/workspace.ts`                                                              |
+| 3 ai          | `src/ai/{client,fillTemplate,inferEnv}.ts`, `src/ai/prompts/{fill,infer-env,heal}.ts` |
+| 4 plan        | `src/plan/{servicePlan,diagram,review}.ts`                                            |
+| 5 build       | `src/build/{docker,runner,selfHeal,diagnosisLog}.ts`, `src/generate/writeConfigs.ts`  |
+| 6 orchestrate | `src/orchestrate/{healthchecks,dependsOn,envFiles}.ts`                                |
+| 7 cli         | `src/cli/index.ts`, `src/cli/commands/run.ts`, `src/cli/output/index.ts`              |
+| core          | `src/core/pipeline.ts`                                                                |
+| utils         | `src/utils/logging.ts`                                                                |
 
-The Stage 2/3/5 test specs (`tests/detect/`, `tests/ai/`, `tests/build/`) remain `it.todo`
-placeholders until those stages are implemented.
+The Stage 3/5 test specs (`tests/ai/`, `tests/build/`) remain `it.todo` placeholders
+until those stages are implemented.
 
 ### Assumptions & notes
 
