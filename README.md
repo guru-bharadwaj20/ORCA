@@ -8,9 +8,10 @@
 > self-healing retry loop that explains each fix in plain English.
 
 > 🏗️ **Build status:** early days. **Stage 0** (scaffold), **Stage 1** (the manual
-> container foundation — real templates, runnable samples, golden snapshot tests), and
-> **Stage 2** (static, AI-free stack detection) are done. Later stages (AI, plan/approve,
-> build/self-heal, CLI) are still stubs that `throw new Error("not implemented")`.
+> container foundation — real templates, runnable samples, golden snapshot tests),
+> **Stage 2** (static, AI-free stack detection), and **Stage 3** (AI template-filling +
+> env inference, BYOK) are done. Later stages (plan/approve, build/self-heal, CLI) are
+> still stubs that `throw new Error("not implemented")`.
 > See [Stage progress](#stage-progress).
 
 ## Why ORCA
@@ -41,10 +42,12 @@ Anything outside this set is declined with a clear warning rather than guessed a
 
 ## Usage (planned)
 
-ORCA is **BYOK** — you supply your own Anthropic API key.
+ORCA is **BYOK** — you supply your own API keys. Qwen3-Coder is the primary model;
+Claude is the automatic fallback (see `.env.example` for routing overrides).
 
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-...
+export QWEN_API_KEY=sk-...        # primary (Qwen3-Coder via any OpenAI-compatible host)
+export ANTHROPIC_API_KEY=sk-ant-... # fallback (Claude)
 
 # Show the plan + service-graph diagram only; build nothing:
 orca run <repo-url> --dry-run
@@ -164,7 +167,7 @@ This section records what exists and what is real vs. a stub. It is a map of the
 | 0     | Scaffold (structure, shared data contracts, configs) | 🟢 Complete |
 | 1     | Templates + samples + golden snapshot tests          | 🟢 Complete |
 | 2     | Detection (`src/detect/*`)                           | 🟢 Complete |
-| 3     | AI template-filling (`src/ai/*`)                     | 🟡 Stub     |
+| 3     | AI template-filling (`src/ai/*`)                     | 🟢 Complete |
 | 4     | Plan / approve (`src/plan/*`)                        | 🟡 Stub     |
 | 5     | Build + self-heal (`src/build/*`, `src/generate/*`)  | 🟡 Stub     |
 | 6     | Orchestrate (`src/orchestrate/*`)                    | 🟡 Stub     |
@@ -209,10 +212,31 @@ This section records what exists and what is real vs. a stub. It is a map of the
 | 🟢 [`src/utils/fs.ts`](src/utils/fs.ts)                           | Filesystem helpers the detectors walk/read through (safe reads, ignore-aware walk)                               |
 | 🟢 `tests/detect/` + `tests/fixtures/`                            | Fixture-driven tests: MERN repo, Django+Postgres repo, unsupported (Rust) repo                                   |
 
+**Stage 3 — AI template-filling + env inference (multi-provider, BYOK, mocked in tests):**
+
+Qwen3-Coder is the **primary** provider; Claude is the **fallback**. The router tries
+Qwen (up to 2 attempts), validates every response, and escalates to Claude on thrown
+errors, invalid JSON, schema failures, or self-reported low confidence. Orchestrators
+call `ai.complete(prompt, schema, ledger)` and never learn which provider ran.
+
+| File                                                                | What it does                                                                                                              |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| 🟢 [`src/ai/providers/types.ts`](src/ai/providers/types.ts)         | `AIProvider` interface + `recordUsage()` (per-provider cost slices on the run ledger)                                     |
+| 🟢 [`src/ai/providers/qwen.ts`](src/ai/providers/qwen.ts)           | Qwen3-Coder over the OpenAI-compatible protocol (DashScope/vLLM/Ollama via `QWEN_BASE_URL`), built-in fetch, no new deps  |
+| 🟢 [`src/ai/providers/anthropic.ts`](src/ai/providers/anthropic.ts) | Claude via the Anthropic SDK — the only module touching it; per-model pricing for the ledger                              |
+| 🟢 [`src/ai/router.ts`](src/ai/router.ts)                           | Primary→retry→fallback policy, pre-call cost-cap gate (global across providers), low-confidence escalation                |
+| 🟢 [`src/ai/client.ts`](src/ai/client.ts)                           | The `ai.complete()` facade orchestrators use + legacy Anthropic-direct `complete()`                                       |
+| 🟢 [`src/ai/schema.ts`](src/ai/schema.ts)                           | `parseModelJson()` + `validateAgainst()` — fence-stripping JSON parse + zod; invalid AI output is rejected, never trusted |
+| 🟢 [`src/ai/prompts/fill.ts`](src/ai/prompts/fill.ts)               | Fill-template prompt: strict JSON shape, refine-the-defaults framing, README/detection grounding                          |
+| 🟢 [`src/ai/prompts/infer-env.ts`](src/ai/prompts/infer-env.ts)     | Infer-env prompt: compose-aware dev defaults (service-name hosts, placeholder secrets)                                    |
+| 🟢 [`src/ai/prompts/heal.ts`](src/ai/prompts/heal.ts)               | Heal prompt (consumed by Stage 5): plain-English explanation + fix + full-file patches                                    |
+| 🟢 [`src/ai/fillTemplate.ts`](src/ai/fillTemplate.ts)               | prompt → `ai.complete()` → validated `FilledTemplateVars`, anchored on the registry defaults                              |
+| 🟢 [`src/ai/inferEnv.ts`](src/ai/inferEnv.ts)                       | prompt → `ai.complete()` → validated `InferredEnv`                                                                        |
+| 🟢 `tests/ai/`                                                      | Qwen mocked at the fetch boundary, Claude at the SDK boundary; routing, cost, and validation run for real (15 tests)      |
+
 Other real-but-thin Stage 0 code: 🟢 [`src/utils/errors.ts`](src/utils/errors.ts) (typed error
 classes), 🟢 [`src/config/settings.ts`](src/config/settings.ts) (`DEFAULT_SETTINGS`; `loadSettings()`
-is a stub), 🟢 [`src/ai/schema.ts`](src/ai/schema.ts) (zod schemas; `validateAgainst()` is a stub),
-🟢 [`src/types/index.ts`](src/types/index.ts) (type re-exports).
+is a stub), 🟢 [`src/types/index.ts`](src/types/index.ts) (type re-exports).
 
 ### Real configuration files
 
@@ -227,19 +251,18 @@ is a stub), 🟢 [`src/ai/schema.ts`](src/ai/schema.ts) (zod schemas; `validateA
 
 ### Stub source files (later stages)
 
-| Stage         | Files (all 🟡 stubs)                                                                  |
-| ------------- | ------------------------------------------------------------------------------------- |
-| 0/1 clone     | `src/clone/workspace.ts`                                                              |
-| 3 ai          | `src/ai/{client,fillTemplate,inferEnv}.ts`, `src/ai/prompts/{fill,infer-env,heal}.ts` |
-| 4 plan        | `src/plan/{servicePlan,diagram,review}.ts`                                            |
-| 5 build       | `src/build/{docker,runner,selfHeal,diagnosisLog}.ts`, `src/generate/writeConfigs.ts`  |
-| 6 orchestrate | `src/orchestrate/{healthchecks,dependsOn,envFiles}.ts`                                |
-| 7 cli         | `src/cli/index.ts`, `src/cli/commands/run.ts`, `src/cli/output/index.ts`              |
-| core          | `src/core/pipeline.ts`                                                                |
-| utils         | `src/utils/logging.ts`                                                                |
+| Stage         | Files (all 🟡 stubs)                                                                 |
+| ------------- | ------------------------------------------------------------------------------------ |
+| 0/1 clone     | `src/clone/workspace.ts`                                                             |
+| 4 plan        | `src/plan/{servicePlan,diagram,review}.ts`                                           |
+| 5 build       | `src/build/{docker,runner,selfHeal,diagnosisLog}.ts`, `src/generate/writeConfigs.ts` |
+| 6 orchestrate | `src/orchestrate/{healthchecks,dependsOn,envFiles}.ts`                               |
+| 7 cli         | `src/cli/index.ts`, `src/cli/commands/run.ts`, `src/cli/output/index.ts`             |
+| core          | `src/core/pipeline.ts`                                                               |
+| utils         | `src/utils/logging.ts`                                                               |
 
-The Stage 3/5 test specs (`tests/ai/`, `tests/build/`) remain `it.todo` placeholders
-until those stages are implemented.
+The Stage 5 test specs (`tests/build/`) remain `it.todo` placeholders until that stage
+is implemented.
 
 ### Assumptions & notes
 
