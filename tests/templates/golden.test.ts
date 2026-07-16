@@ -1,0 +1,71 @@
+/**
+ * STAGE 1 verification — the golden snapshot loop.
+ *
+ * Renders the known-good render-contexts through the real Handlebars templates and
+ * asserts the output EQUALS the concrete files committed under each sample's
+ * `.orca-golden/` folder. If these pass, the templates reproduce the hand-written,
+ * runnable configs exactly (templatization is lossless). Nothing is mocked.
+ */
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+
+import { renderCompose, renderDockerfile } from '../../src/templates/render.js';
+import {
+  djangoComposeVars,
+  djangoDockerfileVars,
+  mernClientDockerfileVars,
+  mernComposeVars,
+  mernServerDockerfileVars,
+} from './sampleVars.js';
+
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+/** Normalize line endings + trailing whitespace only, so the compare is content-exact. */
+function normalize(text: string): string {
+  return (
+    text
+      .replace(/\r\n/g, '\n')
+      .replace(/[ \t]+$/gm, '')
+      .replace(/\n+$/, '') + '\n'
+  );
+}
+
+function readGolden(...segments: string[]): string {
+  return readFileSync(join(repoRoot, 'examples', ...segments), 'utf8');
+}
+
+describe('golden Dockerfiles render losslessly', () => {
+  it('MERN client Dockerfile matches its golden file', () => {
+    const rendered = renderDockerfile(mernClientDockerfileVars);
+    const golden = readGolden('mern-sample', '.orca-golden', 'client.Dockerfile');
+    expect(normalize(rendered)).toBe(normalize(golden));
+  });
+
+  it('MERN server Dockerfile matches its golden file', () => {
+    const rendered = renderDockerfile(mernServerDockerfileVars);
+    const golden = readGolden('mern-sample', '.orca-golden', 'server.Dockerfile');
+    expect(normalize(rendered)).toBe(normalize(golden));
+  });
+
+  it('Django Dockerfile matches its golden file', () => {
+    const rendered = renderDockerfile(djangoDockerfileVars);
+    const golden = readGolden('django-postgres-sample', '.orca-golden', 'Dockerfile');
+    expect(normalize(rendered)).toBe(normalize(golden));
+  });
+});
+
+describe('golden docker-compose files render losslessly', () => {
+  it('MERN docker-compose.yml matches its golden file', () => {
+    const rendered = renderCompose(mernComposeVars);
+    const golden = readGolden('mern-sample', '.orca-golden', 'docker-compose.yml');
+    expect(normalize(rendered)).toBe(normalize(golden));
+  });
+
+  it('Django docker-compose.yml matches its golden file', () => {
+    const rendered = renderCompose(djangoComposeVars);
+    const golden = readGolden('django-postgres-sample', '.orca-golden', 'docker-compose.yml');
+    expect(normalize(rendered)).toBe(normalize(golden));
+  });
+});
