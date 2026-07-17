@@ -9,9 +9,10 @@
 
 > 🏗️ **Build status:** early days. **Stage 0** (scaffold), **Stage 1** (the manual
 > container foundation — real templates, runnable samples, golden snapshot tests),
-> **Stage 2** (static, AI-free stack detection), and **Stage 3** (AI template-filling +
-> env inference, BYOK) are done. Later stages (plan/approve, build/self-heal, CLI) are
-> still stubs that `throw new Error("not implemented")`.
+> **Stage 2** (static, AI-free stack detection), **Stage 3** (AI template-filling +
+> env inference, BYOK), and **Stage 4** (service plan + Mermaid diagram + approval
+> gate) are done. Later stages (build/self-heal, orchestrate, CLI) are still stubs
+> that `throw new Error("not implemented")`.
 > See [Stage progress](#stage-progress).
 
 ## Why ORCA
@@ -168,7 +169,7 @@ This section records what exists and what is real vs. a stub. It is a map of the
 | 1     | Templates + samples + golden snapshot tests          | 🟢 Complete |
 | 2     | Detection (`src/detect/*`)                           | 🟢 Complete |
 | 3     | AI template-filling (`src/ai/*`)                     | 🟢 Complete |
-| 4     | Plan / approve (`src/plan/*`)                        | 🟡 Stub     |
+| 4     | Plan / approve (`src/plan/*`)                        | 🟢 Complete |
 | 5     | Build + self-heal (`src/build/*`, `src/generate/*`)  | 🟡 Stub     |
 | 6     | Orchestrate (`src/orchestrate/*`)                    | 🟡 Stub     |
 | 7     | CLI (`src/cli/*`, `src/core/pipeline.ts`)            | 🟡 Stub     |
@@ -234,6 +235,19 @@ call `ai.complete(prompt, schema, ledger)` and never learn which provider ran.
 | 🟢 [`src/ai/inferEnv.ts`](src/ai/inferEnv.ts)                       | prompt → `ai.complete()` → validated `InferredEnv`                                                                        |
 | 🟢 `tests/ai/`                                                      | Qwen mocked at the fetch boundary, Claude at the SDK boundary; routing, cost, and validation run for real (15 tests)      |
 
+**Stage 4 — service plan, Mermaid diagram, approval gate (+ pre-Stage-4 groundwork):**
+
+| File                                                            | What it does                                                                                                             |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| 🟢 [`src/plan/servicePlan.ts`](src/plan/servicePlan.ts)         | Detection + refined vars → `ServiceNode`s with golden-config conventions (images, healthchecks, env, volumes, edges)     |
+| 🟢 [`src/plan/diagram.ts`](src/plan/diagram.ts)                 | `ServicePlan` → Mermaid flowchart (cylinders for db/cache, labeled dependency edges, ports)                              |
+| 🟢 [`src/plan/review.ts`](src/plan/review.ts)                   | Approve-before-build gate: diagram + service table, y/N prompt, `--auto-approve`, safe non-TTY rejection                 |
+| 🟢 [`src/generate/composeVars.ts`](src/generate/composeVars.ts) | `planToComposeVars()` — the single owned plan → render-context mapping (conditions deferred to Stage 6)                  |
+| 🟢 [`src/ai/refineVars.ts`](src/ai/refineVars.ts)               | Typed boundary: merges validated AI refinements onto the registry's deterministic defaults                               |
+| 🟢 [`src/clone/workspace.ts`](src/clone/workspace.ts)           | Temp workspace + local-copy / shallow-clone + idempotent cleanup                                                         |
+| 🟢 [`scripts/copy-templates.mjs`](scripts/copy-templates.mjs)   | Ships the `.hbs` templates in `dist/` (build step) so the published package can render                                   |
+| 🟢 `tests/plan/` · `tests/clone/` · `tests/ai/refine.test.ts`   | Plan assembly, diagram, plan→compose YAML round-trip, approval gate via injected streams, workspace lifecycle (16 tests) |
+
 Other real-but-thin Stage 0 code: 🟢 [`src/utils/errors.ts`](src/utils/errors.ts) (typed error
 classes), 🟢 [`src/config/settings.ts`](src/config/settings.ts) (`DEFAULT_SETTINGS`; `loadSettings()`
 is a stub), 🟢 [`src/types/index.ts`](src/types/index.ts) (type re-exports).
@@ -253,8 +267,6 @@ is a stub), 🟢 [`src/types/index.ts`](src/types/index.ts) (type re-exports).
 
 | Stage         | Files (all 🟡 stubs)                                                                 |
 | ------------- | ------------------------------------------------------------------------------------ |
-| 0/1 clone     | `src/clone/workspace.ts`                                                             |
-| 4 plan        | `src/plan/{servicePlan,diagram,review}.ts`                                           |
 | 5 build       | `src/build/{docker,runner,selfHeal,diagnosisLog}.ts`, `src/generate/writeConfigs.ts` |
 | 6 orchestrate | `src/orchestrate/{healthchecks,dependsOn,envFiles}.ts`                               |
 | 7 cli         | `src/cli/index.ts`, `src/cli/commands/run.ts`, `src/cli/output/index.ts`             |
