@@ -1,17 +1,118 @@
 /**
  * Renders the selected templates with their filled variables and writes the final
- * Dockerfiles, docker-compose.yml, .dockerignore, and .env into the workspace.
+ * Dockerfiles, docker-compose.yml, .dockerignore (and, for Django, the migrate-then-run
+ * entrypoint script) into the workspace.
  *
- * STAGE: generate (bridges plan -> build)
- * Inputs: a `RunContext` (plan, filled templates, inferred env, workspace dir).
- * Outputs: files written to disk; returns the list of `GeneratedFile`s.
+ * STAGE: 5 (generate) — REAL code.
+ * Inputs: a `RunContext` (approved plan, detection, filled templates, workspace dir).
+ * Outputs: files written to disk; returns the list of `GeneratedFile`s. That list is
+ * also the audit trail AND the self-heal patch allowlist — the heal loop may only
+ * modify files recorded here, never the repo's own source.
  */
 
-import type { RunContext } from '../core/context.js';
-import type { GeneratedFile } from '../core/context.js';
+import { chmod, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
-// TODO(stage-5): render each template, write Dockerfiles + compose + env to the
-// workspace, and return what was written (also recorded on ctx.generatedFiles).
-export async function writeConfigs(_ctx: RunContext): Promise<GeneratedFile[]> {
-  throw new Error('not implemented');
+import type { GeneratedFile, RunContext } from '../core/context.js';
+import { refinedComponentVars } from '../plan/servicePlan.js';
+import { renderCompose, renderDockerfile } from '../templates/render.js';
+import { OrcaError } from '../utils/errors.js';
+import { readFileIfExists } from '../utils/fs.js';
+import { planToComposeVars } from './composeVars.js';
+
+/** Junk that must never be COPY'd into an image (mirrors the golden samples). */
+const DOCKERIGNORE = `node_modules
+.git
+dist
+build
+coverage
+__pycache__
+*.pyc
+.venv
+venv
+.env
+`;
+
+/**
+ * The migrate-then-run entrypoint for Django + Postgres (mirrors the hand-verified
+ * golden sample): wait for the db socket, migrate, then hand off to the CMD.
+ */
+const DJANGO_ENTRYPOINT = `#!/bin/sh
+set -e
+
+# depends_on only waits for the db CONTAINER to start, not for Postgres to accept
+# connections — the classic Django+Postgres race. Wait for the socket first, then
+# migrate, then hand off to the CMD (runserver). This is the migrate-before-run fix.
+POSTGRES_HOST="\${POSTGRES_HOST:-db}"
+POSTGRES_PORT="\${POSTGRES_PORT:-5432}"
+
+echo "waiting for postgres at \${POSTGRES_HOST}:\${POSTGRES_PORT}..."
+until python -c "import socket,sys; s=socket.socket(); s.settimeout(2); sys.exit(0 if s.connect_ex(('\${POSTGRES_HOST}', \${POSTGRES_PORT}))==0 else 1)"; do
+  sleep 1
+done
+
+echo "running migrations..."
+python manage.py migrate --noinput
+
+echo "starting server..."
+exec "$@"
+`;
+
+/** Repo-relative path (forward slashes) for a file inside a compose build context. */
+function inContext(context: string, name: string): string {
+  return context === '.' ? name : `${context.replace(/^\.\//, '')}/${name}`;
+}
+
+/**
+ * Render every config for the approved plan and write it into the workspace.
+ * Existing repo files are only ever shadowed inside ORCA's temp copy — the
+ * original repo is never touched.
+ */
+export async function writeConfigs(ctx: RunContext): Promise<GeneratedFile[]> {
+  const { detection, plan } = ctx;
+  if (detection === undefined || plan === undefined) {
+    throw new OrcaError('writeConfigs called before detection/plan were populated.', 'INTERNAL');
+  }
+  const filled = ctx.filled ?? {};
+
+  const generated: GeneratedFile[] = [];
+  const write = async (relPath: string, contents: string, kind: GeneratedFile['kind']) => {
+    await writeFile(join(ctx.workspaceDir, relPath), contents, 'utf8');
+    generated.push({ path: relPath, kind });
+  };
+
+  const contextsSeen = new Set<string>();
+  for (const role of ['backend', 'frontend'] as const) {
+    const component = role === 'backend' ? detection.backend : detection.frontend;
+    const node = plan.services.find((s) => s.id === role);
+    if (component === null || node === undefined || node.source.type !== 'build') continue;
+
+    const vars = refinedComponentVars(component, role, filled);
+    await write(
+      inContext(node.source.context, node.source.dockerfile),
+      renderDockerfile(vars),
+      'dockerfile'
+    );
+
+    // One .dockerignore per build context (roles can share a context).
+    if (!contextsSeen.has(node.source.context)) {
+      contextsSeen.add(node.source.context);
+      await write(inContext(node.source.context, '.dockerignore'), DOCKERIGNORE, 'dockerignore');
+    }
+
+    // The Dockerfile COPYs the entrypoint script; supply ORCA's default only when
+    // the repo doesn't ship its own (a repo-provided script is app source — keep it).
+    if (vars.entrypointScript !== undefined) {
+      const relPath = inContext(node.source.context, vars.entrypointScript);
+      if ((await readFileIfExists(join(ctx.workspaceDir, relPath))) === null) {
+        await write(relPath, DJANGO_ENTRYPOINT, 'entrypoint');
+        await chmod(join(ctx.workspaceDir, relPath), 0o755);
+      }
+    }
+  }
+
+  await write('docker-compose.yml', renderCompose(planToComposeVars(plan)), 'compose');
+
+  ctx.generatedFiles.push(...generated);
+  return generated;
 }

@@ -11,6 +11,7 @@
  * build/heal diagnosis as the run progresses.
  */
 
+import type { FilledTemplateVars } from '../ai/schema.js';
 import type { DetectionResult } from '../detect/types.js';
 import type { ServicePlan } from '../plan/types.js';
 
@@ -49,7 +50,7 @@ export interface GeneratedFile {
   /** Path relative to the repo/workspace root. */
   path: string;
   /** What produced it, for the audit trail. */
-  kind: 'dockerfile' | 'compose' | 'env' | 'dockerignore';
+  kind: 'dockerfile' | 'compose' | 'env' | 'dockerignore' | 'entrypoint';
 }
 
 /**
@@ -109,6 +110,8 @@ export interface RunContext {
   logger: Logger;
   /** STAGE 2 output; undefined until detection has run. */
   detection?: DetectionResult;
+  /** STAGE 3 output: validated AI refinements keyed by role ({} when keyless). */
+  filled?: Record<string, FilledTemplateVars>;
   /** STAGE 4 output; undefined until the plan is built. */
   plan?: ServicePlan;
   /** Whether the user approved the plan at the review gate. */
