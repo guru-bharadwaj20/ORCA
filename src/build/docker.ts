@@ -3,10 +3,16 @@
  * is the ONLY module that shells out to docker; everything else stays testable by
  * mocking these functions.
  *
- * STAGE: 5 (build)
+ * STAGE: 5 (build) — REAL code.
  * Inputs: a compose file path / project dir + command args.
- * Outputs: captured stdout/stderr + exit codes.
+ * Outputs: captured stdout/stderr + exit codes (never throws on non-zero exit;
+ * `assertDockerAvailable` is the one function that throws, and only typed).
  */
+
+import { execa } from 'execa';
+
+import { DEFAULT_SETTINGS } from '../config/settings.js';
+import { MissingDependencyError } from '../utils/errors.js';
 
 /** The captured result of running a docker/compose command. */
 export interface DockerCommandResult {
@@ -15,30 +21,66 @@ export interface DockerCommandResult {
   stderr: string;
 }
 
-// TODO(stage-5): verify the docker daemon is reachable.
+/** Seconds `compose up --wait` waits for every healthcheck before failing. */
+const UP_WAIT_TIMEOUT_S = 120;
+
+/** Run `docker <args>` in a project dir, capturing output instead of throwing. */
+async function runDocker(args: string[], projectDir?: string): Promise<DockerCommandResult> {
+  const result = await execa('docker', args, {
+    ...(projectDir !== undefined ? { cwd: projectDir } : {}),
+    reject: false,
+    timeout: DEFAULT_SETTINGS.dockerTimeoutMs,
+    // Plain buildkit progress keeps build logs line-oriented and readable for
+    // the self-heal diagnosis (no ANSI redraw noise).
+    env: { BUILDKIT_PROGRESS: 'plain' },
+    extendEnv: true,
+  });
+  return {
+    exitCode: typeof result.exitCode === 'number' ? result.exitCode : 1,
+    stdout: typeof result.stdout === 'string' ? result.stdout : '',
+    stderr: typeof result.stderr === 'string' ? result.stderr : '',
+  };
+}
+
+/** Verify the docker CLI exists and the daemon is reachable; throw typed if not. */
 export async function assertDockerAvailable(): Promise<void> {
-  throw new Error('not implemented');
+  const result = await runDocker(['info', '--format', '{{.ServerVersion}}']);
+  if (result.exitCode !== 0) {
+    throw new MissingDependencyError(
+      'Docker is required but unavailable (is the docker daemon running?). ' +
+        `Details: ${(result.stderr || result.stdout).trim().slice(0, 300) || 'docker CLI not found'}`
+    );
+  }
 }
 
-// TODO(stage-5): run `docker compose build` in the given project dir.
-export async function composeBuild(_projectDir: string): Promise<DockerCommandResult> {
-  throw new Error('not implemented');
+/** Run `docker compose build` in the given project dir. */
+export async function composeBuild(projectDir: string): Promise<DockerCommandResult> {
+  return runDocker(['compose', 'build'], projectDir);
 }
 
-// TODO(stage-5): run `docker compose up -d` in the given project dir.
-export async function composeUp(_projectDir: string): Promise<DockerCommandResult> {
-  throw new Error('not implemented');
+/**
+ * Run `docker compose up -d --wait` — `--wait` blocks until every service is
+ * running AND healthy (per its healthcheck), so an unhealthy stack fails here.
+ */
+export async function composeUp(projectDir: string): Promise<DockerCommandResult> {
+  return runDocker(
+    ['compose', 'up', '-d', '--wait', '--wait-timeout', String(UP_WAIT_TIMEOUT_S)],
+    projectDir
+  );
 }
 
-// TODO(stage-5): run `docker compose down` to tear everything down.
-export async function composeDown(_projectDir: string): Promise<DockerCommandResult> {
-  throw new Error('not implemented');
+/** Run `docker compose down` to tear everything down (safe on a never-started stack). */
+export async function composeDown(projectDir: string): Promise<DockerCommandResult> {
+  return runDocker(['compose', 'down', '--remove-orphans'], projectDir);
 }
 
-// TODO(stage-5): fetch recent logs for a service to feed the self-heal diagnosis.
+/** Recent logs (all services, or one) to feed the self-heal diagnosis. */
 export async function composeLogs(
-  _projectDir: string,
-  _service: string
+  projectDir: string,
+  service?: string
 ): Promise<DockerCommandResult> {
-  throw new Error('not implemented');
+  return runDocker(
+    ['compose', 'logs', '--no-color', '--tail', '100', ...(service !== undefined ? [service] : [])],
+    projectDir
+  );
 }
