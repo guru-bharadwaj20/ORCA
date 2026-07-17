@@ -26,7 +26,12 @@ services:
 {{#if (hasItems dependsOn)}}
     depends_on:
 {{#each dependsOn}}
+{{#if this.service}}
+      {{this.service}}:
+        condition: {{this.condition}}
+{{else}}
       - {{this}}
+{{/if}}
 {{/each}}
 {{/if}}
 {{#if (hasItems volumes)}}
