@@ -47,20 +47,35 @@ afterAll(() => {
 });
 
 describe('toRunOptions', () => {
-  it('returns the defaults for empty flags', () => {
-    expect(toRunOptions({})).toEqual(DEFAULT_RUN_OPTIONS);
+  it('returns the defaults for empty flags and a clean environment', () => {
+    expect(toRunOptions({}, {})).toEqual(DEFAULT_RUN_OPTIONS);
+  });
+
+  it('applies ORCA_* env overrides, and explicit flags beat them', () => {
+    const env = { ORCA_COST_CAP_USD: '0.5', ORCA_MAX_HEAL_ATTEMPTS: '7' };
+
+    const fromEnv = toRunOptions({}, env);
+    expect(fromEnv.costCapUsd).toBe(0.5);
+    expect(fromEnv.maxHealAttempts).toBe(7);
+
+    const fromFlag = toRunOptions({ costCap: 2 }, env);
+    expect(fromFlag.costCapUsd).toBe(2); // flag > env
+    expect(fromFlag.maxHealAttempts).toBe(7); // env still applies elsewhere
   });
 
   it('maps every flag onto RunOptions', () => {
     expect(
-      toRunOptions({
-        dryRun: true,
-        autoApprove: true,
-        model: 'claude-opus-4-8',
-        maxHealAttempts: 5,
-        costCap: 0.25,
-        verbose: true,
-      })
+      toRunOptions(
+        {
+          dryRun: true,
+          autoApprove: true,
+          model: 'claude-opus-4-8',
+          maxHealAttempts: 5,
+          costCap: 0.25,
+          verbose: true,
+        },
+        {}
+      )
     ).toEqual({
       dryRun: true,
       autoApprove: true,

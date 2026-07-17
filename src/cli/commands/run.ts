@@ -9,9 +9,11 @@
 
 import { Command, InvalidArgumentError } from 'commander';
 
+import { loadSettings } from '../../config/settings.js';
 import { createRunContext, DEFAULT_RUN_OPTIONS, type RunOptions } from '../../core/context.js';
 import { runPipeline } from '../../core/pipeline.js';
 import { createLogger } from '../../utils/logging.js';
+import { renderDiagnosisLog } from '../output/index.js';
 
 /** Flags accepted by `orca run`, before defaults are applied. */
 export interface RunCommandFlags {
@@ -23,10 +25,20 @@ export interface RunCommandFlags {
   verbose?: boolean;
 }
 
-/** Merge raw CLI flags over the defaults into a fully-populated `RunOptions`. */
-export function toRunOptions(flags: RunCommandFlags): RunOptions {
+/**
+ * Merge raw CLI flags into a fully-populated `RunOptions`.
+ * Precedence: explicit flag > ORCA_* env override (via loadSettings) > default.
+ */
+export function toRunOptions(
+  flags: RunCommandFlags,
+  env: NodeJS.ProcessEnv = process.env
+): RunOptions {
+  const settings = loadSettings(env);
   return {
     ...DEFAULT_RUN_OPTIONS,
+    model: settings.model,
+    maxHealAttempts: settings.maxHealAttempts,
+    costCapUsd: settings.costCapUsd,
     ...(flags.dryRun !== undefined ? { dryRun: flags.dryRun } : {}),
     ...(flags.autoApprove !== undefined ? { autoApprove: flags.autoApprove } : {}),
     ...(flags.model !== undefined ? { model: flags.model } : {}),
@@ -59,7 +71,14 @@ export async function executeRun(repoUrl: string, flags: RunCommandFlags): Promi
   const options = toRunOptions(flags);
   const logger = createLogger(options.verbose ? 'debug' : 'info');
   const ctx = createRunContext({ repoUrl, workspaceDir: '', logger, options });
-  await runPipeline(ctx);
+  try {
+    await runPipeline(ctx);
+  } catch (err) {
+    // Even a failed run gets the explainable heal story: what ORCA tried and why.
+    const healLog = renderDiagnosisLog(ctx.diagnosis);
+    if (healLog !== '') process.stderr.write(`\n${healLog}`);
+    throw err;
+  }
 }
 
 /** Define the `run` subcommand on the given program. */
