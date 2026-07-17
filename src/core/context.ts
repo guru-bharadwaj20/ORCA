@@ -12,7 +12,7 @@
  */
 
 import type { AIFacade } from '../ai/client.js';
-import type { FilledTemplateVars } from '../ai/schema.js';
+import type { FilledTemplateVars, InferredEnv } from '../ai/schema.js';
 import type { DetectionResult } from '../detect/types.js';
 import type { ServicePlan } from '../plan/types.js';
 
@@ -118,6 +118,8 @@ export interface RunContext {
   detection?: DetectionResult;
   /** STAGE 3 output: validated AI refinements keyed by role ({} when keyless). */
   filled?: Record<string, FilledTemplateVars>;
+  /** STAGE 3 output: AI-inferred app env vars (undefined when keyless/failed). */
+  inferredEnv?: InferredEnv;
   /** STAGE 4 output; undefined until the plan is built. */
   plan?: ServicePlan;
   /** Whether the user approved the plan at the review gate. */
