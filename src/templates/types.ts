@@ -60,6 +60,8 @@ export interface ServiceSpec {
   ports: string[];
   /** Environment variables injected into the service. Stage 3 (from inferEnv). */
   environment: Record<string, string>;
+  /** Optional env file path (relative to the compose file); inline `environment` wins. */
+  envFile?: string;
   /**
    * Services that must start first. A bare string renders compose's short form;
    * the object form renders the long form with a startup `condition`
