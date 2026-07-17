@@ -22,7 +22,9 @@
 
 import { join } from 'node:path';
 
+import { ai, aiFor } from '../ai/client.js';
 import { fillTemplate } from '../ai/fillTemplate.js';
+import { AIRouter, routerConfigForRun } from '../ai/router.js';
 import type { FilledTemplateVars } from '../ai/schema.js';
 import { assertDockerAvailable, composeDown } from '../build/docker.js';
 import { formatDiagnosisLog } from '../build/diagnosisLog.js';
@@ -91,11 +93,18 @@ async function fillComponents(
   }
 
   const readme = await readReadme(ctx.workspaceDir);
+  const client = ctx.ai ?? ai;
   for (const role of COMPONENT_ROLES) {
     const component = componentFor(detection, role);
     if (component === null) continue;
     try {
-      filled[role] = await fillTemplate(detection, describeComponent(component), readme, ctx.cost);
+      filled[role] = await fillTemplate(
+        detection,
+        describeComponent(component),
+        readme,
+        ctx.cost,
+        client
+      );
       ctx.logger.info(`AI refined the ${role} template vars.`);
     } catch (err) {
       const code = err instanceof OrcaError ? err.code : 'UNKNOWN';
@@ -175,6 +184,13 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
   const output = io.output ?? process.stdout;
   let workspace: Workspace | null = null;
   let keepWorkspace = false;
+
+  // Run-scoped AI: this run's --model / --cost-cap apply to every AI call it makes.
+  ctx.ai ??= aiFor(
+    new AIRouter(
+      routerConfigForRun({ costCapUsd: ctx.options.costCapUsd, model: ctx.options.model })
+    )
+  );
 
   try {
     // STAGE 0/1: clone into an owned temp workspace (skipped when pre-materialized).

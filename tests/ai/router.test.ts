@@ -14,7 +14,12 @@ vi.mock('@anthropic-ai/sdk', () => ({
   },
 }));
 
-import { AIRouter, resolveRouterConfig, type RouterConfig } from '../../src/ai/router.js';
+import {
+  AIRouter,
+  resolveRouterConfig,
+  routerConfigForRun,
+  type RouterConfig,
+} from '../../src/ai/router.js';
 import type { CostLedger } from '../../src/core/context.js';
 import { CostCapExceededError } from '../../src/utils/errors.js';
 
@@ -191,5 +196,29 @@ describe('AI provider router', () => {
     expect(defaults.primary).toBe('qwen');
     expect(defaults.fallback).toBe('anthropic');
     expect(defaults.maxPrimaryAttempts).toBe(2);
+  });
+
+  it('builds a run-scoped config: cost cap applied, model routed to its provider family', () => {
+    const claude = routerConfigForRun({ costCapUsd: 0.4, model: 'claude-sonnet-5' }, {});
+    expect(claude.costCapUsd).toBe(0.4);
+    expect(claude.modelOverrides).toEqual({ anthropic: 'claude-sonnet-5' });
+
+    const qwen = routerConfigForRun({ model: 'qwen3-coder-flash' }, {});
+    expect(qwen.modelOverrides).toEqual({ qwen: 'qwen3-coder-flash' });
+
+    // Unknown model families are ignored so a typo can't hit the wrong API.
+    expect(routerConfigForRun({ model: 'gpt-fantastic' }, {}).modelOverrides).toBeUndefined();
+  });
+
+  it('passes the per-provider model override through to the actual request', async () => {
+    qwenReplies(JSON.stringify({ answer: '42' }));
+
+    await new AIRouter({
+      ...config,
+      modelOverrides: { qwen: 'qwen3-coder-flash' },
+    }).completeValidated(prompt, schema, freshLedger());
+
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    expect(JSON.parse(init.body).model).toBe('qwen3-coder-flash');
   });
 });
