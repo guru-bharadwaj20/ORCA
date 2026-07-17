@@ -146,6 +146,21 @@ function componentVolumes(
   return volumes;
 }
 
+/**
+ * The final `DockerfileVars` for a component: registry defaults, refined by the AI
+ * fill for that role when one exists. Exported so the pipeline/generate stages render
+ * Dockerfiles from exactly the vars the plan was built with (no drift).
+ */
+export function refinedComponentVars(
+  component: DetectedComponent,
+  role: 'frontend' | 'backend',
+  filled: Record<string, FilledTemplateVars>
+): DockerfileVars {
+  const defaults = describeComponent(component).defaults;
+  const fill = filled[role];
+  return fill === undefined ? defaults : refineDockerfileVars(defaults, fill);
+}
+
 /** Assemble ServiceNodes for frontend/backend/databases and wire dependency edges. */
 export function buildServicePlan(
   detection: DetectionResult,
@@ -160,11 +175,8 @@ export function buildServicePlan(
     detection.backend !== null &&
     detection.frontend.rootDir === detection.backend.rootDir;
 
-  const refined = (component: DetectedComponent, role: 'frontend' | 'backend'): DockerfileVars => {
-    const defaults = describeComponent(component).defaults;
-    const fill = filled[role];
-    return fill === undefined ? defaults : refineDockerfileVars(defaults, fill);
-  };
+  const refined = (component: DetectedComponent, role: 'frontend' | 'backend'): DockerfileVars =>
+    refinedComponentVars(component, role, filled);
 
   let backendNode: ServiceNode | null = null;
   let backendVars: DockerfileVars | null = null;
