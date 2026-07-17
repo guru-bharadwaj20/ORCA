@@ -1,6 +1,7 @@
 # ORCA
 
-**Orchestrated Repository Comprehension Agent (ORCA)** _(working name)_
+**Orchestrated Repository Comprehension Agent (ORCA)** — published as **`orca-cli`**
+on npm (the bare `orca` name was taken); the installed binary is `orca`.
 
 > An AI agent CLI that clones a messy student/hackathon repo, detects its stack,
 > generates Docker + docker-compose configs, shows a service-graph diagram for human
@@ -15,9 +16,9 @@
 > self-heal loop), **Stage 6** (`.env` inference + env_file wiring), and **Stage 7**
 > (CLI + config convergence: env-validated settings, run-scoped model/cost-cap
 > routing, colored heal log) are done — **every stage is implemented**; the pipeline +
-> CLI run end-to-end (`--dry-run` needs no docker and no API keys). Remaining:
-> release engineering (package rename, CI, publish).
-> See [Stage progress](#stage-progress).
+> CLI run end-to-end (`--dry-run` needs no docker and no API keys). Release
+> engineering (package `orca-cli`, CI, SECURITY.md) is in place — all that remains
+> is the first npm publish. See [Stage progress](#stage-progress).
 
 ## Why ORCA
 
@@ -47,7 +48,9 @@ Anything outside this set is declined with a clear warning rather than guessed a
 
 ## Usage
 
-The dry run works today, end-to-end, straight from a checkout:
+Once published: `npm install -g orca-cli`, then `orca run <repo-url> --dry-run`.
+
+Until then, everything works straight from a checkout:
 
 ```bash
 npm install && npm run build
@@ -334,6 +337,8 @@ classes), 🟢 [`src/types/index.ts`](src/types/index.ts) (type re-exports).
 | 🟢 `vitest.config.ts`                                             | Node test env, coverage, `.js`→`.ts` extension-alias so tests can import the sources                                |
 | 🟢 `.gitignore`                                                   | node_modules, dist, coverage, `.env`, `.orca/`, Python caches/venvs — **never** `.orca-golden/`, templates, samples |
 | 🟢 `.env.example` · `LICENSE` · `.devcontainer/devcontainer.json` | BYOK key, MIT, dogfood devcontainer                                                                                 |
+| 🟢 `.github/workflows/ci.yml`                                     | CI on Node 20/22: build, lint, format check, tests (hermetic — no keys, no docker), compiled-CLI dry-run smoke      |
+| 🟢 `SECURITY.md` · `.prettierignore`                              | Security model (allowlist, BYOK, approval gate) + reporting; templates/samples/goldens excluded from formatting     |
 
 ### Stub source files
 
