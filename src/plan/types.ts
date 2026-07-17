@@ -75,6 +75,12 @@ export interface ServiceNode {
   /** Services this node must start after, with their required condition. */
   dependsOn: ServiceDependency[];
   volumes: VolumeMount[];
+  /**
+   * Optional env file (relative to the compose file, e.g. ".env") injected via
+   * compose `env_file`. Inline `environment` values take precedence, so the
+   * plan-owned database wiring always wins over .env contents.
+   */
+  envFile?: string;
   /** Optional healthcheck; databases/caches usually have one. */
   healthcheck?: Healthcheck;
   /** Optional override command; falls back to the image/Dockerfile default. */
