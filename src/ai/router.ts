@@ -12,7 +12,7 @@
 
 import type { z } from 'zod';
 
-import { DEFAULT_SETTINGS, ENV_KEYS, type ProviderName } from '../config/settings.js';
+import { loadSettings, type ProviderName } from '../config/settings.js';
 import type { CostLedger } from '../core/context.js';
 import { CostCapExceededError, OrcaError } from '../utils/errors.js';
 import { AnthropicProvider } from './providers/anthropic.js';
@@ -43,31 +43,45 @@ export interface RouterConfig {
   minConfidence: number;
   /** Hard cap on total LLM spend for the run, in USD (all providers combined). */
   costCapUsd: number;
+  /** Per-provider model id overrides (e.g. from `--model`); others keep defaults. */
+  modelOverrides?: Partial<Record<ProviderName, string>>;
 }
 
 /** Error codes that no amount of retrying the same provider will fix. */
 const NON_RETRYABLE_CODES = new Set(['MISSING_API_KEY']);
 
-/** Resolve the router config from env overrides on top of the defaults. */
+/** Resolve the router config from env overrides on top of the defaults (loadSettings). */
 export function resolveRouterConfig(env: NodeJS.ProcessEnv = process.env): RouterConfig {
-  const asProvider = (value: string | undefined): ProviderName | undefined =>
-    value === 'qwen' || value === 'anthropic' ? value : undefined;
-
-  const fallbackRaw = env[ENV_KEYS.fallbackProvider];
-  const attempts = Number(env[ENV_KEYS.maxPrimaryAttempts]);
-  const costCap = Number(env[ENV_KEYS.costCap]);
-
+  const settings = loadSettings(env);
   return {
-    primary: asProvider(env[ENV_KEYS.primaryProvider]) ?? DEFAULT_SETTINGS.primaryProvider,
-    fallback:
-      fallbackRaw === 'none'
-        ? null
-        : (asProvider(fallbackRaw) ?? DEFAULT_SETTINGS.fallbackProvider),
-    maxPrimaryAttempts:
-      Number.isInteger(attempts) && attempts >= 1 ? attempts : DEFAULT_SETTINGS.maxPrimaryAttempts,
-    minConfidence: DEFAULT_SETTINGS.minConfidence,
-    costCapUsd: Number.isFinite(costCap) && costCap > 0 ? costCap : DEFAULT_SETTINGS.costCapUsd,
+    primary: settings.primaryProvider,
+    fallback: settings.fallbackProvider,
+    maxPrimaryAttempts: settings.maxPrimaryAttempts,
+    minConfidence: settings.minConfidence,
+    costCapUsd: settings.costCapUsd,
   };
+}
+
+/**
+ * Router config for one run: env-resolved config with the run's options applied on
+ * top (CLI flags already folded env values in, so they win here by design).
+ * `model` is provider-aware — the id's family decides which provider it overrides;
+ * ids outside both families are ignored so a typo can't silently hit the wrong API.
+ */
+export function routerConfigForRun(
+  overrides: { costCapUsd?: number; model?: string },
+  env: NodeJS.ProcessEnv = process.env
+): RouterConfig {
+  const config = resolveRouterConfig(env);
+  if (overrides.costCapUsd !== undefined && overrides.costCapUsd > 0) {
+    config.costCapUsd = overrides.costCapUsd;
+  }
+  if (overrides.model !== undefined && overrides.model !== '') {
+    if (overrides.model.startsWith('claude'))
+      config.modelOverrides = { anthropic: overrides.model };
+    else if (overrides.model.startsWith('qwen')) config.modelOverrides = { qwen: overrides.model };
+  }
+  return config;
 }
 
 /** Default provider constructors; tests may inject fakes. */
@@ -110,9 +124,11 @@ export class AIRouter {
         let completion;
         try {
           const provider = this.factories[step.provider]();
+          const model = this.config.modelOverrides?.[step.provider];
           completion = await provider.complete(prompt.user, {
             system: prompt.system,
             ...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
+            ...(model !== undefined ? { model } : {}),
           });
         } catch (err) {
           lastError = err;
