@@ -73,11 +73,24 @@ export interface DiagnosisEntry {
   timestamp: string;
 }
 
+/** One provider's slice of the run's LLM usage. */
+export interface ProviderUsage {
+  inputTokens: number;
+  outputTokens: number;
+  estimatedUsd: number;
+}
+
 /** Running tally of LLM usage, checked against `RunOptions.costCapUsd`. */
 export interface CostLedger {
   inputTokens: number;
   outputTokens: number;
   estimatedUsd: number;
+  /**
+   * Per-provider breakdown (keyed by provider name, e.g. 'qwen' / 'anthropic').
+   * Created lazily on first use so plain `{inputTokens, outputTokens, estimatedUsd}`
+   * literals remain valid ledgers.
+   */
+  byProvider?: Record<string, ProviderUsage>;
 }
 
 /**

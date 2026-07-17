@@ -10,9 +10,33 @@
 
 import { z } from 'zod';
 
-/** Validated shape for AI-filled template variables. */
+import { OrcaError } from '../utils/errors.js';
+
+/** Lenient string list: accepts a proper string[] or a space-separated string. */
+const stringList = z.preprocess(
+  (value) => (typeof value === 'string' ? value.split(/\s+/).filter(Boolean) : value),
+  z.array(z.string())
+);
+
+/**
+ * Validated shape for AI-filled template variables. Mirrors `DockerfileVars`
+ * field-for-field (every field optional — the model only supplies what it wants to
+ * change), so downstream stages receive typed values, never a stringly-typed record.
+ * Unknown keys are stripped by zod, which doubles as the variable-name whitelist.
+ */
 export const FilledTemplateVarsSchema = z.object({
-  variables: z.record(z.string(), z.string()),
+  variables: z.object({
+    baseImage: z.string().min(1).optional(),
+    workdir: z.string().min(1).optional(),
+    packageManager: z.enum(['npm', 'yarn', 'pnpm', 'pip', 'poetry']).optional(),
+    dependencyFiles: stringList.optional(),
+    installCommand: z.string().min(1).optional(),
+    buildCommand: z.string().min(1).optional(),
+    startCommand: z.string().min(1).optional(),
+    port: z.coerce.number().int().min(1).max(65535).optional(),
+    systemPackages: stringList.optional(),
+    entrypointScript: z.string().min(1).optional(),
+  }),
   notes: z.array(z.string()).default([]),
 });
 export type FilledTemplateVars = z.infer<typeof FilledTemplateVarsSchema>;
@@ -43,8 +67,51 @@ export const HealSuggestionSchema = z.object({
 });
 export type HealSuggestion = z.infer<typeof HealSuggestionSchema>;
 
-// TODO(stage-3): parse+validate a raw model response against the given schema,
-// throwing a descriptive error on failure.
-export function validateAgainst<T>(_schema: z.ZodType<T>, _raw: unknown): T {
-  throw new Error('not implemented');
+/**
+ * Strip a Markdown code fence (```json ... ```) if the model wrapped its JSON in one,
+ * despite instructions not to. Returns the input unchanged otherwise.
+ */
+function stripCodeFence(text: string): string {
+  const fenced = /^\s*```(?:json)?\s*\n?([\s\S]*?)\n?\s*```\s*$/.exec(text);
+  return fenced?.[1] ?? text;
+}
+
+/**
+ * Turn a raw model response into a parsed JSON value. Accepts either a JSON string
+ * (optionally fenced) or an already-parsed object, which passes through unchanged.
+ * Throws an `OrcaError` on malformed JSON.
+ */
+export function parseModelJson(raw: unknown): unknown {
+  if (typeof raw !== 'string') return raw;
+  const text = stripCodeFence(raw);
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new OrcaError(
+      `AI response is not valid JSON: ${text.slice(0, 200)}`,
+      'AI_INVALID_RESPONSE'
+    );
+  }
+}
+
+/**
+ * Parse + validate a raw model response against the given schema. Accepts either a
+ * JSON string (optionally fenced) or an already-parsed object. Throws an `OrcaError`
+ * with a descriptive message on malformed JSON or schema mismatch — invalid AI output
+ * must never propagate into a plan or a Dockerfile.
+ */
+export function validateAgainst<Output, Input = Output>(
+  schema: z.ZodType<Output, z.ZodTypeDef, Input>,
+  raw: unknown
+): Output {
+  const candidate = parseModelJson(raw);
+
+  const result = schema.safeParse(candidate);
+  if (!result.success) {
+    const issues = result.error.issues
+      .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)
+      .join('; ');
+    throw new OrcaError(`AI response failed schema validation: ${issues}`, 'AI_INVALID_RESPONSE');
+  }
+  return result.data;
 }
