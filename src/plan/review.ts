@@ -10,11 +10,11 @@
  */
 
 import { createInterface } from 'node:readline/promises';
-import Table from 'cli-table3';
 
+import { renderPlanTable } from '../cli/output/index.js';
 import type { RunOptions } from '../core/context.js';
 import { renderDiagram } from './diagram.js';
-import type { ServiceNode, ServicePlan } from './types.js';
+import type { ServicePlan } from './types.js';
 
 /** The result of the human review gate. */
 export interface ReviewOutcome {
@@ -31,25 +31,8 @@ export interface ReviewIO {
   output?: NodeJS.WritableStream;
 }
 
-function describeSource(node: ServiceNode): string {
-  return node.source.type === 'image'
-    ? node.source.image
-    : `build ${node.source.context} (${node.source.dockerfile})`;
-}
-
 /** Render the human-readable plan summary: diagram source + service table. */
 function renderSummary(plan: ServicePlan): string {
-  const table = new Table({ head: ['Service', 'Kind', 'Source', 'Ports', 'Depends on'] });
-  for (const node of plan.services) {
-    table.push([
-      node.name,
-      node.kind,
-      describeSource(node),
-      node.ports.map((p) => `${p.host}:${p.container}`).join(', '),
-      node.dependsOn.map((d) => `${d.serviceId} (${d.condition})`).join(', ') || '—',
-    ]);
-  }
-
   return [
     '',
     `ORCA plan for ${plan.projectName} (source: ${plan.source})`,
@@ -58,7 +41,7 @@ function renderSummary(plan: ServicePlan): string {
     '',
     renderDiagram(plan),
     '',
-    table.toString(),
+    renderPlanTable(plan),
     '',
     'Nothing has been built or run yet.',
     '',
