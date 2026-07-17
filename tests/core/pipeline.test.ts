@@ -4,9 +4,11 @@
  * with scripted IO and zero API keys (hermetic: the keyless path never dials out).
  */
 import { existsSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   createRunContext,
@@ -15,6 +17,19 @@ import {
   type RunOptions,
 } from '../../src/core/context.js';
 import { runPipeline } from '../../src/core/pipeline.js';
+
+// Docker is mocked at the single shell-out boundary; everything else (clone,
+// detection, plan, gate, writeConfigs, self-heal loop) runs for real.
+const docker = vi.hoisted(() => ({
+  assertDockerAvailable: vi.fn(),
+  composeBuild: vi.fn(),
+  composeUp: vi.fn(),
+  composeDown: vi.fn(),
+  composeLogs: vi.fn(),
+}));
+vi.mock('../../src/build/docker.js', () => docker);
+
+const dockerOk = { exitCode: 0, stdout: '', stderr: '' };
 
 const fixture = (name: string): string =>
   fileURLToPath(new URL(`../fixtures/${name}`, import.meta.url));
@@ -65,6 +80,13 @@ beforeEach(() => {
   // and never touch the network.
   delete process.env['QWEN_API_KEY'];
   delete process.env['ANTHROPIC_API_KEY'];
+
+  vi.clearAllMocks();
+  docker.assertDockerAvailable.mockResolvedValue(undefined);
+  docker.composeBuild.mockResolvedValue(dockerOk);
+  docker.composeUp.mockResolvedValue(dockerOk);
+  docker.composeDown.mockResolvedValue(dockerOk);
+  docker.composeLogs.mockResolvedValue(dockerOk);
 });
 
 afterAll(() => {
@@ -121,10 +143,44 @@ describe('runPipeline (walking skeleton)', () => {
     expect(existsSync(ctx.workspaceDir)).toBe(false);
   });
 
-  it('stops with NOT_IMPLEMENTED after approval when not a dry run', async () => {
+  it('full run (docker mocked): writes configs, starts the stack, keeps the workspace', async () => {
+    const { ctx, result, printed } = startRun(fixture('mern-repo'), { autoApprove: true }, null);
+    await result;
+
+    try {
+      // Real files were generated into the (kept-alive) workspace.
+      expect(existsSync(ctx.workspaceDir)).toBe(true);
+      expect(existsSync(`${ctx.workspaceDir}/docker-compose.yml`)).toBe(true);
+      expect(ctx.generatedFiles.map((f) => f.kind)).toContain('dockerfile');
+      expect(docker.composeBuild).toHaveBeenCalledTimes(1);
+      expect(docker.composeUp).toHaveBeenCalledTimes(1);
+      expect(printed()).toContain('Stack is up');
+      expect(printed()).toContain('http://localhost:3000');
+    } finally {
+      await rm(dirname(ctx.workspaceDir), { recursive: true, force: true });
+    }
+  });
+
+  it('keyless build failure: heal unavailable, stack torn down, workspace removed', async () => {
+    docker.composeBuild.mockResolvedValue({
+      exitCode: 1,
+      stdout: '',
+      stderr: 'npm ERR! missing script: dev',
+    });
+    const { ctx, result } = startRun(fixture('mern-repo'), { autoApprove: true }, null);
+
+    await expect(result).rejects.toMatchObject({ code: 'HEAL_EXHAUSTED' });
+    expect(docker.composeDown).toHaveBeenCalled(); // best-effort teardown
+    expect(existsSync(ctx.workspaceDir)).toBe(false); // no leaked temp dirs
+  });
+
+  it('propagates MISSING_DEPENDENCY when docker is unavailable', async () => {
+    docker.assertDockerAvailable.mockRejectedValue(
+      Object.assign(new Error('docker not found'), { code: 'MISSING_DEPENDENCY' })
+    );
     const { result } = startRun(fixture('mern-repo'), { autoApprove: true }, null);
 
-    await expect(result).rejects.toMatchObject({ code: 'NOT_IMPLEMENTED' });
+    await expect(result).rejects.toMatchObject({ code: 'MISSING_DEPENDENCY' });
   });
 
   it('throws UNSUPPORTED_STACK on a repo outside ORCA scope', async () => {
