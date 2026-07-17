@@ -12,10 +12,12 @@
 > golden snapshot tests), **Stage 2** (static, AI-free stack detection), **Stage 3**
 > (AI template-filling, BYOK), **Stage 4** (service plan + Mermaid diagram + approval
 > gate), **Stage 5** (config generation + docker build/run + the explainable
-> self-heal loop), and **Stage 7** (CLI + config convergence: env-validated settings,
-> run-scoped model/cost-cap routing, colored heal log) are done; the pipeline + CLI
-> run it end-to-end (`--dry-run` needs no docker and no API keys). Remaining:
-> `.env` inference and release engineering. See [Stage progress](#stage-progress).
+> self-heal loop), **Stage 6** (`.env` inference + env_file wiring), and **Stage 7**
+> (CLI + config convergence: env-validated settings, run-scoped model/cost-cap
+> routing, colored heal log) are done — **every stage is implemented**; the pipeline +
+> CLI run end-to-end (`--dry-run` needs no docker and no API keys). Remaining:
+> release engineering (package rename, CI, publish).
+> See [Stage progress](#stage-progress).
 
 ## Why ORCA
 
@@ -82,8 +84,10 @@ The full flow needs Docker and, for self-healing, an API key:
 node ./dist/cli/index.js run <repo-url-or-path>
 ```
 
-After you approve the plan, ORCA writes the Dockerfiles + compose file into its
-temp workspace (the original repo is never touched), then `docker compose build` /
+After you approve the plan, ORCA writes the Dockerfiles + compose file — plus, with
+an AI key, an explainable `.env` (each inferred variable annotated with _why_;
+database wiring stays in compose and is never duplicated) — into its temp workspace
+(the original repo is never touched), then `docker compose build` /
 `up -d --wait`. On failure it asks the model to diagnose and patch — **only files
 ORCA generated may be patched; the allowlist is enforced in code**, not by the
 prompt — retries up to `--max-heal-attempts` (default 3), and prints an
@@ -196,16 +200,16 @@ This section records what exists and what is real vs. a stub. It is a map of the
 
 ### Stage progress
 
-| Stage | Area                                                                                                  | Status      |
-| ----- | ----------------------------------------------------------------------------------------------------- | ----------- |
-| 0     | Scaffold (structure, shared data contracts, configs)                                                  | 🟢 Complete |
-| 1     | Templates + samples + golden snapshot tests                                                           | 🟢 Complete |
-| 2     | Detection (`src/detect/*`)                                                                            | 🟢 Complete |
-| 3     | AI template-filling (`src/ai/*`)                                                                      | 🟢 Complete |
-| 4     | Plan / approve (`src/plan/*`)                                                                         | 🟢 Complete |
-| 5     | Build + self-heal (`src/build/*`, `src/generate/*`)                                                   | 🟢 Complete |
-| 6     | Orchestrate — folded into Stages 4–5 (healthchecks, depends_on conditions); `.env` inference deferred | 🟢 Folded   |
-| 7     | CLI (`src/cli/*`, `src/core/pipeline.ts`)                                                             | 🟢 Complete |
+| Stage | Area                                                                                                    | Status      |
+| ----- | ------------------------------------------------------------------------------------------------------- | ----------- |
+| 0     | Scaffold (structure, shared data contracts, configs)                                                    | 🟢 Complete |
+| 1     | Templates + samples + golden snapshot tests                                                             | 🟢 Complete |
+| 2     | Detection (`src/detect/*`)                                                                              | 🟢 Complete |
+| 3     | AI template-filling (`src/ai/*`)                                                                        | 🟢 Complete |
+| 4     | Plan / approve (`src/plan/*`)                                                                           | 🟢 Complete |
+| 5     | Build + self-heal (`src/build/*`, `src/generate/*`)                                                     | 🟢 Complete |
+| 6     | Orchestrate — healthchecks + depends_on conditions folded into Stages 4–5; `.env` inference in generate | 🟢 Complete |
+| 7     | CLI (`src/cli/*`, `src/core/pipeline.ts`)                                                               | 🟢 Complete |
 
 ### Real implementations
 
@@ -331,13 +335,11 @@ classes), 🟢 [`src/types/index.ts`](src/types/index.ts) (type re-exports).
 | 🟢 `.gitignore`                                                   | node_modules, dist, coverage, `.env`, `.orca/`, Python caches/venvs — **never** `.orca-golden/`, templates, samples |
 | 🟢 `.env.example` · `LICENSE` · `.devcontainer/devcontainer.json` | BYOK key, MIT, dogfood devcontainer                                                                                 |
 
-### Stub source files (later stages)
+### Stub source files
 
-| Stage         | Files (all 🟡 stubs)                                                                                                               |
-| ------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| 6 orchestrate | `src/orchestrate/envFiles.ts` (`.env` from AI-inferred vars; healthchecks/dependsOn stubs were folded into Stages 4–5 and removed) |
-
-Everything else in `src/` is real, tested code.
+None — every file in `src/` is real, tested code. (`src/orchestrate/envFiles.ts`, the
+last stub, now generates the explainable `.env`: inferred vars deduped against the
+plan's inline compose env, each with a one-line reason, wired in via `env_file`.)
 
 ### Assumptions & notes
 
