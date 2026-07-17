@@ -27,6 +27,19 @@ export interface Workspace {
 /** Directories never worth copying from a local source repo. */
 const COPY_EXCLUDE = new Set(['node_modules', '.git']);
 
+/**
+ * Checkout directory name derived from the clone source, so everything downstream
+ * that is named after the repo directory (e.g. the compose project name) reflects
+ * the actual repo instead of a generic 'repo'.
+ */
+function checkoutNameFor(source: string): string {
+  const base = basename(source.replace(/\/+$/, ''))
+    .replace(/\.git$/i, '')
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^[-.]+|[-.]+$/g, '');
+  return base === '' ? 'repo' : base;
+}
+
 /** Create a unique temp directory under the OS temp dir. */
 export async function createWorkspace(): Promise<Workspace> {
   const dir = await mkdtemp(join(tmpdir(), 'orca-'));
@@ -48,6 +61,7 @@ async function isLocalDirectory(source: string): Promise<boolean> {
  * anything else is treated as a git URL and shallow-cloned.
  */
 export async function cloneRepo(repoUrl: string, workspace: Workspace): Promise<string> {
+  workspace.repoDir = join(workspace.dir, checkoutNameFor(repoUrl));
   try {
     if (await isLocalDirectory(repoUrl)) {
       await cp(repoUrl, workspace.repoDir, {
