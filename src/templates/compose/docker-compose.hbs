@@ -23,6 +23,10 @@ services:
       {{@key}}: "{{{this}}}"
 {{/each}}
 {{/if}}
+{{#if envFile}}
+    env_file:
+      - {{envFile}}
+{{/if}}
 {{#if (hasItems dependsOn)}}
     depends_on:
 {{#each dependsOn}}
