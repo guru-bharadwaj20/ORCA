@@ -28,7 +28,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node scripts/copy-templates.mjs",
     "dev": "tsc -w -p tsconfig.json",
     "start": "node ./dist/cli/index.js",
     "test": "vitest run",
