@@ -11,8 +11,9 @@
 > container foundation — real templates, runnable samples, golden snapshot tests),
 > **Stage 2** (static, AI-free stack detection), **Stage 3** (AI template-filling +
 > env inference, BYOK), and **Stage 4** (service plan + Mermaid diagram + approval
-> gate) are done. Later stages (build/self-heal, orchestrate, CLI) are still stubs
-> that `throw new Error("not implemented")`.
+> gate) are done, and a **walking-skeleton pipeline + CLI** now runs the whole flow
+> end-to-end in `--dry-run` mode — with zero API keys if need be. Building/running
+> containers (Stage 5+) is still stubbed.
 > See [Stage progress](#stage-progress).
 
 ## Why ORCA
@@ -41,21 +42,36 @@ ORCA supports a small, fixed set (see [`docs/supported-stacks.md`](docs/supporte
 
 Anything outside this set is declined with a clear warning rather than guessed at.
 
-## Usage (planned)
+## Usage
 
-ORCA is **BYOK** — you supply your own API keys. Qwen3-Coder is the primary model;
-Claude is the automatic fallback (see `.env.example` for routing overrides).
+The dry run works today, end-to-end, straight from a checkout:
 
 ```bash
-export QWEN_API_KEY=sk-...        # primary (Qwen3-Coder via any OpenAI-compatible host)
-export ANTHROPIC_API_KEY=sk-ant-... # fallback (Claude)
+npm install && npm run build
 
-# Show the plan + service-graph diagram only; build nothing:
-orca run <repo-url> --dry-run
+# Clone (or copy), detect, plan, gate on your approval, then preview the generated
+# docker-compose.yml + Dockerfiles — nothing is built, run, or written to disk:
+node ./dist/cli/index.js run examples/mern-sample --dry-run
 
-# Full flow: detect → plan → approve → build/run → self-heal:
-orca run <repo-url>
+# Non-interactive (CI / scripting) form:
+node ./dist/cli/index.js run <repo-url-or-path> --dry-run --auto-approve
 ```
+
+Logs go to stderr and the plan/preview to stdout, so the output is pipeable.
+Exit codes: `0` success · `2` plan rejected at the gate · `1` anything else.
+
+AI refinement is **BYOK and optional** — with no key, ORCA falls back to its
+deterministic template defaults and the run still completes. Qwen3-Coder is the
+primary model; Claude is the automatic fallback (see `.env.example` for routing
+overrides):
+
+```bash
+export QWEN_API_KEY=sk-...          # primary (Qwen3-Coder via any OpenAI-compatible host)
+export ANTHROPIC_API_KEY=sk-ant-... # fallback (Claude)
+```
+
+The full flow (`orca run <repo-url>` without `--dry-run`: build/run + explainable
+self-heal) is Stage 5+ and currently stops with `NOT_IMPLEMENTED` after approval.
 
 ## Development
 
@@ -158,6 +174,7 @@ This section records what exists and what is real vs. a stub. It is a map of the
 ### Legend
 
 - 🟢 **Real** — complete, working code/config you can rely on now.
+- 🟠 **Skeleton** — real, tested end-to-end code for the core path; breadth/polish pending.
 - 🟡 **Stub** — top-of-file doc comment + typed signatures + `TODO(stage-N)` markers; bodies
   `throw new Error("not implemented")` (or return a typed placeholder).
 
@@ -172,7 +189,7 @@ This section records what exists and what is real vs. a stub. It is a map of the
 | 4     | Plan / approve (`src/plan/*`)                        | 🟢 Complete |
 | 5     | Build + self-heal (`src/build/*`, `src/generate/*`)  | 🟡 Stub     |
 | 6     | Orchestrate (`src/orchestrate/*`)                    | 🟡 Stub     |
-| 7     | CLI (`src/cli/*`, `src/core/pipeline.ts`)            | 🟡 Stub     |
+| 7     | CLI (`src/cli/*`, `src/core/pipeline.ts`)            | 🟠 Skeleton |
 
 ### Real implementations
 
@@ -248,6 +265,20 @@ call `ai.complete(prompt, schema, ledger)` and never learn which provider ran.
 | 🟢 [`scripts/copy-templates.mjs`](scripts/copy-templates.mjs)   | Ships the `.hbs` templates in `dist/` (build step) so the published package can render                                   |
 | 🟢 `tests/plan/` · `tests/clone/` · `tests/ai/refine.test.ts`   | Plan assembly, diagram, plan→compose YAML round-trip, approval gate via injected streams, workspace lifecycle (16 tests) |
 
+**Walking skeleton — `orca run <repo> --dry-run` end-to-end (pipeline + minimal CLI):**
+
+Keyless by design: with no API key (or when every AI call fails) the fill degrades to
+the registry defaults and the run still completes. Logs go to stderr, plan/preview to
+stdout. Exit codes: 0 success · 2 plan rejected · 1 anything else.
+
+| File                                                    | What it does                                                                                                                                                                                                          |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 🟢 [`src/core/pipeline.ts`](src/core/pipeline.ts)       | `runPipeline()` — clone → detect → AI fill (degrades keyless) → plan → approval gate → in-memory compose/Dockerfile preview; owns and always cleans its temp workspace; `NOT_IMPLEMENTED` past the gate until Stage 5 |
+| 🟢 [`src/cli/index.ts`](src/cli/index.ts)               | The `orca` bin: commander program, version from package.json, `OrcaError` → exit-code mapping, symlink-safe direct-run guard                                                                                          |
+| 🟢 [`src/cli/commands/run.ts`](src/cli/commands/run.ts) | `orca run <repo>` — `--dry-run` / `--auto-approve` / `--model` / `--max-heal-attempts` / `--cost-cap` / `--verbose` → `RunOptions`                                                                                    |
+| 🟢 [`src/utils/logging.ts`](src/utils/logging.ts)       | Leveled, colored stderr logger behind the core `Logger` contract (stdout stays pipeable)                                                                                                                              |
+| 🟢 `tests/core/` · `tests/cli/`                         | Fixture-driven end-to-end dry runs — keyless, scripted stdin, spied process streams: approve/reject/auto-approve, unsupported repo, workspace cleanup, exit codes (11 tests)                                          |
+
 Other real-but-thin Stage 0 code: 🟢 [`src/utils/errors.ts`](src/utils/errors.ts) (typed error
 classes), 🟢 [`src/config/settings.ts`](src/config/settings.ts) (`DEFAULT_SETTINGS`; `loadSettings()`
 is a stub), 🟢 [`src/types/index.ts`](src/types/index.ts) (type re-exports).
@@ -269,9 +300,8 @@ is a stub), 🟢 [`src/types/index.ts`](src/types/index.ts) (type re-exports).
 | ------------- | ------------------------------------------------------------------------------------ |
 | 5 build       | `src/build/{docker,runner,selfHeal,diagnosisLog}.ts`, `src/generate/writeConfigs.ts` |
 | 6 orchestrate | `src/orchestrate/{healthchecks,dependsOn,envFiles}.ts`                               |
-| 7 cli         | `src/cli/index.ts`, `src/cli/commands/run.ts`, `src/cli/output/index.ts`             |
-| core          | `src/core/pipeline.ts`                                                               |
-| utils         | `src/utils/logging.ts`                                                               |
+| 7 cli         | `src/cli/output/index.ts` (spinner/table presentation polish)                        |
+| config        | `loadSettings()` in `src/config/settings.ts`                                         |
 
 The Stage 5 test specs (`tests/build/`) remain `it.todo` placeholders until that stage
 is implemented.
