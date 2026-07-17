@@ -75,7 +75,7 @@ describe('ai stage (mocked LLM)', () => {
       variables: {
         baseImage: 'node:20-slim',
         startCommand: 'npm run dev',
-        port: '3000',
+        port: 3000,
       },
       notes: ['README pins Node 20.'],
     };
@@ -98,8 +98,8 @@ describe('ai stage (mocked LLM)', () => {
   });
 
   it('rejects a response that fails schema validation', async () => {
-    // `variables` values must be strings — a number must be refused, not propagated.
-    mockModelReply(JSON.stringify({ variables: { port: 3000 } }));
+    // An unsupported package manager must be refused, not propagated into a Dockerfile.
+    mockModelReply(JSON.stringify({ variables: { packageManager: 'cargo' } }));
 
     await expect(fillTemplate(detection, template, '', freshLedger())).rejects.toMatchObject({
       code: 'AI_INVALID_RESPONSE',

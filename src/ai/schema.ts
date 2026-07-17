@@ -12,9 +12,31 @@ import { z } from 'zod';
 
 import { OrcaError } from '../utils/errors.js';
 
-/** Validated shape for AI-filled template variables. */
+/** Lenient string list: accepts a proper string[] or a space-separated string. */
+const stringList = z.preprocess(
+  (value) => (typeof value === 'string' ? value.split(/\s+/).filter(Boolean) : value),
+  z.array(z.string())
+);
+
+/**
+ * Validated shape for AI-filled template variables. Mirrors `DockerfileVars`
+ * field-for-field (every field optional — the model only supplies what it wants to
+ * change), so downstream stages receive typed values, never a stringly-typed record.
+ * Unknown keys are stripped by zod, which doubles as the variable-name whitelist.
+ */
 export const FilledTemplateVarsSchema = z.object({
-  variables: z.record(z.string(), z.string()),
+  variables: z.object({
+    baseImage: z.string().min(1).optional(),
+    workdir: z.string().min(1).optional(),
+    packageManager: z.enum(['npm', 'yarn', 'pnpm', 'pip', 'poetry']).optional(),
+    dependencyFiles: stringList.optional(),
+    installCommand: z.string().min(1).optional(),
+    buildCommand: z.string().min(1).optional(),
+    startCommand: z.string().min(1).optional(),
+    port: z.coerce.number().int().min(1).max(65535).optional(),
+    systemPackages: stringList.optional(),
+    entrypointScript: z.string().min(1).optional(),
+  }),
   notes: z.array(z.string()).default([]),
 });
 export type FilledTemplateVars = z.infer<typeof FilledTemplateVarsSchema>;
