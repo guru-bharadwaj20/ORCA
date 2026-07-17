@@ -9,7 +9,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 
-import { DEFAULT_SETTINGS, ENV_KEYS } from '../../config/settings.js';
+import { ENV_KEYS, loadSettings } from '../../config/settings.js';
 import { OrcaError } from '../../utils/errors.js';
 import type { AIProvider, CompletionOptions, ProviderCompletion } from './types.js';
 
@@ -44,7 +44,7 @@ export function createAnthropicClient(): Anthropic {
   }
   return new Anthropic({
     apiKey,
-    timeout: DEFAULT_SETTINGS.llmTimeoutMs,
+    timeout: loadSettings().llmTimeoutMs,
   });
 }
 
@@ -53,10 +53,12 @@ export class AnthropicProvider implements AIProvider {
 
   async complete(prompt: string, options: CompletionOptions = {}): Promise<ProviderCompletion> {
     const client = createAnthropicClient();
-    const model = options.model ?? DEFAULT_SETTINGS.model;
+    const settings = loadSettings();
+    // ORCA_MODEL env override now applies here too (previously only the default).
+    const model = options.model ?? settings.model;
     const response = await client.messages.create({
       model,
-      max_tokens: options.maxTokens ?? DEFAULT_SETTINGS.maxOutputTokens,
+      max_tokens: options.maxTokens ?? settings.maxOutputTokens,
       ...(options.system !== undefined ? { system: options.system } : {}),
       messages: [{ role: 'user', content: prompt }],
     });

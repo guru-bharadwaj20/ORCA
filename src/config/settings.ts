@@ -2,11 +2,13 @@
  * Central, real configuration constants for ORCA: default model, retry cap, cost caps,
  * and timeouts. Values may be overridden by environment variables at load time.
  *
- * STAGE: config (shared)
+ * STAGE: config (shared) — REAL code.
  * Inputs: environment variables (optional overrides).
  * Outputs: a frozen `Settings` object other stages read from.
  *
- * NOTE: The default values here are REAL; `loadSettings()` (env parsing) is a stub.
+ * `loadSettings()` is the single place env overrides are parsed and validated —
+ * providers and the router derive their configuration from it. Invalid values fall
+ * back to the defaults (a bad env var should degrade, not crash a run).
  */
 
 /** AI providers ORCA can route completions to. */
@@ -70,7 +72,43 @@ export const ENV_KEYS = {
   maxHealAttempts: 'ORCA_MAX_HEAL_ATTEMPTS',
 } as const;
 
-// TODO(stage-7): read ENV_KEYS overrides on top of DEFAULT_SETTINGS and validate them.
-export function loadSettings(_env: NodeJS.ProcessEnv): Settings {
-  throw new Error('not implemented');
+/** A validated provider name, or undefined when the value is absent/unknown. */
+function asProvider(value: string | undefined): ProviderName | undefined {
+  return value === 'qwen' || value === 'anthropic' ? value : undefined;
+}
+
+/** A strictly positive integer, or undefined when absent/invalid. */
+function asPositiveInt(value: string | undefined): number | undefined {
+  const parsed = Number(value);
+  return value !== undefined && Number.isInteger(parsed) && parsed >= 1 ? parsed : undefined;
+}
+
+/** A strictly positive finite number, or undefined when absent/invalid. */
+function asPositiveNumber(value: string | undefined): number | undefined {
+  const parsed = Number(value);
+  return value !== undefined && Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+/**
+ * Read ENV_KEYS overrides on top of DEFAULT_SETTINGS. Invalid values fall back to
+ * the default rather than crashing; `ORCA_FALLBACK_PROVIDER=none` disables fallback.
+ */
+export function loadSettings(env: NodeJS.ProcessEnv = process.env): Settings {
+  const fallbackRaw = env[ENV_KEYS.fallbackProvider];
+  return Object.freeze({
+    ...DEFAULT_SETTINGS,
+    model: env[ENV_KEYS.model] || DEFAULT_SETTINGS.model,
+    qwenModel: env[ENV_KEYS.qwenModel] || DEFAULT_SETTINGS.qwenModel,
+    qwenBaseUrl: (env[ENV_KEYS.qwenBaseUrl] || DEFAULT_SETTINGS.qwenBaseUrl).replace(/\/$/, ''),
+    primaryProvider: asProvider(env[ENV_KEYS.primaryProvider]) ?? DEFAULT_SETTINGS.primaryProvider,
+    fallbackProvider:
+      fallbackRaw === 'none'
+        ? null
+        : (asProvider(fallbackRaw) ?? DEFAULT_SETTINGS.fallbackProvider),
+    maxPrimaryAttempts:
+      asPositiveInt(env[ENV_KEYS.maxPrimaryAttempts]) ?? DEFAULT_SETTINGS.maxPrimaryAttempts,
+    costCapUsd: asPositiveNumber(env[ENV_KEYS.costCap]) ?? DEFAULT_SETTINGS.costCapUsd,
+    maxHealAttempts:
+      asPositiveInt(env[ENV_KEYS.maxHealAttempts]) ?? DEFAULT_SETTINGS.maxHealAttempts,
+  });
 }
