@@ -7,12 +7,15 @@
 > approval **before** running anything, then builds/runs the containers with a
 > self-healing retry loop that explains each fix in plain English.
 
-> 🏗️ **Build status:** early days. **Stage 0** (scaffold), **Stage 1** (the manual
-> container foundation — real templates, runnable samples, golden snapshot tests),
-> **Stage 2** (static, AI-free stack detection), and **Stage 3** (AI template-filling +
-> env inference, BYOK) are done. Later stages (plan/approve, build/self-heal, CLI) are
-> still stubs that `throw new Error("not implemented")`.
-> See [Stage progress](#stage-progress).
+> 🏗️ **Build status:** the full flow is implemented. **Stage 0** (scaffold),
+> **Stage 1** (the manual container foundation — real templates, runnable samples,
+> golden snapshot tests), **Stage 2** (static, AI-free stack detection), **Stage 3**
+> (AI template-filling, BYOK), **Stage 4** (service plan + Mermaid diagram + approval
+> gate), **Stage 5** (config generation + docker build/run + the explainable
+> self-heal loop), and **Stage 7** (CLI + config convergence: env-validated settings,
+> run-scoped model/cost-cap routing, colored heal log) are done; the pipeline + CLI
+> run it end-to-end (`--dry-run` needs no docker and no API keys). Remaining:
+> `.env` inference and release engineering. See [Stage progress](#stage-progress).
 
 ## Why ORCA
 
@@ -40,21 +43,52 @@ ORCA supports a small, fixed set (see [`docs/supported-stacks.md`](docs/supporte
 
 Anything outside this set is declined with a clear warning rather than guessed at.
 
-## Usage (planned)
+## Usage
 
-ORCA is **BYOK** — you supply your own API keys. Qwen3-Coder is the primary model;
-Claude is the automatic fallback (see `.env.example` for routing overrides).
+The dry run works today, end-to-end, straight from a checkout:
 
 ```bash
-export QWEN_API_KEY=sk-...        # primary (Qwen3-Coder via any OpenAI-compatible host)
-export ANTHROPIC_API_KEY=sk-ant-... # fallback (Claude)
+npm install && npm run build
 
-# Show the plan + service-graph diagram only; build nothing:
-orca run <repo-url> --dry-run
+# Clone (or copy), detect, plan, gate on your approval, then preview the generated
+# docker-compose.yml + Dockerfiles — nothing is built, run, or written to disk:
+node ./dist/cli/index.js run examples/mern-sample --dry-run
 
-# Full flow: detect → plan → approve → build/run → self-heal:
-orca run <repo-url>
+# Non-interactive (CI / scripting) form:
+node ./dist/cli/index.js run <repo-url-or-path> --dry-run --auto-approve
 ```
+
+Logs go to stderr and the plan/preview to stdout, so the output is pipeable.
+Exit codes: `0` success · `2` plan rejected at the gate · `1` anything else.
+
+Every flag is live: `--model` overrides the model for its provider family
+(`claude-*` → Anthropic, `qwen*` → Qwen; other ids are ignored rather than sent to
+the wrong API), `--cost-cap` hard-caps the run's LLM spend, `--max-heal-attempts`
+bounds the self-heal loop. Precedence: flag > `ORCA_*` env var > default.
+
+AI refinement is **BYOK and optional** — with no key, ORCA falls back to its
+deterministic template defaults and the run still completes. Qwen3-Coder is the
+primary model; Claude is the automatic fallback (see `.env.example` for routing
+overrides):
+
+```bash
+export QWEN_API_KEY=sk-...          # primary (Qwen3-Coder via any OpenAI-compatible host)
+export ANTHROPIC_API_KEY=sk-ant-... # fallback (Claude)
+```
+
+The full flow needs Docker and, for self-healing, an API key:
+
+```bash
+node ./dist/cli/index.js run <repo-url-or-path>
+```
+
+After you approve the plan, ORCA writes the Dockerfiles + compose file into its
+temp workspace (the original repo is never touched), then `docker compose build` /
+`up -d --wait`. On failure it asks the model to diagnose and patch — **only files
+ORCA generated may be patched; the allowlist is enforced in code**, not by the
+prompt — retries up to `--max-heal-attempts` (default 3), and prints an
+attempt-by-attempt plain-English heal log. On success the workspace with the
+running stack is kept and its path printed; stop it there with `docker compose down`.
 
 ## Development
 
@@ -162,16 +196,16 @@ This section records what exists and what is real vs. a stub. It is a map of the
 
 ### Stage progress
 
-| Stage | Area                                                 | Status      |
-| ----- | ---------------------------------------------------- | ----------- |
-| 0     | Scaffold (structure, shared data contracts, configs) | 🟢 Complete |
-| 1     | Templates + samples + golden snapshot tests          | 🟢 Complete |
-| 2     | Detection (`src/detect/*`)                           | 🟢 Complete |
-| 3     | AI template-filling (`src/ai/*`)                     | 🟢 Complete |
-| 4     | Plan / approve (`src/plan/*`)                        | 🟡 Stub     |
-| 5     | Build + self-heal (`src/build/*`, `src/generate/*`)  | 🟡 Stub     |
-| 6     | Orchestrate (`src/orchestrate/*`)                    | 🟡 Stub     |
-| 7     | CLI (`src/cli/*`, `src/core/pipeline.ts`)            | 🟡 Stub     |
+| Stage | Area                                                                                                  | Status      |
+| ----- | ----------------------------------------------------------------------------------------------------- | ----------- |
+| 0     | Scaffold (structure, shared data contracts, configs)                                                  | 🟢 Complete |
+| 1     | Templates + samples + golden snapshot tests                                                           | 🟢 Complete |
+| 2     | Detection (`src/detect/*`)                                                                            | 🟢 Complete |
+| 3     | AI template-filling (`src/ai/*`)                                                                      | 🟢 Complete |
+| 4     | Plan / approve (`src/plan/*`)                                                                         | 🟢 Complete |
+| 5     | Build + self-heal (`src/build/*`, `src/generate/*`)                                                   | 🟢 Complete |
+| 6     | Orchestrate — folded into Stages 4–5 (healthchecks, depends_on conditions); `.env` inference deferred | 🟢 Folded   |
+| 7     | CLI (`src/cli/*`, `src/core/pipeline.ts`)                                                             | 🟢 Complete |
 
 ### Real implementations
 
@@ -234,9 +268,57 @@ call `ai.complete(prompt, schema, ledger)` and never learn which provider ran.
 | 🟢 [`src/ai/inferEnv.ts`](src/ai/inferEnv.ts)                       | prompt → `ai.complete()` → validated `InferredEnv`                                                                        |
 | 🟢 `tests/ai/`                                                      | Qwen mocked at the fetch boundary, Claude at the SDK boundary; routing, cost, and validation run for real (15 tests)      |
 
+**Stage 4 — service plan, Mermaid diagram, approval gate (+ pre-Stage-4 groundwork):**
+
+| File                                                            | What it does                                                                                                             |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| 🟢 [`src/plan/servicePlan.ts`](src/plan/servicePlan.ts)         | Detection + refined vars → `ServiceNode`s with golden-config conventions (images, healthchecks, env, volumes, edges)     |
+| 🟢 [`src/plan/diagram.ts`](src/plan/diagram.ts)                 | `ServicePlan` → Mermaid flowchart (cylinders for db/cache, labeled dependency edges, ports)                              |
+| 🟢 [`src/plan/review.ts`](src/plan/review.ts)                   | Approve-before-build gate: diagram + service table, y/N prompt, `--auto-approve`, safe non-TTY rejection                 |
+| 🟢 [`src/generate/composeVars.ts`](src/generate/composeVars.ts) | `planToComposeVars()` — the single owned plan → render-context mapping (conditions deferred to Stage 6)                  |
+| 🟢 [`src/ai/refineVars.ts`](src/ai/refineVars.ts)               | Typed boundary: merges validated AI refinements onto the registry's deterministic defaults                               |
+| 🟢 [`src/clone/workspace.ts`](src/clone/workspace.ts)           | Temp workspace + local-copy / shallow-clone + idempotent cleanup                                                         |
+| 🟢 [`scripts/copy-templates.mjs`](scripts/copy-templates.mjs)   | Ships the `.hbs` templates in `dist/` (build step) so the published package can render                                   |
+| 🟢 `tests/plan/` · `tests/clone/` · `tests/ai/refine.test.ts`   | Plan assembly, diagram, plan→compose YAML round-trip, approval gate via injected streams, workspace lifecycle (16 tests) |
+
+**Stage 5 — config generation + docker build/run + explainable self-heal:**
+
+The self-heal patch allowlist is a **code-enforced security boundary**: every AI patch
+path is canonicalized against the workspace root and must match a file ORCA itself
+generated — application source, traversal (`../`), and absolute paths are rejected in
+`selfHeal.ts` regardless of what the model proposes.
+
+| File                                                              | What it does                                                                                                                                                                                                        |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 🟢 [`src/generate/writeConfigs.ts`](src/generate/writeConfigs.ts) | Writes Dockerfiles, `.dockerignore`s, compose (long-form `depends_on` conditions), and the Django migrate-then-run entrypoint (repo's own script wins); the returned list is the audit trail and the heal allowlist |
+| 🟢 [`src/build/docker.ts`](src/build/docker.ts)                   | The only module that shells out (execa): `docker info` / `compose build` / `up -d --wait` (health-gated) / `down` / `logs`, plain-progress output, typed non-throwing results                                       |
+| 🟢 [`src/build/runner.ts`](src/build/runner.ts)                   | One attempt: build → up; classifies build vs up vs healthcheck failures and captures the error tail + service logs                                                                                                  |
+| 🟢 [`src/build/selfHeal.ts`](src/build/selfHeal.ts)               | The retry loop: runOnce → AI diagnosis → allowlisted patch → retry (≤ maxHealAttempts); `HealExhaustedError` when out of options                                                                                    |
+| 🟢 [`src/build/diagnosisLog.ts`](src/build/diagnosisLog.ts)       | `DiagnosisEntry` construction + the plain-English attempt-by-attempt heal log                                                                                                                                       |
+| 🟢 `tests/generate/` · `tests/build/`                             | writeConfigs against real temp workspaces; runner + heal loop with docker/AI mocked; allowlist traversal/app-source rejection (12 tests)                                                                            |
+
+**Stage 7 — pipeline + CLI (`orca run`), config convergence:**
+
+Keyless by design: with no API key (or when every AI call fails) the fill degrades to
+the registry defaults and the run still completes. Logs go to stderr, plan/preview to
+stdout. Exit codes: 0 success · 2 plan rejected · 1 anything else.
+
+| File                                                    | What it does                                                                                                                                                              |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 🟢 [`src/core/pipeline.ts`](src/core/pipeline.ts)       | `runPipeline()` — clone → detect → AI fill (degrades keyless) → plan → approval gate → dry-run preview or full build/self-heal; creates the run-scoped AI facade          |
+| 🟢 [`src/cli/index.ts`](src/cli/index.ts)               | The `orca` bin: commander program, version from package.json, `OrcaError` → exit-code mapping, symlink-safe direct-run guard                                              |
+| 🟢 [`src/cli/commands/run.ts`](src/cli/commands/run.ts) | `orca run <repo>` — every flag live with flag > `ORCA_*` env > default precedence; prints the colored heal log even when a run fails                                      |
+| 🟢 [`src/cli/output/index.ts`](src/cli/output/index.ts) | Presentation helpers: the plan review table + the colored attempt-by-attempt heal log (chalk/cli-table3 kept in one place)                                                |
+| 🟢 [`src/config/settings.ts`](src/config/settings.ts)   | `loadSettings()` — the single place `ORCA_*` env overrides are parsed/validated; router + both providers derive their config from it (invalid values degrade to defaults) |
+| 🟢 [`src/utils/logging.ts`](src/utils/logging.ts)       | Leveled, colored stderr logger behind the core `Logger` contract (stdout stays pipeable)                                                                                  |
+| 🟢 `tests/core/` · `tests/cli/` · `tests/config/`       | Fixture-driven end-to-end runs (keyless, scripted stdin, spied process streams, docker mocked), settings parsing, flag/env precedence, output rendering (24 tests)        |
+
+The run-scoped AI facade (`RunContext.ai`) makes `--model` and `--cost-cap` apply to
+every AI call in that run; `--model` is provider-aware (`claude-*` → Anthropic,
+`qwen*` → Qwen, unknown families ignored so a typo can't hit the wrong API).
+
 Other real-but-thin Stage 0 code: 🟢 [`src/utils/errors.ts`](src/utils/errors.ts) (typed error
-classes), 🟢 [`src/config/settings.ts`](src/config/settings.ts) (`DEFAULT_SETTINGS`; `loadSettings()`
-is a stub), 🟢 [`src/types/index.ts`](src/types/index.ts) (type re-exports).
+classes), 🟢 [`src/types/index.ts`](src/types/index.ts) (type re-exports).
 
 ### Real configuration files
 
@@ -251,18 +333,11 @@ is a stub), 🟢 [`src/types/index.ts`](src/types/index.ts) (type re-exports).
 
 ### Stub source files (later stages)
 
-| Stage         | Files (all 🟡 stubs)                                                                 |
-| ------------- | ------------------------------------------------------------------------------------ |
-| 0/1 clone     | `src/clone/workspace.ts`                                                             |
-| 4 plan        | `src/plan/{servicePlan,diagram,review}.ts`                                           |
-| 5 build       | `src/build/{docker,runner,selfHeal,diagnosisLog}.ts`, `src/generate/writeConfigs.ts` |
-| 6 orchestrate | `src/orchestrate/{healthchecks,dependsOn,envFiles}.ts`                               |
-| 7 cli         | `src/cli/index.ts`, `src/cli/commands/run.ts`, `src/cli/output/index.ts`             |
-| core          | `src/core/pipeline.ts`                                                               |
-| utils         | `src/utils/logging.ts`                                                               |
+| Stage         | Files (all 🟡 stubs)                                                                                                               |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| 6 orchestrate | `src/orchestrate/envFiles.ts` (`.env` from AI-inferred vars; healthchecks/dependsOn stubs were folded into Stages 4–5 and removed) |
 
-The Stage 5 test specs (`tests/build/`) remain `it.todo` placeholders until that stage
-is implemented.
+Everything else in `src/` is real, tested code.
 
 ### Assumptions & notes
 

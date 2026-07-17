@@ -43,6 +43,20 @@ export interface CompletionResult {
   outputTokens: number;
 }
 
+/**
+ * The provider-agnostic completion surface orchestrators depend on. The default
+ * `ai` export implements it from env config; `aiFor()` builds a run-scoped one
+ * (e.g. honoring `--model` / `--cost-cap`), carried on `RunContext.ai`.
+ */
+export interface AIFacade {
+  complete<Output, Input = Output>(
+    prompt: RouterPrompt,
+    schema: z.ZodType<Output, z.ZodTypeDef, Input>,
+    ledger: CostLedger,
+    options?: RouterCallOptions
+  ): Promise<Output>;
+}
+
 /** Lazily-built default router so env-based config is read when first needed. */
 let defaultRouter: AIRouter | null = null;
 function getRouter(): AIRouter {
@@ -53,16 +67,20 @@ function getRouter(): AIRouter {
  * What orchestrators use. One call = one AI task, provider-agnostic:
  * primary provider → validation → retries → fallback, per the router policy.
  */
-export const ai = {
-  complete<Output, Input = Output>(
-    prompt: RouterPrompt,
-    schema: z.ZodType<Output, z.ZodTypeDef, Input>,
-    ledger: CostLedger,
-    options?: RouterCallOptions
-  ): Promise<Output> {
+export const ai: AIFacade = {
+  complete(prompt, schema, ledger, options) {
     return getRouter().completeValidated(prompt, schema, ledger, options);
   },
 };
+
+/** Wrap a configured router as the facade orchestrators consume. */
+export function aiFor(router: AIRouter): AIFacade {
+  return {
+    complete(prompt, schema, ledger, options) {
+      return router.completeValidated(prompt, schema, ledger, options);
+    },
+  };
+}
 
 /**
  * Anthropic-direct completion (bypasses the router; no fallback). Enforces the cost

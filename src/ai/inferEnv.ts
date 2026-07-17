@@ -9,7 +9,7 @@
 
 import type { DetectionResult } from '../detect/types.js';
 import type { CostLedger } from '../core/context.js';
-import { ai } from './client.js';
+import { ai, type AIFacade } from './client.js';
 import { buildInferEnvPrompt } from './prompts/infer-env.js';
 import { InferredEnvSchema, type InferredEnv } from './schema.js';
 
@@ -17,8 +17,9 @@ import { InferredEnvSchema, type InferredEnv } from './schema.js';
 export async function inferEnv(
   detection: DetectionResult,
   readme: string,
-  ledger: CostLedger
+  ledger: CostLedger,
+  client: AIFacade = ai
 ): Promise<InferredEnv> {
   const prompt = buildInferEnvPrompt(detection, readme);
-  return ai.complete(prompt, InferredEnvSchema, ledger, { schemaName: 'InferredEnv' });
+  return client.complete(prompt, InferredEnvSchema, ledger, { schemaName: 'InferredEnv' });
 }
