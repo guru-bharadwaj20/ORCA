@@ -113,7 +113,9 @@ export async function runSelfHealLoop(ctx: RunContext): Promise<AttemptResult> {
 
     let suggestion: HealSuggestion;
     try {
-      suggestion = await ai.complete(
+      // Run-scoped facade when the pipeline provided one (--model / --cost-cap).
+      const client = ctx.ai ?? ai;
+      suggestion = await client.complete(
         buildHealPrompt(errorOutput, await readGeneratedFiles(ctx), attempt),
         HealSuggestionSchema,
         ctx.cost,
