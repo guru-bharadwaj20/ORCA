@@ -64,16 +64,21 @@ describe('selectDockerfileTemplate', () => {
   });
 
   it('picks the python template for python components', () => {
-    expect(
-      selectDockerfileTemplate(component({ language: 'python', framework: 'django' }))
-    ).toBe('python.Dockerfile.hbs');
+    expect(selectDockerfileTemplate(component({ language: 'python', framework: 'django' }))).toBe(
+      'python.Dockerfile.hbs'
+    );
   });
 });
 
 describe('defaultDockerfileVars', () => {
   it('Node + Express backend', () => {
     const vars = defaultDockerfileVars(
-      component({ language: 'javascript', framework: 'express', packageManager: 'npm', ports: [port(5000)] })
+      component({
+        language: 'javascript',
+        framework: 'express',
+        packageManager: 'npm',
+        ports: [port(5000)],
+      })
     );
     expect(vars).toMatchObject({
       baseImage: 'node:20-slim',
