@@ -2,25 +2,31 @@
  * Orchestrates every stage end-to-end: clone -> detect -> fill templates (AI) ->
  * build plan -> review/approve -> generate configs -> build/run with self-heal.
  *
- * STAGE: core (drives all stages) — REAL code (walking skeleton).
+ * STAGE: core (drives all stages) — REAL code.
  * Inputs: a `RunContext` (repo URL + options + logger) and optional injectable IO
  * streams for the review gate / previews (tests drive the gate through these).
- * Outputs: a resolved `RunContext` with detection, plan, and cost populated; throws
- * `OrcaError`s on unsupported stacks, rejection, and unrecoverable failure.
+ * Outputs: a resolved `RunContext` with detection, plan, generated files, and the
+ * self-heal diagnosis populated; throws `OrcaError`s on unsupported stacks,
+ * rejection, and unrecoverable failure.
  *
- * Current skeleton behavior: the pipeline runs clone -> detect -> AI fill -> plan ->
- * approval gate for real. `--dry-run` then renders the docker-compose.yml + Dockerfiles
- * in memory and prints them WITHOUT writing anything; a non-dry run stops with
- * NOT_IMPLEMENTED until Stage 5 (generate + build + self-heal) lands.
+ * `--dry-run` renders the docker-compose.yml + Dockerfiles in memory and prints them
+ * WITHOUT writing anything. A full run writes the configs into the temp workspace,
+ * then builds/starts the stack with the explainable self-heal loop; on success the
+ * workspace is kept alive (the running stack lives there), on any failure the stack
+ * is torn down and the workspace removed.
  *
  * AI is optional by design: with no API key (or if every fill attempt fails) the plan
- * falls back to the deterministic registry defaults — ORCA stays useful keyless.
+ * falls back to the deterministic registry defaults — ORCA stays useful keyless
+ * (though a failed build cannot self-heal without a key).
  */
 
 import { join } from 'node:path';
 
 import { fillTemplate } from '../ai/fillTemplate.js';
 import type { FilledTemplateVars } from '../ai/schema.js';
+import { assertDockerAvailable, composeDown } from '../build/docker.js';
+import { formatDiagnosisLog } from '../build/diagnosisLog.js';
+import { runSelfHealLoop } from '../build/selfHeal.js';
 import {
   cleanupWorkspace,
   cloneRepo,
@@ -31,6 +37,7 @@ import { ENV_KEYS } from '../config/settings.js';
 import { detectStack } from '../detect/index.js';
 import type { DetectedComponent, DetectionResult } from '../detect/types.js';
 import { planToComposeVars } from '../generate/composeVars.js';
+import { writeConfigs } from '../generate/writeConfigs.js';
 import { reviewPlan, type ReviewIO } from '../plan/review.js';
 import { buildServicePlan, refinedComponentVars } from '../plan/servicePlan.js';
 import type { ServicePlan } from '../plan/types.js';
@@ -126,6 +133,28 @@ function renderPreview(
   return `${sections.join('\n\n')}\n`;
 }
 
+/** The end-of-run success summary: URLs, heal log, and how to stop the stack. */
+function renderSuccess(ctx: RunContext): string {
+  const plan = ctx.plan;
+  const lines = ['', 'Stack is up ✔', ''];
+  for (const node of plan?.services ?? []) {
+    for (const port of node.ports) {
+      if (node.kind === 'frontend' || node.kind === 'backend') {
+        lines.push(`  ${node.name} → http://localhost:${port.host}`);
+      }
+    }
+  }
+  const healLog = formatDiagnosisLog(ctx.diagnosis);
+  if (healLog !== '') lines.push('', healLog.trimEnd());
+  lines.push(
+    '',
+    `Workspace: ${ctx.workspaceDir}`,
+    'Stop the stack with: docker compose down   (run inside the workspace)',
+    ''
+  );
+  return lines.join('\n');
+}
+
 /** Log the run's LLM spend (with the per-provider breakdown when there was any). */
 function logCost(cost: RunContext['cost'], logger: Logger): void {
   if (cost.estimatedUsd === 0) return;
@@ -145,6 +174,7 @@ function logCost(cost: RunContext['cost'], logger: Logger): void {
 export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise<RunContext> {
   const output = io.output ?? process.stdout;
   let workspace: Workspace | null = null;
+  let keepWorkspace = false;
 
   try {
     // STAGE 0/1: clone into an owned temp workspace (skipped when pre-materialized).
@@ -175,6 +205,7 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
 
     // STAGE 3: AI fill (degrades to registry defaults; see fillComponents).
     const filled = await fillComponents(detection, ctx);
+    ctx.filled = filled;
 
     // STAGE 4: plan + approval gate. Nothing is built or written before approval.
     ctx.plan = buildServicePlan(detection, filled);
@@ -191,15 +222,28 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
       return ctx;
     }
 
-    // STAGE 5+ (generate/build/self-heal) is the next milestone.
-    throw new OrcaError(
-      'Building and running containers is not implemented yet — use --dry-run to ' +
-        'preview the plan and the generated configs.',
-      'NOT_IMPLEMENTED'
-    );
+    // STAGE 5: generate configs into the workspace, then build/run with self-heal.
+    await assertDockerAvailable();
+    const files = await writeConfigs(ctx);
+    ctx.logger.info(`Generated ${files.length} file(s).`, {
+      files: files.map((f) => f.path).join(', '),
+    });
+
+    try {
+      const result = await runSelfHealLoop(ctx);
+      ctx.logger.debug(`Stack came up (final phase: ${result.phase}).`);
+    } catch (err) {
+      // Best-effort teardown of any half-started stack before the workspace goes.
+      await composeDown(ctx.workspaceDir);
+      throw err;
+    }
+
+    keepWorkspace = true; // the running stack lives here — don't delete it
+    output.write(renderSuccess(ctx));
+    logCost(ctx.cost, ctx.logger);
+    return ctx;
   } finally {
-    // Until Stage 5 leaves containers running out of the workspace, a clone the
-    // pipeline made is always disposable — never leak temp directories.
-    if (workspace !== null) await cleanupWorkspace(workspace);
+    // A clone the pipeline made is disposable unless it now hosts a running stack.
+    if (workspace !== null && !keepWorkspace) await cleanupWorkspace(workspace);
   }
 }
