@@ -9,7 +9,7 @@
  * Outputs: a `ProviderCompletion` (text + usage + cost estimate).
  */
 
-import { DEFAULT_SETTINGS, ENV_KEYS } from '../../config/settings.js';
+import { ENV_KEYS, loadSettings } from '../../config/settings.js';
 import { OrcaError } from '../../utils/errors.js';
 import type { AIProvider, CompletionOptions, ProviderCompletion } from './types.js';
 
@@ -45,11 +45,9 @@ export class QwenProvider implements AIProvider {
         'MISSING_API_KEY'
       );
     }
-    const baseUrl = (process.env[ENV_KEYS.qwenBaseUrl] ?? DEFAULT_SETTINGS.qwenBaseUrl).replace(
-      /\/$/,
-      ''
-    );
-    const model = options.model ?? process.env[ENV_KEYS.qwenModel] ?? DEFAULT_SETTINGS.qwenModel;
+    const settings = loadSettings();
+    const baseUrl = settings.qwenBaseUrl;
+    const model = options.model ?? settings.qwenModel;
 
     const messages: { role: 'system' | 'user'; content: string }[] = [];
     if (options.system !== undefined) messages.push({ role: 'system', content: options.system });
@@ -63,10 +61,10 @@ export class QwenProvider implements AIProvider {
       },
       body: JSON.stringify({
         model,
-        max_tokens: options.maxTokens ?? DEFAULT_SETTINGS.maxOutputTokens,
+        max_tokens: options.maxTokens ?? settings.maxOutputTokens,
         messages,
       }),
-      signal: AbortSignal.timeout(DEFAULT_SETTINGS.llmTimeoutMs),
+      signal: AbortSignal.timeout(settings.llmTimeoutMs),
     });
 
     if (!response.ok) {

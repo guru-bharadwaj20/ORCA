@@ -1,33 +1,59 @@
 /**
- * Terminal presentation helpers: spinners, tables, and colored output. Keeps all
- * chalk/ora/cli-table3 usage in one place so the rest of the CLI stays presentation-free.
+ * Terminal presentation helpers: tables and colored output. Keeps chalk/cli-table3
+ * usage in one place so the rest of the CLI stays presentation-free.
  *
- * STAGE: 7 (cli)
- * Inputs: plain data (plans, diagnosis entries, messages).
- * Outputs: writes formatted text to stdout/stderr; returns spinner handles.
+ * STAGE: 7 (cli) — REAL code.
+ * Inputs: plain data (plans, diagnosis entries).
+ * Outputs: formatted strings for the caller to write.
  */
 
-import type { ServicePlan } from '../../plan/types.js';
+import chalk from 'chalk';
+import Table from 'cli-table3';
+
+import type { ServiceNode, ServicePlan } from '../../plan/types.js';
 import type { DiagnosisEntry } from '../../core/context.js';
 
-/** A minimal spinner handle so callers don't depend on ora's type directly. */
-export interface Spinner {
-  succeed(text?: string): void;
-  fail(text?: string): void;
-  stop(): void;
+function describeSource(node: ServiceNode): string {
+  return node.source.type === 'image'
+    ? node.source.image
+    : `build ${node.source.context} (${node.source.dockerfile})`;
 }
 
-// TODO(stage-7): start an ora spinner with the given label.
-export function startSpinner(_label: string): Spinner {
-  throw new Error('not implemented');
+/** Render a ServicePlan as a cli-table3 service table (used by the review gate). */
+export function renderPlanTable(plan: ServicePlan): string {
+  const table = new Table({ head: ['Service', 'Kind', 'Source', 'Ports', 'Depends on'] });
+  for (const node of plan.services) {
+    table.push([
+      node.name,
+      node.kind,
+      describeSource(node),
+      node.ports.map((p) => `${p.host}:${p.container}`).join(', '),
+      node.dependsOn.map((d) => `${d.serviceId} (${d.condition})`).join(', ') || '—',
+    ]);
+  }
+  return table.toString();
 }
 
-// TODO(stage-7): render a ServicePlan as a colored cli-table3 for the review screen.
-export function renderPlanTable(_plan: ServicePlan): string {
-  throw new Error('not implemented');
-}
+/**
+ * Render the self-heal diagnosis as an attempt-by-attempt colored log (chalk
+ * self-disables on non-TTY streams). '' when there were no heal attempts.
+ */
+export function renderDiagnosisLog(entries: DiagnosisEntry[]): string {
+  if (entries.length === 0) return '';
 
-// TODO(stage-7): render the self-heal diagnosis as an attempt-by-attempt colored log.
-export function renderDiagnosisLog(_entries: DiagnosisEntry[]): string {
-  throw new Error('not implemented');
+  const lines = [chalk.bold('Self-heal log:')];
+  for (const entry of entries) {
+    const outcome = entry.resolved
+      ? chalk.green('resolved — the next attempt succeeded')
+      : chalk.red('did not resolve the failure');
+    lines.push(
+      `  ${chalk.yellow(`Attempt ${entry.attempt}:`)} ${entry.explanation}`,
+      `    Fix: ${entry.fix}` +
+        (entry.changedFiles.length > 0
+          ? chalk.dim(` (changed: ${entry.changedFiles.join(', ')})`)
+          : ''),
+      `    Outcome: ${outcome}`
+    );
+  }
+  return `${lines.join('\n')}\n`;
 }

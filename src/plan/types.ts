@@ -18,8 +18,7 @@ export type ServiceKind = 'frontend' | 'backend' | 'database' | 'cache';
 
 /** How a service's image is obtained: built from a Dockerfile or pulled from a registry. */
 export type ServiceSource =
-  | { type: 'build'; context: string; dockerfile: string }
-  | { type: 'image'; image: string };
+  { type: 'build'; context: string; dockerfile: string } | { type: 'image'; image: string };
 
 /** A published port mapping (host:container). */
 export interface PortBinding {
@@ -28,13 +27,14 @@ export interface PortBinding {
   protocol: 'tcp' | 'udp';
 }
 
-/** A mounted volume (named volume or bind mount). */
+/** A mounted volume (named volume, bind mount, or anonymous volume). */
 export interface VolumeMount {
-  /** Named volume or a host path. */
+  /** Named volume or a host path; empty string for anonymous volumes. */
   source: string;
   /** Absolute path inside the container. */
   target: string;
-  kind: 'named' | 'bind';
+  /** 'anonymous' = target-only volume (e.g. shielding /app/node_modules from a bind mount). */
+  kind: 'named' | 'bind' | 'anonymous';
 }
 
 /** A container healthcheck used to gate `depends_on` startup ordering. */
