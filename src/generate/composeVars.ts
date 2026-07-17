@@ -7,10 +7,6 @@
  * STAGE: 5 (generate) — REAL code, pulled forward with Stage 4.
  * Inputs: an approved `ServicePlan`.
  * Outputs: `ComposeVars` for `renderCompose()`.
- *
- * NOTE: dependency *conditions* are intentionally not mapped yet — the Stage 1
- * compose template renders short-form `depends_on`. Stage 6 extends the template
- * to the long form and starts consuming `ServiceDependency.condition`.
  */
 
 import type { ServicePlan, ServiceNode, VolumeMount } from '../plan/types.js';
@@ -28,7 +24,8 @@ function toServiceSpec(node: ServiceNode): ServiceSpec {
     kind: node.kind === 'cache' ? 'database' : node.kind,
     ports: node.ports.map((p) => `${p.host}:${p.container}`),
     environment: node.environment,
-    dependsOn: node.dependsOn.map((dep) => dep.serviceId),
+    // Long form: startup conditions (service_healthy etc.) gate on healthchecks.
+    dependsOn: node.dependsOn.map((dep) => ({ service: dep.serviceId, condition: dep.condition })),
     volumes: node.volumes.map(volumeString),
   };
 

@@ -123,7 +123,12 @@ describe('planToComposeVars → renderCompose round-trip', () => {
       name: string;
       services: Record<
         string,
-        { depends_on?: string[]; volumes?: string[]; ports?: string[]; image?: string }
+        {
+          depends_on?: Record<string, { condition: string }>;
+          volumes?: string[];
+          ports?: string[];
+          image?: string;
+        }
       >;
       volumes: Record<string, unknown>;
       networks: Record<string, unknown>;
@@ -132,7 +137,10 @@ describe('planToComposeVars → renderCompose round-trip', () => {
     expect(compose.name).toBe('orca-mern-repo');
     expect(Object.keys(compose.services)).toEqual(['db', 'backend', 'frontend']);
     expect(compose.services['db']?.image).toBe('mongo:7');
-    expect(compose.services['backend']?.depends_on).toEqual(['db']);
+    // Long-form depends_on: startup gated on the db's healthcheck.
+    expect(compose.services['backend']?.depends_on).toEqual({
+      db: { condition: 'service_healthy' },
+    });
     expect(compose.services['backend']?.ports).toEqual(['3000:3000']);
     // Anonymous volume renders target-only; bind renders source:target.
     expect(compose.services['backend']?.volumes).toEqual(['./server:/app', '/app/node_modules']);
