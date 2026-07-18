@@ -1,7 +1,7 @@
 {
   "name": "orca-vscode",
   "displayName": "ORCA",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "Clone, containerize, and self-heal a repo from the editor — a VS Code front end for the ORCA CLI.",
   "license": "MIT",
@@ -97,11 +97,11 @@
     "watch": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --external:orca-agent-cli --external:orca-agent-cli/plan --external:orca-agent-cli/config --external:orca-agent-cli/ai --outfile=dist/extension.js --sourcemap --watch",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node test/preview-smoke.cjs",
-    "package": "vsce package --no-dependencies -o orca-vscode.vsix",
+    "package": "node scripts/package-vsix.mjs",
     "vscode:prepublish": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --external:orca-agent-cli --external:orca-agent-cli/plan --external:orca-agent-cli/config --external:orca-agent-cli/ai --outfile=dist/extension.js --minify && node scripts/copy-media.mjs"
   },
   "dependencies": {
-    "orca-agent-cli": "file:.."
+    "orca-agent-cli": "^0.1.0"
   },
   "devDependencies": {
     "@types/vscode": "^1.90.0",
