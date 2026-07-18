@@ -17,7 +17,7 @@ import type { CostLedger } from '../core/context.js';
 import { CostCapExceededError, OrcaError } from '../utils/errors.js';
 import { AnthropicProvider } from './providers/anthropic.js';
 import { QwenProvider } from './providers/qwen.js';
-import { recordUsage, type AIProvider } from './providers/types.js';
+import { recordUsage, type AIProvider, type ResolveKey } from './providers/types.js';
 import { parseModelJson, validateAgainst } from './schema.js';
 
 /** A system+user prompt (structurally identical to the prompt builders' PromptPair). */
@@ -31,6 +31,8 @@ export interface RouterCallOptions {
   maxTokens?: number;
   /** Task label used in error messages/logs (e.g. 'FilledTemplateVars'). */
   schemaName?: string;
+  /** Cancels the in-flight provider request when aborted. */
+  signal?: AbortSignal;
 }
 
 /** How the router picks and escalates providers. */
@@ -91,6 +93,19 @@ const DEFAULT_FACTORIES: ProviderFactories = {
   anthropic: () => new AnthropicProvider(),
 };
 
+/**
+ * Provider factories bound to a credential source. Embedders (e.g. the VS Code
+ * extension with SecretStorage) pass their own `resolveKey`; omitting it yields
+ * the default env-reading factories.
+ */
+export function providerFactories(resolveKey?: ResolveKey): ProviderFactories {
+  if (resolveKey === undefined) return DEFAULT_FACTORIES;
+  return {
+    qwen: () => new QwenProvider(resolveKey),
+    anthropic: () => new AnthropicProvider(resolveKey),
+  };
+}
+
 export class AIRouter {
   constructor(
     private readonly config: RouterConfig = resolveRouterConfig(),
@@ -129,8 +144,11 @@ export class AIRouter {
             system: prompt.system,
             ...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
             ...(model !== undefined ? { model } : {}),
+            ...(options.signal !== undefined ? { signal: options.signal } : {}),
           });
         } catch (err) {
+          // A cancelled run must not burn retries or spill to the fallback.
+          if (options.signal?.aborted) throw err;
           lastError = err;
           // Config problems (missing key) won't improve on retry — move on now.
           if (err instanceof OrcaError && NON_RETRYABLE_CODES.has(err.code)) break;

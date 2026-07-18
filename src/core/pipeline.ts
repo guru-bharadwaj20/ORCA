@@ -25,7 +25,8 @@ import { join } from 'node:path';
 import { ai, aiFor } from '../ai/client.js';
 import { fillTemplate } from '../ai/fillTemplate.js';
 import { inferEnv } from '../ai/inferEnv.js';
-import { AIRouter, routerConfigForRun } from '../ai/router.js';
+import { envResolveKey } from '../ai/providers/types.js';
+import { AIRouter, providerFactories, routerConfigForRun } from '../ai/router.js';
 import type { FilledTemplateVars, InferredEnv } from '../ai/schema.js';
 import { assertDockerAvailable, composeDown } from '../build/docker.js';
 import { formatDiagnosisLog } from '../build/diagnosisLog.js';
@@ -42,7 +43,7 @@ import type { DetectedComponent, DetectionResult } from '../detect/types.js';
 import { planToComposeVars } from '../generate/composeVars.js';
 import { writeConfigs } from '../generate/writeConfigs.js';
 import { buildEnvFile } from '../orchestrate/envFiles.js';
-import { reviewPlan, type ReviewIO } from '../plan/review.js';
+import { reviewPlan, type ReviewIO, type ReviewOutcome } from '../plan/review.js';
 import { buildServicePlan, refinedComponentVars } from '../plan/servicePlan.js';
 import type { ServicePlan } from '../plan/types.js';
 import { describeComponent } from '../templates/registry.js';
@@ -52,7 +53,14 @@ import { readFileIfExists } from '../utils/fs.js';
 import type { Logger, RunContext } from './context.js';
 
 /** Injectable IO for the review gate and the --dry-run preview (defaults to the TTY). */
-export type PipelineIO = ReviewIO;
+export interface PipelineIO extends ReviewIO {
+  /**
+   * Replaces the terminal approval gate entirely (e.g. a VS Code webview).
+   * When set, the plan summary is NOT printed to `output` — the host owns the
+   * whole approval experience. Default: `reviewPlan` on the IO streams.
+   */
+  approvePlan?: (plan: ServicePlan) => Promise<ReviewOutcome>;
+}
 
 /** The component roles the pipeline fills and renders, in plan order. */
 const COMPONENT_ROLES = ['backend', 'frontend'] as const;
@@ -63,8 +71,16 @@ function componentFor(detection: DetectionResult, role: ComponentRole): Detected
 }
 
 /** True when at least one configured provider has a key — AI refinement is possible. */
-function aiKeyPresent(env: NodeJS.ProcessEnv = process.env): boolean {
-  return Boolean(env[ENV_KEYS.qwenApiKey] || env[ENV_KEYS.apiKey]);
+function aiKeyPresent(ctx: RunContext): boolean {
+  const resolve = ctx.resolveKey ?? envResolveKey;
+  return Boolean(resolve(ENV_KEYS.qwenApiKey) || resolve(ENV_KEYS.apiKey));
+}
+
+/** Throw the typed abort error if this run's signal has fired. */
+function throwIfAborted(ctx: RunContext): void {
+  if (ctx.options.signal?.aborted) {
+    throw new OrcaError('Run aborted.', 'ABORTED');
+  }
 }
 
 /** The repo README text used to ground the AI fill ('' when there is none). */
@@ -97,7 +113,8 @@ async function fillComponents(
         describeComponent(component),
         readme,
         ctx.cost,
-        client
+        client,
+        ctx.options.signal
       );
       ctx.logger.info(`AI refined the ${role} template vars.`);
     } catch (err) {
@@ -123,7 +140,7 @@ async function inferAppEnv(
 ): Promise<InferredEnv | null> {
   const client = ctx.ai ?? ai;
   try {
-    const inferred = await inferEnv(detection, readme, ctx.cost, client);
+    const inferred = await inferEnv(detection, readme, ctx.cost, client, ctx.options.signal);
     ctx.logger.info(`AI inferred ${inferred.variables.length} app env var(s).`);
     return inferred;
   } catch (err) {
@@ -206,20 +223,25 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
   let workspace: Workspace | null = null;
   let keepWorkspace = false;
 
-  // Run-scoped AI: this run's --model / --cost-cap apply to every AI call it makes.
+  // Run-scoped AI: this run's --model / --cost-cap / credential source apply to
+  // every AI call it makes.
   ctx.ai ??= aiFor(
     new AIRouter(
-      routerConfigForRun({ costCapUsd: ctx.options.costCapUsd, model: ctx.options.model })
+      routerConfigForRun({ costCapUsd: ctx.options.costCapUsd, model: ctx.options.model }),
+      providerFactories(ctx.resolveKey)
     )
   );
 
   try {
+    throwIfAborted(ctx);
+
     // STAGE 0/1: clone into an owned temp workspace (skipped when pre-materialized).
     if (ctx.workspaceDir === '') {
       workspace = await createWorkspace();
       ctx.logger.info(`Fetching ${ctx.repoUrl} ...`);
-      ctx.workspaceDir = await cloneRepo(ctx.repoUrl, workspace);
+      ctx.workspaceDir = await cloneRepo(ctx.repoUrl, workspace, ctx.options.signal);
     }
+    throwIfAborted(ctx);
 
     // STAGE 2: static detection.
     const detection = await detectStack(ctx.workspaceDir);
@@ -243,7 +265,7 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
     // STAGE 3: AI fill + env inference (both degrade gracefully when keyless).
     let filled: Record<string, FilledTemplateVars> = {};
     let inferred: InferredEnv | null = null;
-    if (aiKeyPresent()) {
+    if (aiKeyPresent(ctx)) {
       const readme = await readReadme(ctx.workspaceDir);
       filled = await fillComponents(detection, ctx, readme);
       inferred = await inferAppEnv(detection, ctx, readme);
@@ -256,8 +278,12 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
     if (inferred !== null) ctx.inferredEnv = inferred;
 
     // STAGE 4: plan + approval gate. Nothing is built or written before approval.
+    throwIfAborted(ctx);
     ctx.plan = buildServicePlan(detection, filled, inferred);
-    const outcome = await reviewPlan(ctx.plan, ctx.options, io);
+    const outcome =
+      io.approvePlan !== undefined
+        ? await io.approvePlan(ctx.plan)
+        : await reviewPlan(ctx.plan, ctx.options, io);
     ctx.approved = outcome.approved;
     if (!outcome.approved) {
       throw new PlanRejectedError(outcome.reason ?? 'Plan rejected at the approval gate.');
@@ -271,6 +297,7 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
     }
 
     // STAGE 5: generate configs into the workspace, then build/run with self-heal.
+    throwIfAborted(ctx);
     await assertDockerAvailable();
     const files = await writeConfigs(ctx);
     ctx.logger.info(`Generated ${files.length} file(s).`, {

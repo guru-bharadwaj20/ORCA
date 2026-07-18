@@ -11,7 +11,13 @@
 
 import { ENV_KEYS, loadSettings } from '../../config/settings.js';
 import { OrcaError } from '../../utils/errors.js';
-import type { AIProvider, CompletionOptions, ProviderCompletion } from './types.js';
+import {
+  envResolveKey,
+  type AIProvider,
+  type CompletionOptions,
+  type ProviderCompletion,
+  type ResolveKey,
+} from './types.js';
 
 /**
  * Rough USD per 1M tokens for the ledger. Qwen3-Coder pricing is tiered by input
@@ -37,8 +43,10 @@ interface ChatCompletionResponse {
 export class QwenProvider implements AIProvider {
   readonly name = 'qwen' as const;
 
+  constructor(private readonly resolveKey: ResolveKey = envResolveKey) {}
+
   async complete(prompt: string, options: CompletionOptions = {}): Promise<ProviderCompletion> {
-    const apiKey = process.env[ENV_KEYS.qwenApiKey];
+    const apiKey = this.resolveKey(ENV_KEYS.qwenApiKey);
     if (!apiKey) {
       throw new OrcaError(
         `${ENV_KEYS.qwenApiKey} is not set. ORCA is BYOK — export your Qwen/DashScope API key first.`,
@@ -64,7 +72,10 @@ export class QwenProvider implements AIProvider {
         max_tokens: options.maxTokens ?? settings.maxOutputTokens,
         messages,
       }),
-      signal: AbortSignal.timeout(settings.llmTimeoutMs),
+      signal:
+        options.signal !== undefined
+          ? AbortSignal.any([options.signal, AbortSignal.timeout(settings.llmTimeoutMs)])
+          : AbortSignal.timeout(settings.llmTimeoutMs),
     });
 
     if (!response.ok) {
