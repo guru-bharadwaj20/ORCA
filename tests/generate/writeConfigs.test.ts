@@ -79,7 +79,9 @@ describe('writeConfigs', () => {
     expect(entrypoint?.path).toBe('entrypoint.sh');
     const abs = join(ctx.workspaceDir, 'entrypoint.sh');
     expect((await readFile(abs, 'utf8')).includes('manage.py migrate')).toBe(true);
-    expect(((await stat(abs)).mode & 0o111) !== 0).toBe(true); // executable
+    if (process.platform !== 'win32') {
+      expect(((await stat(abs)).mode & 0o111) !== 0).toBe(true); // executable on POSIX
+    }
   });
 
   it("keeps the repo's own entrypoint script (app source is never overwritten)", async () => {
