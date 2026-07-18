@@ -37,4 +37,7 @@ db.sqlite3
 .DS_Store
 Thumbs.db
 .idea/
-.vscode/
+# Ignore personal VS Code settings but keep the shared F5 launch/tasks (Phase 3).
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json

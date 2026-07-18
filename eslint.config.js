@@ -5,11 +5,17 @@ import prettier from 'eslint-config-prettier';
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'node_modules/**', 'examples/**', 'coverage/**', 'tests/fixtures/**'],
+    ignores: [
+      '**/dist/**',
+      '**/node_modules/**',
+      'examples/**',
+      'coverage/**',
+      'tests/fixtures/**',
+    ],
   },
   ...tseslint.configs.recommended,
   {
-    files: ['src/**/*.ts', 'tests/**/*.ts'],
+    files: ['src/**/*.ts', 'tests/**/*.ts', 'vscode-extension/src/**/*.ts'],
     languageOptions: {
       ecmaVersion: 2023,
       sourceType: 'module',

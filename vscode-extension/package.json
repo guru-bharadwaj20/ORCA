@@ -1,11 +1,39 @@
 {
   "name": "orca-vscode",
+  "displayName": "ORCA",
   "version": "0.0.0",
   "private": true,
-  "description": "VS Code extension for ORCA — clone, containerize, and self-heal a repo from the editor. Scaffolded in Phase 2; the manifest (commands, activation, contributes) is filled in from Phase 3.",
+  "description": "Clone, containerize, and self-heal a repo from the editor — a VS Code front end for the ORCA CLI.",
   "license": "MIT",
   "publisher": "orca",
   "engines": {
     "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      {
+        "command": "orca.previewRepo",
+        "title": "Preview Repo (Dry Run)",
+        "category": "ORCA"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --external:orca-cli --outfile=dist/extension.js --sourcemap",
+    "watch": "npm run build -- --watch",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "vscode:prepublish": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --external:orca-cli --outfile=dist/extension.js --minify"
+  },
+  "dependencies": {
+    "orca-cli": "file:.."
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.90.0",
+    "esbuild": "^0.24.0"
   }
 }
