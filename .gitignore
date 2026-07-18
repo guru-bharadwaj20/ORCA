@@ -9,6 +9,10 @@ out/
 # VS Code extension packaging artifact (vscode-extension/, built with vsce)
 *.vsix
 
+# Mermaid standalone build copied into the extension at build time (see
+# vscode-extension/scripts/copy-media.mjs) — generated, not source.
+vscode-extension/media/*.min.js
+
 # Test / coverage
 coverage/
 
