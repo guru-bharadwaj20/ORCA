@@ -96,6 +96,13 @@ describe('buildCli', () => {
 });
 
 describe('main', () => {
+  it('greets bare `orca` on a non-TTY with help and exit 0', async () => {
+    await main(['node', 'orca']);
+
+    expect(process.exitCode ?? 0).toBe(0);
+    expect(stdout).toContain('Usage: orca');
+  });
+
   it('completes a keyless --dry-run --auto-approve run with exit code 0', async () => {
     await main(['node', 'orca', 'run', mernFixture, '--dry-run', '--auto-approve']);
 
