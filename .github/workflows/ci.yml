@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, Stage_1]
+    branches: [main, Stage_1, athena]
   pull_request:
 
 jobs:
