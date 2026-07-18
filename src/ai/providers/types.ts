@@ -21,19 +21,9 @@ export interface CompletionOptions {
   maxTokens?: number;
   /** Provider-specific model id override; defaults to the provider's configured model. */
   model?: string;
-  /** Cancels the in-flight request when aborted (combined with the provider timeout). */
+  /** Cancels the in-flight request when the run is aborted. */
   signal?: AbortSignal;
 }
-
-/**
- * Resolves a credential by its ENV_KEYS name. The default reads `process.env`;
- * embedders (e.g. the VS Code extension with SecretStorage) inject their own so
- * keys never have to live in the process environment.
- */
-export type ResolveKey = (name: string) => string | undefined;
-
-/** The default credential source: the process environment (BYOK via exported keys). */
-export const envResolveKey: ResolveKey = (name) => process.env[name];
 
 /**
  * What a provider returns. Deliberately richer than a bare string: the cost-ledger
@@ -47,7 +37,7 @@ export interface ProviderCompletion {
   estimatedUsd: number;
 }
 
-/** One LLM backend. Implementations must be stateless per call (keys via `ResolveKey`). */
+/** One LLM backend. Implementations must be stateless per call (BYOK keys via a KeyResolver). */
 export interface AIProvider {
   readonly name: ProviderName;
   complete(prompt: string, options?: CompletionOptions): Promise<ProviderCompletion>;

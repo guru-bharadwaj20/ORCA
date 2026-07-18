@@ -1,0 +1,8 @@
+# The extension ships as a single bundled dist/extension.js, so source + tooling
+# are excluded from the .vsix. (Packaging is finalized in Phase 7.)
+.vscode/**
+src/**
+node_modules/**
+tsconfig.json
+**/*.ts
+**/*.map

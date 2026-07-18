@@ -58,8 +58,8 @@ async function isLocalDirectory(source: string): Promise<boolean> {
 /**
  * Materialize the target repo inside the workspace: local paths are copied
  * (skipping node_modules/.git — detection ignores them and they dominate size),
- * anything else is treated as a git URL and shallow-cloned. An aborted `signal`
- * kills an in-flight git clone.
+ * anything else is treated as a git URL and shallow-cloned. A run-level `signal`
+ * aborts an in-flight clone (simple-git's `abort`) and the local copy (`cp`).
  */
 export async function cloneRepo(
   repoUrl: string,
@@ -68,6 +68,7 @@ export async function cloneRepo(
 ): Promise<string> {
   workspace.repoDir = join(workspace.dir, checkoutNameFor(repoUrl));
   try {
+    signal?.throwIfAborted();
     if (await isLocalDirectory(repoUrl)) {
       await cp(repoUrl, workspace.repoDir, {
         recursive: true,

@@ -9,15 +9,9 @@
  * Outputs: a `ProviderCompletion` (text + usage + cost estimate).
  */
 
-import { ENV_KEYS, loadSettings } from '../../config/settings.js';
+import { ENV_KEYS, envKeyResolver, loadSettings, type KeyResolver } from '../../config/settings.js';
 import { OrcaError } from '../../utils/errors.js';
-import {
-  envResolveKey,
-  type AIProvider,
-  type CompletionOptions,
-  type ProviderCompletion,
-  type ResolveKey,
-} from './types.js';
+import type { AIProvider, CompletionOptions, ProviderCompletion } from './types.js';
 
 /**
  * Rough USD per 1M tokens for the ledger. Qwen3-Coder pricing is tiered by input
@@ -43,7 +37,7 @@ interface ChatCompletionResponse {
 export class QwenProvider implements AIProvider {
   readonly name = 'qwen' as const;
 
-  constructor(private readonly resolveKey: ResolveKey = envResolveKey) {}
+  constructor(private readonly resolveKey: KeyResolver = envKeyResolver) {}
 
   async complete(prompt: string, options: CompletionOptions = {}): Promise<ProviderCompletion> {
     const apiKey = this.resolveKey(ENV_KEYS.qwenApiKey);
@@ -72,10 +66,10 @@ export class QwenProvider implements AIProvider {
         max_tokens: options.maxTokens ?? settings.maxOutputTokens,
         messages,
       }),
-      signal:
-        options.signal !== undefined
-          ? AbortSignal.any([options.signal, AbortSignal.timeout(settings.llmTimeoutMs)])
-          : AbortSignal.timeout(settings.llmTimeoutMs),
+      // Abort on either the per-call timeout or the run's cancellation signal.
+      signal: options.signal
+        ? AbortSignal.any([AbortSignal.timeout(settings.llmTimeoutMs), options.signal])
+        : AbortSignal.timeout(settings.llmTimeoutMs),
     });
 
     if (!response.ok) {

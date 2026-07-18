@@ -3,7 +3,15 @@ node_modules/
 
 # Build output
 dist/
+out/
 *.tsbuildinfo
+
+# VS Code extension packaging artifact (vscode-extension/, built with vsce)
+*.vsix
+
+# Mermaid standalone build copied into the extension at build time (see
+# vscode-extension/scripts/copy-media.mjs) — generated, not source.
+vscode-extension/media/*.min.js
 
 # Test / coverage
 coverage/
@@ -33,4 +41,7 @@ db.sqlite3
 .DS_Store
 Thumbs.db
 .idea/
-.vscode/
+# Ignore personal VS Code settings but keep the shared F5 launch/tasks (Phase 3).
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json

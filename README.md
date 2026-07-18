@@ -116,7 +116,11 @@ npx vitest run tests/templates/golden.test.ts   # only the lossless-templatizati
 ```
 
 - **ESM only** (`"type": "module"`), TypeScript with `NodeNext` resolution.
-- Single npm package (intentionally **not** a monorepo).
+- **npm-workspaces monorepo**: the root package is the publishable `orca-cli` (its
+  layout unchanged), and [`vscode-extension/`](vscode-extension/) is a workspace member
+  (`orca-vscode`, private) that consumes the core through its subpath exports rather than
+  reimplementing anything. (It was a single package through Stage 7; the workspace was
+  added to host the editor extension.)
 - Detectors are standalone so they could later become separate agents.
 
 ### Trying the sample apps (Stage 1)

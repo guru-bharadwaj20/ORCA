@@ -39,7 +39,7 @@ export async function runOnce(projectDir: string, signal?: AbortSignal): Promise
   if (up.exitCode !== 0) {
     // `up --wait` fails for unhealthy services too; the container logs carry the
     // actual reason, so append them for the diagnosis.
-    const logs = await composeLogs(projectDir);
+    const logs = await composeLogs(projectDir, undefined, signal);
     const phase = /unhealthy|health/i.test(`${up.stdout}\n${up.stderr}`) ? 'healthcheck' : 'up';
     const errorOutput = [combined(up), '## service logs (tail)', combined(logs)]
       .filter((s) => s !== '')

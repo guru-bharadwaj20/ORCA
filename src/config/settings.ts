@@ -14,6 +14,16 @@
 /** AI providers ORCA can route completions to. */
 export type ProviderName = 'qwen' | 'anthropic';
 
+/**
+ * How the AI layer looks up a BYOK secret by env-var name. The CLI resolves against
+ * `process.env`; an embedder (the VS Code extension) can inject a resolver backed by
+ * `vscode.SecretStorage` instead of mutating the shared host's `process.env`.
+ */
+export type KeyResolver = (name: string) => string | undefined;
+
+/** The default resolver: read the secret straight from `process.env` (CLI use). */
+export const envKeyResolver: KeyResolver = (name) => process.env[name];
+
 /** ORCA-wide tunables. */
 export interface Settings {
   /** Anthropic model id used when the anthropic provider handles a call. */

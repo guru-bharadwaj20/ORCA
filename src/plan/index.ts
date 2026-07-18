@@ -1,12 +1,12 @@
 /**
- * Public subpath `orca-cli/plan`: the service-graph model, the plan builder, the
- * Mermaid renderer, and the terminal review gate (embedders usually replace the
- * gate via `PipelineIO.approvePlan` but need its `ReviewOutcome` contract).
+ * Public entry for `orca-cli/plan`: the service-graph model, the Mermaid renderer,
+ * and the review-gate contracts. The extension renders `renderDiagram` in its webview
+ * and returns a `ReviewOutcome` from its Approve/Reject panel.
  *
- * STAGE: 4 (plan) — REAL code (re-exports only).
+ * STAGE: 4 (plan, library surface) — REAL code.
  */
 
 export * from './types.js';
-export { buildServicePlan, refinedComponentVars } from './servicePlan.js';
-export { renderDiagram } from './diagram.js';
-export { reviewPlan, type ReviewIO, type ReviewOutcome } from './review.js';
+export * from './diagram.js';
+export * from './review.js';
+export * from './servicePlan.js';
