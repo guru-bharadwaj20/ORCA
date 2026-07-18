@@ -14,6 +14,7 @@ import { Command } from 'commander';
 
 import { OrcaError } from '../utils/errors.js';
 import { registerRunCommand } from './commands/run.js';
+import { runInteractiveMenu } from './menu.js';
 
 /** The version from package.json (two levels up from src/cli and dist/cli alike). */
 function packageVersion(): string {
@@ -44,6 +45,15 @@ export function buildCli(): Command {
  */
 export async function main(argv: string[]): Promise<void> {
   const program = buildCli();
+
+  // Bare `orca` on an interactive terminal opens the menu; with no TTY (piped/CI)
+  // we fall through to commander, which prints help. Explicit subcommands/flags
+  // (argv beyond the node + script paths) always go straight to commander.
+  if (argv.length <= 2 && (process.stdout.isTTY ?? false)) {
+    await runInteractiveMenu(packageVersion());
+    return;
+  }
+
   try {
     await program.parseAsync(argv);
   } catch (err) {
