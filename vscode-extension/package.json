@@ -22,6 +22,11 @@
         "category": "ORCA"
       },
       {
+        "command": "orca.runRepo",
+        "title": "Run Repo",
+        "category": "ORCA"
+      },
+      {
         "command": "orca.setApiKey",
         "title": "Set API Key",
         "category": "ORCA"
