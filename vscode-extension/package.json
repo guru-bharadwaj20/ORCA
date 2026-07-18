@@ -6,6 +6,24 @@
   "description": "Clone, containerize, and self-heal a repo from the editor — a VS Code front end for the ORCA CLI.",
   "license": "MIT",
   "publisher": "orca",
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/VivianSobers/ORCA.git",
+    "directory": "vscode-extension"
+  },
+  "bugs": {
+    "url": "https://github.com/VivianSobers/ORCA/issues"
+  },
+  "homepage": "https://github.com/VivianSobers/ORCA#readme",
+  "keywords": [
+    "docker",
+    "docker-compose",
+    "containerization",
+    "ai",
+    "devtools",
+    "hackathon"
+  ],
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -78,6 +96,8 @@
     "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --external:orca-cli --external:orca-cli/plan --external:orca-cli/config --external:orca-cli/ai --outfile=dist/extension.js --sourcemap && node scripts/copy-media.mjs",
     "watch": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --external:orca-cli --external:orca-cli/plan --external:orca-cli/config --external:orca-cli/ai --outfile=dist/extension.js --sourcemap --watch",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node test/preview-smoke.cjs",
+    "package": "vsce package --no-dependencies -o orca-vscode.vsix",
     "vscode:prepublish": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --external:orca-cli --external:orca-cli/plan --external:orca-cli/config --external:orca-cli/ai --outfile=dist/extension.js --minify && node scripts/copy-media.mjs"
   },
   "dependencies": {
@@ -85,6 +105,7 @@
   },
   "devDependencies": {
     "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.9.2",
     "esbuild": "^0.24.0",
     "mermaid": "^11.16.0"
   }

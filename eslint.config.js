@@ -12,6 +12,8 @@ export default tseslint.config(
       'coverage/**',
       'tests/fixtures/**',
       'vscode-extension/media/**',
+      // Headless CJS test harness (must use require to stub the vscode module).
+      'vscode-extension/test/**',
     ],
   },
   ...tseslint.configs.recommended,
