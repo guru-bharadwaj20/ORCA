@@ -20,14 +20,60 @@
         "command": "orca.previewRepo",
         "title": "Preview Repo (Dry Run)",
         "category": "ORCA"
+      },
+      {
+        "command": "orca.setApiKey",
+        "title": "Set API Key",
+        "category": "ORCA"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "ORCA",
+      "properties": {
+        "orca.model": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Model id for AI stages. `claude-*` routes to Anthropic, `qwen*` to Qwen; other ids are ignored. Empty uses ORCA's default. Overrides the `ORCA_MODEL` env var."
+        },
+        "orca.costCapUsd": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0,
+          "markdownDescription": "Hard cap on total LLM spend per run, in USD. Overrides the `ORCA_COST_CAP_USD` env var."
+        },
+        "orca.maxHealAttempts": {
+          "type": "integer",
+          "default": 3,
+          "minimum": 1,
+          "markdownDescription": "Maximum self-heal attempts before giving up. Overrides the `ORCA_MAX_HEAL_ATTEMPTS` env var."
+        },
+        "orca.primaryProvider": {
+          "type": "string",
+          "enum": [
+            "qwen",
+            "anthropic"
+          ],
+          "default": "qwen",
+          "markdownDescription": "AI provider tried first. Overrides the `ORCA_PRIMARY_PROVIDER` env var."
+        },
+        "orca.fallbackProvider": {
+          "type": "string",
+          "enum": [
+            "anthropic",
+            "qwen",
+            "none"
+          ],
+          "default": "anthropic",
+          "markdownDescription": "Provider used when the primary keeps failing (`none` disables fallback). Overrides the `ORCA_FALLBACK_PROVIDER` env var."
+        }
+      }
+    }
   },
   "scripts": {
-    "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --external:orca-cli --external:orca-cli/plan --outfile=dist/extension.js --sourcemap && node scripts/copy-media.mjs",
-    "watch": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --external:orca-cli --external:orca-cli/plan --outfile=dist/extension.js --sourcemap --watch",
+    "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --external:orca-cli --external:orca-cli/plan --external:orca-cli/config --external:orca-cli/ai --outfile=dist/extension.js --sourcemap && node scripts/copy-media.mjs",
+    "watch": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --external:orca-cli --external:orca-cli/plan --external:orca-cli/config --external:orca-cli/ai --outfile=dist/extension.js --sourcemap --watch",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "vscode:prepublish": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --external:orca-cli --external:orca-cli/plan --outfile=dist/extension.js --minify && node scripts/copy-media.mjs"
+    "vscode:prepublish": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --external:orca-cli --external:orca-cli/plan --external:orca-cli/config --external:orca-cli/ai --outfile=dist/extension.js --minify && node scripts/copy-media.mjs"
   },
   "dependencies": {
     "orca-cli": "file:.."
