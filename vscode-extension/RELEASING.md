@@ -18,12 +18,12 @@ npm first** (Stage 0). Until then, `npm run package` produces a structurally-val
    git tag v<version> && git push --tags
    ```
 
-2. **Point the extension at the published core.** In `vscode-extension/package.json`:
-   - change the dependency `"orca-agent-cli": "file:.."` → `"orca-agent-cli": "^<published version>"`;
-   - change the `package` script from `vsce package --no-dependencies …` to plain
-     `vsce package -o orca-vscode.vsix`, so vsce packs `node_modules/orca-agent-cli` into the
-     `.vsix`.
-     Then run `npm install` to update the lockfile.
+2. **Point the extension at the published core.** In `vscode-extension/package.json`,
+   set the dependency to `"orca-agent-cli": "^<published version>"`, then run
+   `npm install` to update the lockfile. Note: inside the repo, npm workspaces will
+   still satisfy this with the local symlink — which is why packaging goes through
+   `scripts/package-vsix.mjs` (staged outside the workspace so the real registry
+   package is installed and packed).
 
 3. **Bump the extension version** (`vscode-extension/package.json` `version`, currently
    `0.0.0`) and update `CHANGELOG.md`.
@@ -35,7 +35,7 @@ npm first** (Stage 0). Until then, `npm run package` produces a structurally-val
 5. **Package & verify:**
 
    ```bash
-   npm run package -w orca-vscode      # produces orca-vscode.vsix (now including orca-agent-cli)
+   npm run package -w orca-vscode      # runs scripts/package-vsix.mjs → orca-vscode.vsix
    ```
 
    Install the `.vsix` locally (Extensions view → “Install from VSIX…”) and run

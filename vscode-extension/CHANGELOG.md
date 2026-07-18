@@ -2,7 +2,9 @@
 
 All notable changes to the ORCA VS Code extension are documented here.
 
-## [Unreleased]
+## [0.1.0] — 2026-07-18
+
+First release, on the published `orca-agent-cli@0.1.0` engine.
 
 ### Added
 

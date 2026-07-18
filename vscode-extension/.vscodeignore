@@ -1,10 +1,10 @@
-# The extension ships as a single bundled dist/extension.js plus media/ (icon +
-# mermaid). Everything else — source, tooling, tests — is excluded from the .vsix.
+# The extension ships as a bundled dist/extension.js plus media/ (icon + mermaid)
+# plus node_modules (production deps only — vsce prunes dev deps; orca-agent-cli
+# is loaded from there at runtime). Source, tooling, and tests are excluded.
 .vscode/**
 src/**
 scripts/**
 test/**
-node_modules/**
 tsconfig.json
 .vscodeignore
 **/*.ts
