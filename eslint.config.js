@@ -11,6 +11,7 @@ export default tseslint.config(
       'examples/**',
       'coverage/**',
       'tests/fixtures/**',
+      'vscode-extension/media/**',
     ],
   },
   ...tseslint.configs.recommended,

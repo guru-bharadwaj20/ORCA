@@ -1,11 +1,12 @@
 /**
- * ORCA VS Code extension — Phase 3 (bare-bones, first demoable milestone).
+ * ORCA VS Code extension.
  *
- * One command, "ORCA: Preview Repo (Dry Run)", proves the whole embedding path:
- * pick a folder → build a keyless RunContext → run the real `orca-cli` pipeline in
- * dry-run + auto-approve mode → stream its logs and generated-config preview into an
- * ORCA output channel. Dry run needs no API keys and no Docker, so this runs anywhere
- * the Extension Development Host does.
+ * The "ORCA: Preview Repo (Dry Run)" command picks a folder → builds a keyless
+ * RunContext → runs the real `orca-cli` pipeline in dry-run mode → streams its logs
+ * and generated-config preview into an ORCA output channel. The approval gate (Phase
+ * 4) is a native webview: the pipeline pauses at the plan, shows the service diagram +
+ * table, and only proceeds once the user approves. Dry run needs no API keys and no
+ * Docker, so this runs anywhere the Extension Development Host does.
  *
  * All the real work lives in `orca-cli`; this file is only editor glue.
  */
@@ -14,6 +15,8 @@ import { Writable } from 'node:stream';
 
 import type { Logger } from 'orca-cli';
 import * as vscode from 'vscode';
+
+import { approvePlanViaWebview } from './planWebview.js';
 
 // `orca-cli` is ESM (and reads its `.hbs` templates relative to its own on-disk
 // location), so it is kept external and loaded at runtime via dynamic import rather
@@ -28,7 +31,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const channel = vscode.window.createOutputChannel('ORCA');
   context.subscriptions.push(
     channel,
-    vscode.commands.registerCommand(PREVIEW_COMMAND, () => previewRepo(channel))
+    vscode.commands.registerCommand(PREVIEW_COMMAND, () => previewRepo(context, channel))
   );
 }
 
@@ -37,7 +40,10 @@ export function deactivate(): void {
 }
 
 /** Drive one dry-run preview of the chosen repo folder into the output channel. */
-async function previewRepo(channel: vscode.OutputChannel): Promise<void> {
+async function previewRepo(
+  context: vscode.ExtensionContext,
+  channel: vscode.OutputChannel
+): Promise<void> {
   const folder = await pickFolder();
   if (folder === undefined) return; // user cancelled
 
@@ -53,19 +59,35 @@ async function previewRepo(channel: vscode.OutputChannel): Promise<void> {
       repoUrl: folder,
       workspaceDir: '',
       logger: outputChannelLogger(channel),
-      options: { dryRun: true, autoApprove: true },
+      options: { dryRun: true },
     });
-    // The pipeline writes the plan summary + config preview to `io.output`; point
-    // that at the channel so the user sees exactly what a real run would build.
-    await runPipeline(ctx, { output: outputChannelWritable(channel) });
+    // The real approval gate: pause at the plan and show the diagram/table webview.
+    // The pipeline writes the plan summary + config preview to `io.output`, so point
+    // that at the channel to show exactly what a real run would build.
+    await runPipeline(ctx, {
+      output: outputChannelWritable(channel),
+      approvePlan: (plan) => approvePlanViaWebview(context, plan),
+    });
     void vscode.window.showInformationMessage(
       'ORCA preview complete — see the ORCA output channel.'
     );
   } catch (err) {
+    if (isPlanRejected(err)) {
+      channel.appendLine('\nPlan rejected — nothing was previewed.');
+      void vscode.window.showInformationMessage('ORCA plan rejected.');
+      return;
+    }
     const message = err instanceof Error ? err.message : String(err);
     channel.appendLine(`\n[error] ${message}`);
     void vscode.window.showErrorMessage(`ORCA preview failed: ${message}`);
   }
+}
+
+/** True for the pipeline's typed "plan rejected at the gate" error. */
+function isPlanRejected(err: unknown): boolean {
+  return (
+    typeof err === 'object' && err !== null && (err as { code?: string }).code === 'PLAN_REJECTED'
+  );
 }
 
 /**
