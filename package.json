@@ -24,9 +24,12 @@
   "bin": {
     "orca": "./dist/cli/index.js"
   },
-  "main": "./dist/core/pipeline.js",
+  "main": "./dist/index.js",
   "exports": {
-    ".": "./dist/core/pipeline.js"
+    ".": "./dist/index.js",
+    "./plan": "./dist/plan/index.js",
+    "./ai": "./dist/ai/index.js",
+    "./config": "./dist/config/settings.js"
   },
   "files": [
     "dist",
