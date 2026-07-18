@@ -9,12 +9,12 @@
 
 import chalk from 'chalk';
 
-/** ORCA palette — orange headline, teal pointer, soft neutrals on black. */
+/** ORCA palette — pink headline, teal pointer, soft neutrals on black. */
 export const theme = {
   /** The headline colour: the ORCA banner + primary accents. */
-  orange: chalk.hex('#FF8A3C'),
-  /** A muted orange for section dividers so they recede behind the items. */
-  orangeDim: chalk.hex('#B56A33'),
+  pink: chalk.hex('#FF6FB5'),
+  /** A muted pink for section dividers so they recede behind the items. */
+  pinkDim: chalk.hex('#B5527F'),
   /** The selection colour: pointer + highlighted item. */
   teal: chalk.hex('#57C7B8'),
   /** Primary body text. */

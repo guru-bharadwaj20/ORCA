@@ -45,7 +45,7 @@ export interface SelectOptions<T> {
 function renderList<T>(rows: SelectRow<T>[], active: number): string {
   const lines = rows.map((row, i) => {
     if (isSeparator(row)) {
-      return `  ${theme.orangeDim(`── ${row.separator} ${'─'.repeat(Math.max(2, 22 - row.separator.length))}`)}`;
+      return `  ${theme.pinkDim(`── ${row.separator} ${'─'.repeat(Math.max(2, 22 - row.separator.length))}`)}`;
     }
     const icon = row.icon ? `${row.icon} ` : '';
     const label = `${icon}${row.label}`;
