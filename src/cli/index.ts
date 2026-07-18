@@ -7,25 +7,15 @@
  * Outputs: process exit code; delegates real work to command handlers.
  */
 
-import { readFileSync, realpathSync } from 'node:fs';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { realpathSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 
 import { Command } from 'commander';
 
 import { OrcaError } from '../utils/errors.js';
 import { registerRunCommand } from './commands/run.js';
 import { runInteractiveMenu } from './menu.js';
-
-/** The version from package.json (two levels up from src/cli and dist/cli alike). */
-function packageVersion(): string {
-  try {
-    const pkgPath = fileURLToPath(new URL('../../package.json', import.meta.url));
-    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as { version?: string };
-    return pkg.version ?? '0.0.0';
-  } catch {
-    return '0.0.0';
-  }
-}
+import { packageVersion } from './version.js';
 
 /** Assemble the commander program: name, version, and every subcommand. */
 export function buildCli(): Command {
@@ -46,11 +36,15 @@ export function buildCli(): Command {
 export async function main(argv: string[]): Promise<void> {
   const program = buildCli();
 
-  // Bare `orca` on an interactive terminal opens the menu; with no TTY (piped/CI)
-  // we fall through to commander, which prints help. Explicit subcommands/flags
-  // (argv beyond the node + script paths) always go straight to commander.
-  if (argv.length <= 2 && (process.stdout.isTTY ?? false)) {
-    await runInteractiveMenu(packageVersion());
+  // Bare `orca` is a first meeting, not a usage error: an interactive terminal
+  // gets the menu; a non-TTY (piped/CI) gets help with exit 0 (commander's default
+  // would exit 1). Explicit subcommands/flags always go straight to commander.
+  if (argv.slice(2).length === 0) {
+    if (process.stdout.isTTY ?? false) {
+      await runInteractiveMenu(packageVersion());
+    } else {
+      program.outputHelp();
+    }
     return;
   }
 
