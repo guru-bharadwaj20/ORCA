@@ -16,6 +16,7 @@ vi.mock('@anthropic-ai/sdk', () => ({
 
 import {
   AIRouter,
+  providerFactories,
   resolveRouterConfig,
   routerConfigForRun,
   type RouterConfig,
@@ -208,6 +209,23 @@ describe('AI provider router', () => {
 
     // Unknown model families are ignored so a typo can't hit the wrong API.
     expect(routerConfigForRun({ model: 'gpt-fantastic' }, {}).modelOverrides).toBeUndefined();
+  });
+
+  it('resolves provider keys through an injected ResolveKey (SecretStorage seam)', async () => {
+    delete process.env['QWEN_API_KEY'];
+    delete process.env['ANTHROPIC_API_KEY'];
+    qwenReplies(JSON.stringify({ answer: 'from the vault' }));
+    const vault: Record<string, string> = { QWEN_API_KEY: 'sk-vault-qwen' };
+
+    const router = new AIRouter(
+      config,
+      providerFactories((name) => vault[name])
+    );
+    const result = await router.completeValidated(prompt, schema, freshLedger());
+
+    expect(result).toEqual({ answer: 'from the vault' });
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    expect(init.headers.authorization).toBe('Bearer sk-vault-qwen');
   });
 
   it('passes the per-provider model override through to the actual request', async () => {

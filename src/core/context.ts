@@ -12,6 +12,7 @@
  */
 
 import type { AIFacade } from '../ai/client.js';
+import type { ResolveKey } from '../ai/providers/types.js';
 import type { FilledTemplateVars, InferredEnv } from '../ai/schema.js';
 import type { DetectionResult } from '../detect/types.js';
 import type { ServicePlan } from '../plan/types.js';
@@ -44,6 +45,11 @@ export interface RunOptions {
   model: string;
   /** Emit verbose debug logging. */
   verbose: boolean;
+  /**
+   * Cancels the run when aborted: checked between stages and passed to clone,
+   * docker, and in-flight AI requests. Teardown/cleanup still runs.
+   */
+  signal?: AbortSignal;
 }
 
 /** A file ORCA generated and wrote to disk during the run. */
@@ -114,6 +120,11 @@ export interface RunContext {
    * Populated by the pipeline; stages fall back to the env-configured default.
    */
   ai?: AIFacade;
+  /**
+   * Credential source for AI provider keys (by ENV_KEYS name). Defaults to
+   * `process.env`; embedders inject their own (e.g. VS Code SecretStorage).
+   */
+  resolveKey?: ResolveKey;
   /** STAGE 2 output; undefined until detection has run. */
   detection?: DetectionResult;
   /** STAGE 3 output: validated AI refinements keyed by role ({} when keyless). */
