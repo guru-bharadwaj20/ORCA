@@ -36,8 +36,9 @@ reports per-phase; the heal log updates per phase, which is enough.
 
 ## Phase 0 — prerequisites (no extension code)
 
-- [ ] One real `orca run examples/mern-sample` on a docker machine (the build
-      path is currently mock-verified only). Fix whatever it surfaces.
+- [x] One real `orca run examples/mern-sample` on a docker machine — verified
+      2026-07-18 (Docker 29.6.2): stack healthy on attempt 1, Express↔Mongo
+      round-trip confirmed via `/api/hello`.
 - [ ] Publish `orca-cli@0.1.0` to npm; tag `v0.1.0`.
 
 ## Phase 1 — core embeddability (CLI unchanged) — ✅ DONE
