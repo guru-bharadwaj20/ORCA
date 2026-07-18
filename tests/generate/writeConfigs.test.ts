@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 
+import type { InferredEnv } from '../../src/ai/schema.js';
 import { cleanupWorkspace, cloneRepo, createWorkspace } from '../../src/clone/workspace.js';
 import { createRunContext, type Logger, type RunContext } from '../../src/core/context.js';
 import { detectStack } from '../../src/detect/index.js';
@@ -28,7 +29,7 @@ afterEach(async () => {
 });
 
 /** Clone a fixture into a disposable workspace and build a ready-to-generate ctx. */
-async function contextFor(name: string): Promise<RunContext> {
+async function contextFor(name: string, inferred: InferredEnv | null = null): Promise<RunContext> {
   const workspace = await createWorkspace();
   workspaces.push(workspace);
   const repoDir = await cloneRepo(fixture(name), workspace);
@@ -36,7 +37,8 @@ async function contextFor(name: string): Promise<RunContext> {
   const ctx = createRunContext({ repoUrl: name, workspaceDir: repoDir, logger: silentLogger });
   ctx.detection = await detectStack(repoDir);
   ctx.filled = {};
-  ctx.plan = buildServicePlan(ctx.detection, ctx.filled);
+  if (inferred !== null) ctx.inferredEnv = inferred;
+  ctx.plan = buildServicePlan(ctx.detection, ctx.filled, inferred);
   return ctx;
 }
 
@@ -68,6 +70,26 @@ describe('writeConfigs', () => {
     expect(compose.services['backend']?.depends_on).toEqual({
       db: { condition: 'service_healthy' },
     });
+  });
+
+  it('writes the inferred .env and references it via env_file', async () => {
+    const ctx = await contextFor('mern-repo', {
+      variables: [
+        { key: 'JWT_SECRET', value: 'change-me', required: true, reason: 'README auth section' },
+      ],
+    });
+
+    const generated = await writeConfigs(ctx);
+
+    expect(generated.find((f) => f.kind === 'env')?.path).toBe('.env');
+    const envText = await readFile(join(ctx.workspaceDir, '.env'), 'utf8');
+    expect(envText).toContain('JWT_SECRET=change-me');
+
+    const compose = parseYaml(
+      await readFile(join(ctx.workspaceDir, 'docker-compose.yml'), 'utf8')
+    ) as { services: Record<string, { env_file?: string[] }> };
+    expect(compose.services['backend']?.env_file).toEqual(['.env']);
+    expect(compose.services['db']?.env_file).toBeUndefined();
   });
 
   it('supplies an executable migrate-then-run entrypoint for Django', async () => {
