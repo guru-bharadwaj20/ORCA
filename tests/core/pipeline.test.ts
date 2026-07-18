@@ -193,6 +193,70 @@ describe('runPipeline (walking skeleton)', () => {
     await expect(result).rejects.toMatchObject({ code: 'UNSUPPORTED_STACK' });
   });
 
+  it('lets an injected approvePlan hook replace the terminal gate entirely', async () => {
+    const repoDir = fixture('mern-repo');
+    const { logger } = collectLogger();
+    const ctx = createRunContext({
+      repoUrl: repoDir,
+      workspaceDir: repoDir,
+      logger,
+      options: { ...DEFAULT_RUN_OPTIONS, dryRun: true },
+    });
+    const output = new PassThrough();
+    let printed = '';
+    output.on('data', (chunk: Buffer) => (printed += chunk.toString()));
+
+    let seenServices: string[] = [];
+    await runPipeline(ctx, {
+      output,
+      approvePlan: (plan) => {
+        seenServices = plan.services.map((s) => s.id);
+        return Promise.resolve({ approved: true, plan });
+      },
+    });
+
+    expect(seenServices).toEqual(['db', 'backend', 'frontend']);
+    expect(ctx.approved).toBe(true);
+    // The host owns the approval experience — no terminal gate output at all.
+    expect(printed).not.toContain('Approve this plan and continue?');
+    expect(printed).not.toContain('flowchart LR');
+    expect(printed).toContain('Dry run complete');
+  });
+
+  it('propagates rejection from the approvePlan hook', async () => {
+    const { logger } = collectLogger();
+    const ctx = createRunContext({
+      repoUrl: 'x',
+      workspaceDir: fixture('mern-repo'),
+      logger,
+      options: { ...DEFAULT_RUN_OPTIONS, dryRun: true },
+    });
+    const output = new PassThrough();
+    output.resume();
+
+    await expect(
+      runPipeline(ctx, {
+        output,
+        approvePlan: (plan) =>
+          Promise.resolve({ approved: false, plan, reason: 'rejected from the webview' }),
+      })
+    ).rejects.toMatchObject({ code: 'PLAN_REJECTED', message: 'rejected from the webview' });
+    expect(ctx.approved).toBe(false);
+  });
+
+  it('throws ABORTED (and cleans up) when the run signal is already aborted', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const { ctx, result } = startRun(
+      fixture('mern-repo'),
+      { dryRun: true, autoApprove: true, signal: controller.signal },
+      null
+    );
+
+    await expect(result).rejects.toMatchObject({ code: 'ABORTED' });
+    expect(ctx.workspaceDir === '' || !existsSync(ctx.workspaceDir)).toBe(true);
+  });
+
   it('uses a pre-materialized workspaceDir as-is (no clone, no cleanup)', async () => {
     const repoDir = fixture('django-postgres-repo');
     const { logger } = collectLogger();

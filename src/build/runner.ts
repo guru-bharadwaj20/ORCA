@@ -29,13 +29,13 @@ function combined(result: DockerCommandResult): string {
 }
 
 /** build -> up (which waits for health), returning the first failure or success. */
-export async function runOnce(projectDir: string): Promise<AttemptResult> {
-  const build = await composeBuild(projectDir);
+export async function runOnce(projectDir: string, signal?: AbortSignal): Promise<AttemptResult> {
+  const build = await composeBuild(projectDir, signal);
   if (build.exitCode !== 0) {
     return { ok: false, phase: 'build', errorOutput: combined(build) };
   }
 
-  const up = await composeUp(projectDir);
+  const up = await composeUp(projectDir, signal);
   if (up.exitCode !== 0) {
     // `up --wait` fails for unhealthy services too; the container logs carry the
     // actual reason, so append them for the diagnosis.

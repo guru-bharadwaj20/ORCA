@@ -25,9 +25,14 @@ export interface DockerCommandResult {
 const UP_WAIT_TIMEOUT_S = 120;
 
 /** Run `docker <args>` in a project dir, capturing output instead of throwing. */
-async function runDocker(args: string[], projectDir?: string): Promise<DockerCommandResult> {
+async function runDocker(
+  args: string[],
+  projectDir?: string,
+  signal?: AbortSignal
+): Promise<DockerCommandResult> {
   const result = await execa('docker', args, {
     ...(projectDir !== undefined ? { cwd: projectDir } : {}),
+    ...(signal !== undefined ? { cancelSignal: signal } : {}),
     reject: false,
     timeout: DEFAULT_SETTINGS.dockerTimeoutMs,
     // Plain buildkit progress keeps build logs line-oriented and readable for
@@ -54,18 +59,25 @@ export async function assertDockerAvailable(): Promise<void> {
 }
 
 /** Run `docker compose build` in the given project dir. */
-export async function composeBuild(projectDir: string): Promise<DockerCommandResult> {
-  return runDocker(['compose', 'build'], projectDir);
+export async function composeBuild(
+  projectDir: string,
+  signal?: AbortSignal
+): Promise<DockerCommandResult> {
+  return runDocker(['compose', 'build'], projectDir, signal);
 }
 
 /**
  * Run `docker compose up -d --wait` — `--wait` blocks until every service is
  * running AND healthy (per its healthcheck), so an unhealthy stack fails here.
  */
-export async function composeUp(projectDir: string): Promise<DockerCommandResult> {
+export async function composeUp(
+  projectDir: string,
+  signal?: AbortSignal
+): Promise<DockerCommandResult> {
   return runDocker(
     ['compose', 'up', '-d', '--wait', '--wait-timeout', String(UP_WAIT_TIMEOUT_S)],
-    projectDir
+    projectDir,
+    signal
   );
 }
 

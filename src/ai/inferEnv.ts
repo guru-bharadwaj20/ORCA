@@ -18,8 +18,12 @@ export async function inferEnv(
   detection: DetectionResult,
   readme: string,
   ledger: CostLedger,
-  client: AIFacade = ai
+  client: AIFacade = ai,
+  signal?: AbortSignal
 ): Promise<InferredEnv> {
   const prompt = buildInferEnvPrompt(detection, readme);
-  return client.complete(prompt, InferredEnvSchema, ledger, { schemaName: 'InferredEnv' });
+  return client.complete(prompt, InferredEnvSchema, ledger, {
+    schemaName: 'InferredEnv',
+    ...(signal !== undefined ? { signal } : {}),
+  });
 }
