@@ -13,26 +13,73 @@
 
 import { Writable } from 'node:stream';
 
-import type { Logger } from 'orca-cli';
+import type { Logger, RunContext } from 'orca-cli';
 import * as vscode from 'vscode';
 
 import { approvePlanViaWebview } from './planWebview.js';
+import {
+  configuredProviderEnv,
+  createSecretKeyResolver,
+  readConfiguredOptions,
+  setApiKey,
+} from './settings.js';
 
 // `orca-cli` is ESM (and reads its `.hbs` templates relative to its own on-disk
 // location), so it is kept external and loaded at runtime via dynamic import rather
 // than bundled into this CommonJS extension.
 type OrcaCli = typeof import('orca-cli');
 const loadOrca = (): Promise<OrcaCli> => import('orca-cli');
+const loadOrcaAi = (): Promise<typeof import('orca-cli/ai')> => import('orca-cli/ai');
 
-/** Command id, kept in sync with `contributes.commands` in package.json. */
+/** Command ids, kept in sync with `contributes.commands` in package.json. */
 const PREVIEW_COMMAND = 'orca.previewRepo';
+const SET_API_KEY_COMMAND = 'orca.setApiKey';
 
 export function activate(context: vscode.ExtensionContext): void {
   const channel = vscode.window.createOutputChannel('ORCA');
   context.subscriptions.push(
     channel,
-    vscode.commands.registerCommand(PREVIEW_COMMAND, () => previewRepo(context, channel))
+    vscode.commands.registerCommand(PREVIEW_COMMAND, () => previewRepo(context, channel)),
+    vscode.commands.registerCommand(SET_API_KEY_COMMAND, () => setApiKey(context))
   );
+}
+
+/**
+ * Build a RunContext with all settings + secrets applied: RunOptions from explicitly-set
+ * `orca.*` settings, keys resolved from SecretStorage, and a run-scoped AI facade whose
+ * router honors the UI provider/model/cost settings (layered over env, so UI > env >
+ * default). Shared by the preview command and (Phase 6) the full-run command.
+ */
+async function makeRunContext(
+  context: vscode.ExtensionContext,
+  params: { repoUrl: string; dryRun: boolean; logger: Logger; signal?: AbortSignal }
+): Promise<RunContext> {
+  const [core, ai] = await Promise.all([loadOrca(), loadOrcaAi()]);
+  const resolveKey = await createSecretKeyResolver(context);
+  const options = { dryRun: params.dryRun, ...readConfiguredOptions() };
+
+  const ctx = core.createRunContext({
+    repoUrl: params.repoUrl,
+    workspaceDir: '',
+    logger: params.logger,
+    options,
+    resolveKey,
+  });
+
+  // Pre-build the run-scoped AI facade so UI provider/model/cost settings win. Provider
+  // choices ride in on a synthetic env layered over process.env; model/cost/signal are
+  // passed as explicit overrides.
+  const env = { ...process.env, ...configuredProviderEnv() };
+  const routerConfig = ai.routerConfigForRun(
+    {
+      ...(options.model !== undefined ? { model: options.model } : {}),
+      ...(options.costCapUsd !== undefined ? { costCapUsd: options.costCapUsd } : {}),
+      ...(params.signal !== undefined ? { signal: params.signal } : {}),
+    },
+    env
+  );
+  ctx.ai = ai.aiFor(new ai.AIRouter(routerConfig, ai.defaultProviderFactories(resolveKey)));
+  return ctx;
 }
 
 export function deactivate(): void {
@@ -54,12 +101,11 @@ async function previewRepo(
   channel.appendLine('');
 
   try {
-    const { createRunContext, runPipeline } = await loadOrca();
-    const ctx = createRunContext({
+    const { runPipeline } = await loadOrca();
+    const ctx = await makeRunContext(context, {
       repoUrl: folder,
-      workspaceDir: '',
+      dryRun: true,
       logger: outputChannelLogger(channel),
-      options: { dryRun: true },
     });
     // The real approval gate: pause at the plan and show the diagram/table webview.
     // The pipeline writes the plan summary + config preview to `io.output`, so point
