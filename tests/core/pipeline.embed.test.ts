@@ -42,7 +42,12 @@ function collectLogger(): { logger: Logger; lines: string[] } {
   const lines: string[] = [];
   const record = (level: string) => (message: string) => lines.push(`${level} ${message}`);
   return {
-    logger: { debug: record('debug'), info: record('info'), warn: record('warn'), error: record('error') },
+    logger: {
+      debug: record('debug'),
+      info: record('info'),
+      warn: record('warn'),
+      error: record('error'),
+    },
     lines,
   };
 }
