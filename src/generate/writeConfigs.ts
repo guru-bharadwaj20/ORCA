@@ -14,6 +14,7 @@ import { chmod, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import type { GeneratedFile, RunContext } from '../core/context.js';
+import { buildEnvFile } from '../orchestrate/envFiles.js';
 import { refinedComponentVars } from '../plan/servicePlan.js';
 import { renderCompose, renderDockerfile } from '../templates/render.js';
 import { OrcaError } from '../utils/errors.js';
@@ -109,6 +110,13 @@ export async function writeConfigs(ctx: RunContext): Promise<GeneratedFile[]> {
         await chmod(join(ctx.workspaceDir, relPath), 0o755);
       }
     }
+  }
+
+  // AI-inferred app env: same selection the plan used to decide `env_file`, so the
+  // file exists exactly when the compose file references it.
+  if (ctx.inferredEnv !== undefined) {
+    const envText = buildEnvFile(ctx.inferredEnv, plan);
+    if (envText !== '') await write('.env', envText, 'env');
   }
 
   await write('docker-compose.yml', renderCompose(planToComposeVars(plan)), 'compose');
