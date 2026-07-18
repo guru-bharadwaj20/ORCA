@@ -3,7 +3,11 @@ node_modules/
 
 # Build output
 dist/
+out/
 *.tsbuildinfo
+
+# VS Code extension packaging artifact (vscode-extension/, built with vsce)
+*.vsix
 
 # Test / coverage
 coverage/
