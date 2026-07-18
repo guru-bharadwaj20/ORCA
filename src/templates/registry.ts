@@ -42,10 +42,7 @@ export function selectDockerfileTemplate(component: DetectedComponent): Dockerfi
 }
 
 /** Resolve the concrete template `PackageManager`, defaulting when detection was unsure. */
-function resolvePackageManager(
-  detected: DetectedPackageManager,
-  python: boolean
-): PackageManager {
+function resolvePackageManager(detected: DetectedPackageManager, python: boolean): PackageManager {
   if (detected === 'unknown') return python ? 'pip' : 'npm';
   return detected;
 }

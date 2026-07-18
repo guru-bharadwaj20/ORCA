@@ -31,12 +31,6 @@ export type {
   Healthcheck,
 } from '../plan/types.js';
 
-export type {
-  RunContext,
-  RunOptions,
-  DiagnosisEntry,
-  Logger,
-  LogLevel,
-} from '../core/context.js';
+export type { RunContext, RunOptions, DiagnosisEntry, Logger, LogLevel } from '../core/context.js';
 
 // TODO(stage-8): add any remaining cross-cutting shared types here.
