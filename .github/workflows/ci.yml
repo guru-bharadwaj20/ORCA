@@ -24,8 +24,13 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Build (tsc + template packaging)
+      - name: Build core (tsc + template packaging)
         run: npm run build
+
+      # Build any workspace member that has a build (the vscode-extension); skipped
+      # cleanly while it is still a scaffold with no build script.
+      - name: Build workspaces
+        run: npm run build --workspaces --if-present
 
       - name: Lint
         run: npm run lint
@@ -35,8 +40,11 @@ jobs:
 
       # Hermetic by design: no API keys, no docker — AI providers are mocked and the
       # keyless path is first-class, so the full suite runs anywhere.
-      - name: Test
+      - name: Test core
         run: npm test
+
+      - name: Test workspaces
+        run: npm run test --workspaces --if-present
 
       # Prove the packaged CLI actually runs end-to-end (dry run needs no docker/keys).
       - name: Smoke test the compiled CLI

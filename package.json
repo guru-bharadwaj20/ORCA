@@ -51,6 +51,9 @@
   "engines": {
     "node": ">=20"
   },
+  "workspaces": [
+    "vscode-extension"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/copy-templates.mjs",
     "dev": "tsc -w -p tsconfig.json",

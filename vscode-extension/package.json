@@ -1,0 +1,11 @@
+{
+  "name": "orca-vscode",
+  "version": "0.0.0",
+  "private": true,
+  "description": "VS Code extension for ORCA — clone, containerize, and self-heal a repo from the editor. Scaffolded in Phase 2; the manifest (commands, activation, contributes) is filled in from Phase 3.",
+  "license": "MIT",
+  "publisher": "orca",
+  "engines": {
+    "vscode": "^1.90.0"
+  }
+}
