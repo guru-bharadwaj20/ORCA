@@ -35,7 +35,12 @@ const MENU: SelectRow<Action>[] = [
     value: 'preview',
   },
   { separator: 'Configuration' },
-  { icon: '⚙ ', label: 'Settings & model routing', hint: 'model · cost cap · heal attempts', value: 'settings' },
+  {
+    icon: '⚙ ',
+    label: 'Settings & model routing',
+    hint: 'model · cost cap · heal attempts',
+    value: 'settings',
+  },
   { icon: '🔑', label: 'API keys (BYOK)', hint: 'which providers are wired up', value: 'keys' },
   { separator: 'Help' },
   { icon: '📖', label: 'Help & documentation', value: 'help' },
@@ -75,7 +80,7 @@ function showSettings(): void {
   const row = (k: string, v: string): string => `  ${theme.soft(k.padEnd(20))}${theme.white(v)}`;
   process.stdout.write(
     [
-      theme.orange.bold('  Settings & model routing'),
+      theme.pink.bold('  Settings & model routing'),
       '',
       row('Primary provider', s.primaryProvider),
       row('Fallback provider', s.fallbackProvider ?? '(disabled)'),
@@ -85,7 +90,9 @@ function showSettings(): void {
       row('Cost cap (USD)', `$${s.costCapUsd.toFixed(2)}`),
       row('Max heal attempts', String(s.maxHealAttempts)),
       '',
-      theme.soft('  Override any of these with ORCA_* env vars or run flags (flag > env > default).'),
+      theme.soft(
+        '  Override any of these with ORCA_* env vars or run flags (flag > env > default).'
+      ),
       '',
     ].join('\n') + '\n'
   );
@@ -102,7 +109,7 @@ function maskKey(value: string | undefined): string {
 function showKeys(): void {
   process.stdout.write(
     [
-      theme.orange.bold('  API keys (bring-your-own-key)'),
+      theme.pink.bold('  API keys (bring-your-own-key)'),
       '',
       `  ${theme.soft(`${ENV_KEYS.qwenApiKey}`.padEnd(22))}${maskKey(process.env[ENV_KEYS.qwenApiKey])} ${theme.soft('· primary')}`,
       `  ${theme.soft(`${ENV_KEYS.apiKey}`.padEnd(22))}${maskKey(process.env[ENV_KEYS.apiKey])} ${theme.soft('· fallback')}`,
@@ -117,13 +124,13 @@ function showKeys(): void {
 function showHelp(): void {
   process.stdout.write(
     [
-      theme.orange.bold('  ORCA — what it does'),
+      theme.pink.bold('  ORCA — what it does'),
       '',
       `  ${theme.teal('•')} ${theme.white('Approve-before-build')} ${theme.soft('— review the service-graph diagram before anything runs.')}`,
       `  ${theme.teal('•')} ${theme.white('Explainable self-heal')} ${theme.soft('— retries failed builds and explains each fix in plain English.')}`,
       `  ${theme.teal('•')} ${theme.white('Narrow & opinionated')} ${theme.soft('— React/Node, Express or Django, Postgres/Mongo/Redis.')}`,
       '',
-      theme.orange.bold('  From the command line'),
+      theme.pink.bold('  From the command line'),
       '',
       `  ${theme.white('orca run <repo>')}                 ${theme.soft('full flow (build + self-heal)')}`,
       `  ${theme.white('orca run <repo> --dry-run')}       ${theme.soft('plan + configs, nothing built')}`,
