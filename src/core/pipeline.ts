@@ -24,8 +24,9 @@ import { join } from 'node:path';
 
 import { ai, aiFor } from '../ai/client.js';
 import { fillTemplate } from '../ai/fillTemplate.js';
+import { inferEnv } from '../ai/inferEnv.js';
 import { AIRouter, routerConfigForRun } from '../ai/router.js';
-import type { FilledTemplateVars } from '../ai/schema.js';
+import type { FilledTemplateVars, InferredEnv } from '../ai/schema.js';
 import { assertDockerAvailable, composeDown } from '../build/docker.js';
 import { formatDiagnosisLog } from '../build/diagnosisLog.js';
 import { runSelfHealLoop } from '../build/selfHeal.js';
@@ -40,6 +41,7 @@ import { detectStack } from '../detect/index.js';
 import type { DetectedComponent, DetectionResult } from '../detect/types.js';
 import { planToComposeVars } from '../generate/composeVars.js';
 import { writeConfigs } from '../generate/writeConfigs.js';
+import { buildEnvFile } from '../orchestrate/envFiles.js';
 import { reviewPlan, type ReviewIO } from '../plan/review.js';
 import { buildServicePlan, refinedComponentVars } from '../plan/servicePlan.js';
 import type { ServicePlan } from '../plan/types.js';
@@ -81,18 +83,10 @@ async function readReadme(repoDir: string): Promise<string> {
  */
 async function fillComponents(
   detection: DetectionResult,
-  ctx: RunContext
+  ctx: RunContext,
+  readme: string
 ): Promise<Record<string, FilledTemplateVars>> {
   const filled: Record<string, FilledTemplateVars> = {};
-
-  if (!aiKeyPresent()) {
-    ctx.logger.info(
-      'No AI API key found (QWEN_API_KEY / ANTHROPIC_API_KEY) — using template defaults.'
-    );
-    return filled;
-  }
-
-  const readme = await readReadme(ctx.workspaceDir);
   const client = ctx.ai ?? ai;
   for (const role of COMPONENT_ROLES) {
     const component = componentFor(detection, role);
@@ -118,16 +112,43 @@ async function fillComponents(
   return filled;
 }
 
+/**
+ * STAGE 3: infer the app's own env vars (secrets, tuning) for the generated .env.
+ * Purely additive — any failure just means no .env, never a failed run.
+ */
+async function inferAppEnv(
+  detection: DetectionResult,
+  ctx: RunContext,
+  readme: string
+): Promise<InferredEnv | null> {
+  const client = ctx.ai ?? ai;
+  try {
+    const inferred = await inferEnv(detection, readme, ctx.cost, client);
+    ctx.logger.info(`AI inferred ${inferred.variables.length} app env var(s).`);
+    return inferred;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    ctx.logger.warn('Env inference failed — continuing without a generated .env.', { message });
+    return null;
+  }
+}
+
 /** Render the compose file + every to-be-built Dockerfile in memory (no writes). */
 function renderPreview(
   detection: DetectionResult,
   plan: ServicePlan,
-  filled: Record<string, FilledTemplateVars>
+  filled: Record<string, FilledTemplateVars>,
+  inferred: InferredEnv | null
 ): string {
   const sections = [
     `# --- docker-compose.yml (preview) ---`,
     renderCompose(planToComposeVars(plan)).trimEnd(),
   ];
+
+  if (inferred !== null) {
+    const envText = buildEnvFile(inferred, plan);
+    if (envText !== '') sections.push(`# --- .env (preview) ---`, envText.trimEnd());
+  }
 
   for (const role of COMPONENT_ROLES) {
     const component = componentFor(detection, role);
@@ -219,12 +240,23 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
       );
     }
 
-    // STAGE 3: AI fill (degrades to registry defaults; see fillComponents).
-    const filled = await fillComponents(detection, ctx);
+    // STAGE 3: AI fill + env inference (both degrade gracefully when keyless).
+    let filled: Record<string, FilledTemplateVars> = {};
+    let inferred: InferredEnv | null = null;
+    if (aiKeyPresent()) {
+      const readme = await readReadme(ctx.workspaceDir);
+      filled = await fillComponents(detection, ctx, readme);
+      inferred = await inferAppEnv(detection, ctx, readme);
+    } else {
+      ctx.logger.info(
+        'No AI API key found (QWEN_API_KEY / ANTHROPIC_API_KEY) — using template defaults.'
+      );
+    }
     ctx.filled = filled;
+    if (inferred !== null) ctx.inferredEnv = inferred;
 
     // STAGE 4: plan + approval gate. Nothing is built or written before approval.
-    ctx.plan = buildServicePlan(detection, filled);
+    ctx.plan = buildServicePlan(detection, filled, inferred);
     const outcome = await reviewPlan(ctx.plan, ctx.options, io);
     ctx.approved = outcome.approved;
     if (!outcome.approved) {
@@ -232,7 +264,7 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
     }
 
     if (ctx.options.dryRun) {
-      output.write(renderPreview(detection, ctx.plan, filled));
+      output.write(renderPreview(detection, ctx.plan, filled, inferred));
       output.write('\nDry run complete — nothing was built, run, or written to disk.\n');
       logCost(ctx.cost, ctx.logger);
       return ctx;

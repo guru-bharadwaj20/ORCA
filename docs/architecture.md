@@ -9,16 +9,16 @@ could later become separate agents.
 
 ## Pipeline stages
 
-| Stage | Directory | Responsibility |
-| --- | --- | --- |
-| 0/1 | `clone/`, `templates/` | Clone the repo into a temp workspace; hold hand-written config templates |
-| 2 | `detect/` | Static, AI-free stack detection → `DetectionResult` |
-| 3 | `ai/` | LLM fills template variables + infers env (structured output, validated) |
-| 4 | `plan/` | Build the service graph, render a Mermaid diagram, gate on human approval |
-| 5 | `build/`, `generate/` | Write configs, build/run containers, self-heal on failure |
-| 6 | `orchestrate/` | Healthchecks, startup order, `.env` generation |
-| 7 | `cli/` | Command parsing, flags, terminal output |
-| 8 | `docs/` | This documentation |
+| Stage | Directory              | Responsibility                                                            |
+| ----- | ---------------------- | ------------------------------------------------------------------------- |
+| 0/1   | `clone/`, `templates/` | Clone the repo into a temp workspace; hold hand-written config templates  |
+| 2     | `detect/`              | Static, AI-free stack detection → `DetectionResult`                       |
+| 3     | `ai/`                  | LLM fills template variables + infers env (structured output, validated)  |
+| 4     | `plan/`                | Build the service graph, render a Mermaid diagram, gate on human approval |
+| 5     | `build/`, `generate/`  | Write configs, build/run containers, self-heal on failure                 |
+| 6     | `orchestrate/`         | Healthchecks, startup order, `.env` generation                            |
+| 7     | `cli/`                 | Command parsing, flags, terminal output                                   |
+| 8     | `docs/`                | This documentation                                                        |
 
 ## Data contracts (stable up front)
 

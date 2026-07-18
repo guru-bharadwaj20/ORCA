@@ -12,8 +12,9 @@
 
 import { basename } from 'node:path';
 
-import type { FilledTemplateVars } from '../ai/schema.js';
+import type { FilledTemplateVars, InferredEnv } from '../ai/schema.js';
 import { refineDockerfileVars } from '../ai/refineVars.js';
+import { selectEnvVars } from '../orchestrate/envFiles.js';
 import type { DetectedComponent, DetectedDatabase, DetectionResult } from '../detect/types.js';
 import { describeComponent } from '../templates/registry.js';
 import type { DockerfileVars } from '../templates/types.js';
@@ -164,7 +165,8 @@ export function refinedComponentVars(
 /** Assemble ServiceNodes for frontend/backend/databases and wire dependency edges. */
 export function buildServicePlan(
   detection: DetectionResult,
-  filled: Record<string, FilledTemplateVars>
+  filled: Record<string, FilledTemplateVars>,
+  inferred: InferredEnv | null = null
 ): ServicePlan {
   const dbNodes = databaseNodes(detection.databases);
   const nodes: ServiceNode[] = [...dbNodes];
@@ -229,6 +231,16 @@ export function buildServicePlan(
         backendNode !== null ? [{ serviceId: backendNode.id, condition: 'service_started' }] : [],
       volumes: componentVolumes(detection.frontend, vars),
     });
+  }
+
+  // AI-inferred app env rides in a .env file attached to the app service (the
+  // backend when there is one). Vars the plan already injects inline are filtered
+  // out, so an empty selection means no .env and no env_file reference at all.
+  if (inferred !== null) {
+    const appNode = backendNode ?? nodes.find((n) => n.id === 'frontend');
+    if (appNode !== undefined && selectEnvVars(inferred, { services: nodes }).length > 0) {
+      appNode.envFile = '.env';
+    }
   }
 
   return {
