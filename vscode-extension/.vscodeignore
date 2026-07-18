@@ -1,8 +1,11 @@
-# The extension ships as a single bundled dist/extension.js, so source + tooling
-# are excluded from the .vsix. (Packaging is finalized in Phase 7.)
+# The extension ships as a single bundled dist/extension.js plus media/ (icon +
+# mermaid). Everything else — source, tooling, tests — is excluded from the .vsix.
 .vscode/**
 src/**
+scripts/**
+test/**
 node_modules/**
 tsconfig.json
+.vscodeignore
 **/*.ts
 **/*.map
