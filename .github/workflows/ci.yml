@@ -43,9 +43,15 @@ jobs:
       - name: Test core
         run: npm test
 
+      # Runs each workspace's tests — for the extension, a headless smoke that drives
+      # "ORCA: Preview Repo" against examples/mern-sample with a stubbed vscode API.
       - name: Test workspaces
         run: npm run test --workspaces --if-present
 
       # Prove the packaged CLI actually runs end-to-end (dry run needs no docker/keys).
       - name: Smoke test the compiled CLI
         run: node ./dist/cli/index.js run examples/mern-sample --dry-run --auto-approve
+
+      # Prove the extension packages into a valid .vsix (runs vsce package).
+      - name: Package the VS Code extension
+        run: npm run package -w orca-vscode
