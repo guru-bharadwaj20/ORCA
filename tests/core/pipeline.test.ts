@@ -244,7 +244,7 @@ describe('runPipeline (walking skeleton)', () => {
     expect(ctx.approved).toBe(false);
   });
 
-  it('throws ABORTED (and cleans up) when the run signal is already aborted', async () => {
+  it('throws AbortError (and cleans up) when the run signal is already aborted', async () => {
     const controller = new AbortController();
     controller.abort();
     const { ctx, result } = startRun(
@@ -253,7 +253,7 @@ describe('runPipeline (walking skeleton)', () => {
       null
     );
 
-    await expect(result).rejects.toMatchObject({ code: 'ABORTED' });
+    await expect(result).rejects.toMatchObject({ name: 'AbortError' });
     expect(ctx.workspaceDir === '' || !existsSync(ctx.workspaceDir)).toBe(true);
   });
 

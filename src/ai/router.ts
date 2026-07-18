@@ -12,12 +12,17 @@
 
 import type { z } from 'zod';
 
-import { loadSettings, type ProviderName } from '../config/settings.js';
+import {
+  envKeyResolver,
+  loadSettings,
+  type KeyResolver,
+  type ProviderName,
+} from '../config/settings.js';
 import type { CostLedger } from '../core/context.js';
 import { CostCapExceededError, OrcaError } from '../utils/errors.js';
 import { AnthropicProvider } from './providers/anthropic.js';
 import { QwenProvider } from './providers/qwen.js';
-import { recordUsage, type AIProvider, type ResolveKey } from './providers/types.js';
+import { recordUsage, type AIProvider } from './providers/types.js';
 import { parseModelJson, validateAgainst } from './schema.js';
 
 /** A system+user prompt (structurally identical to the prompt builders' PromptPair). */
@@ -31,8 +36,6 @@ export interface RouterCallOptions {
   maxTokens?: number;
   /** Task label used in error messages/logs (e.g. 'FilledTemplateVars'). */
   schemaName?: string;
-  /** Cancels the in-flight provider request when aborted. */
-  signal?: AbortSignal;
 }
 
 /** How the router picks and escalates providers. */
@@ -47,6 +50,8 @@ export interface RouterConfig {
   costCapUsd: number;
   /** Per-provider model id overrides (e.g. from `--model`); others keep defaults. */
   modelOverrides?: Partial<Record<ProviderName, string>>;
+  /** Cancels in-flight provider calls when the run is aborted. */
+  signal?: AbortSignal;
 }
 
 /** Error codes that no amount of retrying the same provider will fix. */
@@ -71,7 +76,7 @@ export function resolveRouterConfig(env: NodeJS.ProcessEnv = process.env): Route
  * ids outside both families are ignored so a typo can't silently hit the wrong API.
  */
 export function routerConfigForRun(
-  overrides: { costCapUsd?: number; model?: string },
+  overrides: { costCapUsd?: number; model?: string; signal?: AbortSignal },
   env: NodeJS.ProcessEnv = process.env
 ): RouterConfig {
   const config = resolveRouterConfig(env);
@@ -83,23 +88,20 @@ export function routerConfigForRun(
       config.modelOverrides = { anthropic: overrides.model };
     else if (overrides.model.startsWith('qwen')) config.modelOverrides = { qwen: overrides.model };
   }
+  if (overrides.signal !== undefined) config.signal = overrides.signal;
   return config;
 }
 
 /** Default provider constructors; tests may inject fakes. */
 export type ProviderFactories = Record<ProviderName, () => AIProvider>;
-const DEFAULT_FACTORIES: ProviderFactories = {
-  qwen: () => new QwenProvider(),
-  anthropic: () => new AnthropicProvider(),
-};
 
 /**
- * Provider factories bound to a credential source. Embedders (e.g. the VS Code
- * extension with SecretStorage) pass their own `resolveKey`; omitting it yields
- * the default env-reading factories.
+ * Build the default factories bound to a key resolver. The CLI uses the env resolver;
+ * an embedder passes one backed by its own secret store so keys never touch env.
  */
-export function providerFactories(resolveKey?: ResolveKey): ProviderFactories {
-  if (resolveKey === undefined) return DEFAULT_FACTORIES;
+export function defaultProviderFactories(
+  resolveKey: KeyResolver = envKeyResolver
+): ProviderFactories {
   return {
     qwen: () => new QwenProvider(resolveKey),
     anthropic: () => new AnthropicProvider(resolveKey),
@@ -109,7 +111,7 @@ export function providerFactories(resolveKey?: ResolveKey): ProviderFactories {
 export class AIRouter {
   constructor(
     private readonly config: RouterConfig = resolveRouterConfig(),
-    private readonly factories: ProviderFactories = DEFAULT_FACTORIES
+    private readonly factories: ProviderFactories = defaultProviderFactories()
   ) {}
 
   /**
@@ -144,11 +146,9 @@ export class AIRouter {
             system: prompt.system,
             ...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
             ...(model !== undefined ? { model } : {}),
-            ...(options.signal !== undefined ? { signal: options.signal } : {}),
+            ...(this.config.signal !== undefined ? { signal: this.config.signal } : {}),
           });
         } catch (err) {
-          // A cancelled run must not burn retries or spill to the fallback.
-          if (options.signal?.aborted) throw err;
           lastError = err;
           // Config problems (missing key) won't improve on retry — move on now.
           if (err instanceof OrcaError && NON_RETRYABLE_CODES.has(err.code)) break;

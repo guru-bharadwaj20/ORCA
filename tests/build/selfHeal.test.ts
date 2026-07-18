@@ -126,7 +126,7 @@ describe('runSelfHealLoop', () => {
     expect(ctx.diagnosis).toHaveLength(1);
   });
 
-  it('stops with ABORTED after a cancelled attempt without spending an AI call', async () => {
+  it('stops with AbortError after a cancelled attempt without spending an AI call', async () => {
     const controller = new AbortController();
     ctx.options.signal = controller.signal;
     mocks.runOnce.mockImplementation(() => {
@@ -134,7 +134,7 @@ describe('runSelfHealLoop', () => {
       return Promise.resolve(failure);
     });
 
-    await expect(runSelfHealLoop(ctx)).rejects.toMatchObject({ code: 'ABORTED' });
+    await expect(runSelfHealLoop(ctx)).rejects.toMatchObject({ name: 'AbortError' });
     expect(mocks.runOnce).toHaveBeenCalledTimes(1);
     expect(mocks.complete).not.toHaveBeenCalled();
   });

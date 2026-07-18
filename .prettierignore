@@ -10,3 +10,6 @@ tests/fixtures/
 # Build output and coverage.
 dist/
 coverage/
+
+# Generated: Mermaid's standalone build copied into the extension at build time.
+vscode-extension/media/

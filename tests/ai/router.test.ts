@@ -16,7 +16,7 @@ vi.mock('@anthropic-ai/sdk', () => ({
 
 import {
   AIRouter,
-  providerFactories,
+  defaultProviderFactories,
   resolveRouterConfig,
   routerConfigForRun,
   type RouterConfig,
@@ -219,7 +219,7 @@ describe('AI provider router', () => {
 
     const router = new AIRouter(
       config,
-      providerFactories((name) => vault[name])
+      defaultProviderFactories((name) => vault[name])
     );
     const result = await router.completeValidated(prompt, schema, freshLedger());
 

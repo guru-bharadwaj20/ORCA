@@ -9,15 +9,9 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 
-import { ENV_KEYS, loadSettings } from '../../config/settings.js';
+import { ENV_KEYS, envKeyResolver, loadSettings, type KeyResolver } from '../../config/settings.js';
 import { OrcaError } from '../../utils/errors.js';
-import {
-  envResolveKey,
-  type AIProvider,
-  type CompletionOptions,
-  type ProviderCompletion,
-  type ResolveKey,
-} from './types.js';
+import type { AIProvider, CompletionOptions, ProviderCompletion } from './types.js';
 
 /**
  * USD per 1M input/output tokens, used for the run's cost ledger. Unknown models fall
@@ -40,7 +34,7 @@ export function estimateUsd(model: string, inputTokens: number, outputTokens: nu
 }
 
 /** Construct the Anthropic client; throws a clear error if the key is missing. */
-export function createAnthropicClient(resolveKey: ResolveKey = envResolveKey): Anthropic {
+export function createAnthropicClient(resolveKey: KeyResolver = envKeyResolver): Anthropic {
   const apiKey = resolveKey(ENV_KEYS.apiKey);
   if (!apiKey) {
     throw new OrcaError(
@@ -57,7 +51,7 @@ export function createAnthropicClient(resolveKey: ResolveKey = envResolveKey): A
 export class AnthropicProvider implements AIProvider {
   readonly name = 'anthropic' as const;
 
-  constructor(private readonly resolveKey: ResolveKey = envResolveKey) {}
+  constructor(private readonly resolveKey: KeyResolver = envKeyResolver) {}
 
   async complete(prompt: string, options: CompletionOptions = {}): Promise<ProviderCompletion> {
     const client = createAnthropicClient(this.resolveKey);
@@ -71,7 +65,8 @@ export class AnthropicProvider implements AIProvider {
         ...(options.system !== undefined ? { system: options.system } : {}),
         messages: [{ role: 'user', content: prompt }],
       },
-      options.signal !== undefined ? { signal: options.signal } : {}
+      // Cancels the SDK request when the run is aborted.
+      options.signal ? { signal: options.signal } : {}
     );
 
     const text = response.content

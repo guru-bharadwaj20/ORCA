@@ -24,12 +24,25 @@
   "bin": {
     "orca": "./dist/cli/index.js"
   },
-  "main": "./dist/index.js",
+  "main": "./dist/core/index.js",
+  "types": "./dist/core/index.d.ts",
   "exports": {
-    ".": "./dist/index.js",
-    "./plan": "./dist/plan/index.js",
-    "./ai": "./dist/ai/index.js",
-    "./config": "./dist/config/settings.js"
+    ".": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core/index.js"
+    },
+    "./plan": {
+      "types": "./dist/plan/index.d.ts",
+      "import": "./dist/plan/index.js"
+    },
+    "./config": {
+      "types": "./dist/config/index.d.ts",
+      "import": "./dist/config/index.js"
+    },
+    "./ai": {
+      "types": "./dist/ai/index.d.ts",
+      "import": "./dist/ai/index.js"
+    }
   },
   "files": [
     "dist",
@@ -38,6 +51,9 @@
   "engines": {
     "node": ">=20"
   },
+  "workspaces": [
+    "vscode-extension"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/copy-templates.mjs",
     "dev": "tsc -w -p tsconfig.json",

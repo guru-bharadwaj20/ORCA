@@ -35,6 +35,8 @@ async function runDocker(
     ...(signal !== undefined ? { cancelSignal: signal } : {}),
     reject: false,
     timeout: DEFAULT_SETTINGS.dockerTimeoutMs,
+    // A run-level cancel (e.g. the extension's cancel button) kills the docker child.
+    ...(signal !== undefined ? { cancelSignal: signal } : {}),
     // Plain buildkit progress keeps build logs line-oriented and readable for
     // the self-heal diagnosis (no ANSI redraw noise).
     env: { BUILDKIT_PROGRESS: 'plain' },
@@ -48,8 +50,8 @@ async function runDocker(
 }
 
 /** Verify the docker CLI exists and the daemon is reachable; throw typed if not. */
-export async function assertDockerAvailable(): Promise<void> {
-  const result = await runDocker(['info', '--format', '{{.ServerVersion}}']);
+export async function assertDockerAvailable(signal?: AbortSignal): Promise<void> {
+  const result = await runDocker(['info', '--format', '{{.ServerVersion}}'], undefined, signal);
   if (result.exitCode !== 0) {
     throw new MissingDependencyError(
       'Docker is required but unavailable (is the docker daemon running?). ' +
@@ -82,17 +84,22 @@ export async function composeUp(
 }
 
 /** Run `docker compose down` to tear everything down (safe on a never-started stack). */
-export async function composeDown(projectDir: string): Promise<DockerCommandResult> {
-  return runDocker(['compose', 'down', '--remove-orphans'], projectDir);
+export async function composeDown(
+  projectDir: string,
+  signal?: AbortSignal
+): Promise<DockerCommandResult> {
+  return runDocker(['compose', 'down', '--remove-orphans'], projectDir, signal);
 }
 
 /** Recent logs (all services, or one) to feed the self-heal diagnosis. */
 export async function composeLogs(
   projectDir: string,
-  service?: string
+  service?: string,
+  signal?: AbortSignal
 ): Promise<DockerCommandResult> {
   return runDocker(
     ['compose', 'logs', '--no-color', '--tail', '100', ...(service !== undefined ? [service] : [])],
-    projectDir
+    projectDir,
+    signal
   );
 }
