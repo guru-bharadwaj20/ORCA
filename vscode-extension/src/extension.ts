@@ -8,12 +8,12 @@
  * shows per-phase progress with a cancel button (wired to the pipeline's AbortSignal)
  * and, on success, a notification with service URLs.
  *
- * All the real work lives in `orca-cli`; this file is only editor glue.
+ * All the real work lives in `orca-agent-cli`; this file is only editor glue.
  */
 
 import { Writable } from 'node:stream';
 
-import type { Logger, RunContext } from 'orca-cli';
+import type { Logger, RunContext } from 'orca-agent-cli';
 import * as vscode from 'vscode';
 
 import { approvePlanViaWebview } from './planWebview.js';
@@ -25,12 +25,12 @@ import {
   setApiKey,
 } from './settings.js';
 
-// `orca-cli` is ESM (and reads its `.hbs` templates relative to its own on-disk
+// `orca-agent-cli` is ESM (and reads its `.hbs` templates relative to its own on-disk
 // location), so it is kept external and loaded at runtime via dynamic import rather
 // than bundled into this CommonJS extension.
-type OrcaCli = typeof import('orca-cli');
-const loadOrca = (): Promise<OrcaCli> => import('orca-cli');
-const loadOrcaAi = (): Promise<typeof import('orca-cli/ai')> => import('orca-cli/ai');
+type OrcaCli = typeof import('orca-agent-cli');
+const loadOrca = (): Promise<OrcaCli> => import('orca-agent-cli');
+const loadOrcaAi = (): Promise<typeof import('orca-agent-cli/ai')> => import('orca-agent-cli/ai');
 
 /** Command ids, kept in sync with `contributes.commands` in package.json. */
 const PREVIEW_COMMAND = 'orca.previewRepo';

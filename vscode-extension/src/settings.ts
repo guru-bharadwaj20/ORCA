@@ -9,11 +9,11 @@
  *    since SecretStorage is async and KeyResolver is not).
  */
 
-import type { RunOptions } from 'orca-cli';
-import type { KeyResolver } from 'orca-cli/config';
+import type { RunOptions } from 'orca-agent-cli';
+import type { KeyResolver } from 'orca-agent-cli/config';
 import * as vscode from 'vscode';
 
-// ORCA env-var names the provider settings shadow (kept in sync with orca-cli's
+// ORCA env-var names the provider settings shadow (kept in sync with orca-agent-cli's
 // ENV_KEYS.primaryProvider / .fallbackProvider).
 const PRIMARY_PROVIDER_ENV = 'ORCA_PRIMARY_PROVIDER';
 const FALLBACK_PROVIDER_ENV = 'ORCA_FALLBACK_PROVIDER';
@@ -68,7 +68,7 @@ export function configuredProviderEnv(): Record<string, string> {
 export async function createSecretKeyResolver(
   context: vscode.ExtensionContext
 ): Promise<KeyResolver> {
-  const { ENV_KEYS } = await import('orca-cli/config');
+  const { ENV_KEYS } = await import('orca-agent-cli/config');
   const [qwen, anthropic] = await Promise.all([
     context.secrets.get(ENV_KEYS.qwenApiKey),
     context.secrets.get(ENV_KEYS.apiKey),
@@ -81,7 +81,7 @@ export async function createSecretKeyResolver(
 
 /** "ORCA: Set API Key" — store (or clear) a provider key in SecretStorage. */
 export async function setApiKey(context: vscode.ExtensionContext): Promise<void> {
-  const { ENV_KEYS } = await import('orca-cli/config');
+  const { ENV_KEYS } = await import('orca-agent-cli/config');
   const choice = await vscode.window.showQuickPick(
     [
       { label: 'Qwen / DashScope', description: 'primary provider', key: ENV_KEYS.qwenApiKey },

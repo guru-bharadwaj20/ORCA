@@ -8,8 +8,8 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
-import type { DiagnosisEntry, RunContext } from 'orca-cli';
-import type { ServicePlan } from 'orca-cli/plan';
+import type { DiagnosisEntry, RunContext } from 'orca-agent-cli';
+import type { ServicePlan } from 'orca-agent-cli/plan';
 
 const execFileAsync = promisify(execFile);
 

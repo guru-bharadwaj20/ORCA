@@ -1,7 +1,7 @@
 /**
- * The public library surface of orca-cli: what embedders (the VS Code extension,
- * scripts) import as `orca-cli`. Subpath exports: `orca-cli/plan`, `orca-cli/ai`,
- * `orca-cli/config`.
+ * The public library surface of orca-agent-cli: what embedders (the VS Code extension,
+ * scripts) import as `orca-agent-cli`. Subpath exports: `orca-agent-cli/plan`, `orca-agent-cli/ai`,
+ * `orca-agent-cli/config`.
  *
  * STAGE: core — REAL code (re-exports only).
  */
