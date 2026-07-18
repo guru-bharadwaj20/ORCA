@@ -13,6 +13,7 @@
 
 import type { AIFacade } from '../ai/client.js';
 import type { FilledTemplateVars, InferredEnv } from '../ai/schema.js';
+import { envKeyResolver, type KeyResolver } from '../config/settings.js';
 import type { DetectionResult } from '../detect/types.js';
 import type { ServicePlan } from '../plan/types.js';
 
@@ -44,6 +45,11 @@ export interface RunOptions {
   model: string;
   /** Emit verbose debug logging. */
   verbose: boolean;
+  /**
+   * Cancels the run when aborted: checked between stages and threaded into the clone,
+   * docker, and AI calls so an embedder (e.g. a VS Code cancel button) can stop a run.
+   */
+  signal?: AbortSignal;
 }
 
 /** A file ORCA generated and wrote to disk during the run. */
@@ -114,6 +120,11 @@ export interface RunContext {
    * Populated by the pipeline; stages fall back to the env-configured default.
    */
   ai?: AIFacade;
+  /**
+   * Resolves BYOK secrets by env-var name. Defaults to `process.env` (CLI); an
+   * embedder injects one backed by its own secret store (VS Code SecretStorage).
+   */
+  resolveKey: KeyResolver;
   /** STAGE 2 output; undefined until detection has run. */
   detection?: DetectionResult;
   /** STAGE 3 output: validated AI refinements keyed by role ({} when keyless). */
@@ -153,12 +164,15 @@ export function createRunContext(params: {
   workspaceDir: string;
   logger: Logger;
   options?: Partial<RunOptions>;
+  /** BYOK secret resolver; defaults to `process.env` (CLI). */
+  resolveKey?: KeyResolver;
 }): RunContext {
   return {
     repoUrl: params.repoUrl,
     workspaceDir: params.workspaceDir,
     options: { ...DEFAULT_RUN_OPTIONS, ...params.options },
     logger: params.logger,
+    resolveKey: params.resolveKey ?? envKeyResolver,
     approved: false,
     generatedFiles: [],
     diagnosis: [],

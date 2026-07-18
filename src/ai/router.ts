@@ -12,7 +12,7 @@
 
 import type { z } from 'zod';
 
-import { loadSettings, type ProviderName } from '../config/settings.js';
+import { envKeyResolver, loadSettings, type KeyResolver, type ProviderName } from '../config/settings.js';
 import type { CostLedger } from '../core/context.js';
 import { CostCapExceededError, OrcaError } from '../utils/errors.js';
 import { AnthropicProvider } from './providers/anthropic.js';
@@ -45,6 +45,8 @@ export interface RouterConfig {
   costCapUsd: number;
   /** Per-provider model id overrides (e.g. from `--model`); others keep defaults. */
   modelOverrides?: Partial<Record<ProviderName, string>>;
+  /** Cancels in-flight provider calls when the run is aborted. */
+  signal?: AbortSignal;
 }
 
 /** Error codes that no amount of retrying the same provider will fix. */
@@ -69,7 +71,7 @@ export function resolveRouterConfig(env: NodeJS.ProcessEnv = process.env): Route
  * ids outside both families are ignored so a typo can't silently hit the wrong API.
  */
 export function routerConfigForRun(
-  overrides: { costCapUsd?: number; model?: string },
+  overrides: { costCapUsd?: number; model?: string; signal?: AbortSignal },
   env: NodeJS.ProcessEnv = process.env
 ): RouterConfig {
   const config = resolveRouterConfig(env);
@@ -81,20 +83,30 @@ export function routerConfigForRun(
       config.modelOverrides = { anthropic: overrides.model };
     else if (overrides.model.startsWith('qwen')) config.modelOverrides = { qwen: overrides.model };
   }
+  if (overrides.signal !== undefined) config.signal = overrides.signal;
   return config;
 }
 
 /** Default provider constructors; tests may inject fakes. */
 export type ProviderFactories = Record<ProviderName, () => AIProvider>;
-const DEFAULT_FACTORIES: ProviderFactories = {
-  qwen: () => new QwenProvider(),
-  anthropic: () => new AnthropicProvider(),
-};
+
+/**
+ * Build the default factories bound to a key resolver. The CLI uses the env resolver;
+ * an embedder passes one backed by its own secret store so keys never touch env.
+ */
+export function defaultProviderFactories(
+  resolveKey: KeyResolver = envKeyResolver
+): ProviderFactories {
+  return {
+    qwen: () => new QwenProvider(resolveKey),
+    anthropic: () => new AnthropicProvider(resolveKey),
+  };
+}
 
 export class AIRouter {
   constructor(
     private readonly config: RouterConfig = resolveRouterConfig(),
-    private readonly factories: ProviderFactories = DEFAULT_FACTORIES
+    private readonly factories: ProviderFactories = defaultProviderFactories()
   ) {}
 
   /**
@@ -129,6 +141,7 @@ export class AIRouter {
             system: prompt.system,
             ...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
             ...(model !== undefined ? { model } : {}),
+            ...(this.config.signal !== undefined ? { signal: this.config.signal } : {}),
           });
         } catch (err) {
           lastError = err;

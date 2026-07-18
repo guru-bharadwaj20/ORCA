@@ -9,7 +9,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 
-import { ENV_KEYS, loadSettings } from '../../config/settings.js';
+import { ENV_KEYS, envKeyResolver, loadSettings, type KeyResolver } from '../../config/settings.js';
 import { OrcaError } from '../../utils/errors.js';
 import type { AIProvider, CompletionOptions, ProviderCompletion } from './types.js';
 
@@ -33,9 +33,9 @@ export function estimateUsd(model: string, inputTokens: number, outputTokens: nu
   );
 }
 
-/** Construct the Anthropic client from env; throws a clear error if the key is missing. */
-export function createAnthropicClient(): Anthropic {
-  const apiKey = process.env[ENV_KEYS.apiKey];
+/** Construct the Anthropic client; throws a clear error if the key is missing. */
+export function createAnthropicClient(resolveKey: KeyResolver = envKeyResolver): Anthropic {
+  const apiKey = resolveKey(ENV_KEYS.apiKey);
   if (!apiKey) {
     throw new OrcaError(
       `${ENV_KEYS.apiKey} is not set. ORCA is BYOK — export your Anthropic API key first.`,
@@ -51,17 +51,23 @@ export function createAnthropicClient(): Anthropic {
 export class AnthropicProvider implements AIProvider {
   readonly name = 'anthropic' as const;
 
+  constructor(private readonly resolveKey: KeyResolver = envKeyResolver) {}
+
   async complete(prompt: string, options: CompletionOptions = {}): Promise<ProviderCompletion> {
-    const client = createAnthropicClient();
+    const client = createAnthropicClient(this.resolveKey);
     const settings = loadSettings();
     // ORCA_MODEL env override now applies here too (previously only the default).
     const model = options.model ?? settings.model;
-    const response = await client.messages.create({
-      model,
-      max_tokens: options.maxTokens ?? settings.maxOutputTokens,
-      ...(options.system !== undefined ? { system: options.system } : {}),
-      messages: [{ role: 'user', content: prompt }],
-    });
+    const response = await client.messages.create(
+      {
+        model,
+        max_tokens: options.maxTokens ?? settings.maxOutputTokens,
+        ...(options.system !== undefined ? { system: options.system } : {}),
+        messages: [{ role: 'user', content: prompt }],
+      },
+      // Cancels the SDK request when the run is aborted.
+      options.signal ? { signal: options.signal } : {}
+    );
 
     const text = response.content
       .filter((block) => block.type === 'text')

@@ -93,9 +93,11 @@ export async function runSelfHealLoop(ctx: RunContext): Promise<AttemptResult> {
   const maxHeals = ctx.options.maxHealAttempts;
   let lastEntry: DiagnosisEntry | null = null;
 
+  const signal = ctx.options.signal;
   for (let attempt = 1; ; attempt++) {
+    signal?.throwIfAborted();
     ctx.logger.info(`Build/run attempt ${attempt} ...`);
-    const result = await runOnce(ctx.workspaceDir);
+    const result = await runOnce(ctx.workspaceDir, signal);
     if (result.ok) {
       // The previous heal is what made this attempt pass — mark it resolved.
       if (lastEntry !== null) lastEntry.resolved = true;
@@ -110,6 +112,9 @@ export async function runSelfHealLoop(ctx: RunContext): Promise<AttemptResult> {
           `Last failure (${result.phase}): ${excerpt(errorOutput)}`
       );
     }
+
+    // Don't spend an AI heal call on a run that was cancelled mid-build.
+    signal?.throwIfAborted();
 
     let suggestion: HealSuggestion;
     try {
