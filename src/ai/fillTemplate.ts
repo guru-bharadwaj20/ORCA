@@ -21,7 +21,8 @@ export async function fillTemplate(
   template: TemplateDescriptor,
   readme: string,
   ledger: CostLedger,
-  client: AIFacade = ai
+  client: AIFacade = ai,
+  signal?: AbortSignal
 ): Promise<FilledTemplateVars> {
   const prompt = buildFillPrompt(detection, readme);
 
@@ -39,5 +40,6 @@ export async function fillTemplate(
 
   return client.complete({ system: prompt.system, user }, FilledTemplateVarsSchema, ledger, {
     schemaName: 'FilledTemplateVars',
+    ...(signal !== undefined ? { signal } : {}),
   });
 }

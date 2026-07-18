@@ -20,7 +20,7 @@ import { ai } from '../ai/client.js';
 import { buildHealPrompt } from '../ai/prompts/heal.js';
 import { HealSuggestionSchema, type HealSuggestion } from '../ai/schema.js';
 import type { DiagnosisEntry, RunContext } from '../core/context.js';
-import { HealExhaustedError } from '../utils/errors.js';
+import { HealExhaustedError, OrcaError } from '../utils/errors.js';
 import { readFileIfExists } from '../utils/fs.js';
 import { toDiagnosisEntry } from './diagnosisLog.js';
 import { runOnce, type AttemptResult } from './runner.js';
@@ -94,8 +94,11 @@ export async function runSelfHealLoop(ctx: RunContext): Promise<AttemptResult> {
   let lastEntry: DiagnosisEntry | null = null;
 
   for (let attempt = 1; ; attempt++) {
+    if (ctx.options.signal?.aborted) {
+      throw new OrcaError('Run aborted.', 'ABORTED');
+    }
     ctx.logger.info(`Build/run attempt ${attempt} ...`);
-    const result = await runOnce(ctx.workspaceDir);
+    const result = await runOnce(ctx.workspaceDir, ctx.options.signal);
     if (result.ok) {
       // The previous heal is what made this attempt pass — mark it resolved.
       if (lastEntry !== null) lastEntry.resolved = true;
@@ -103,6 +106,10 @@ export async function runSelfHealLoop(ctx: RunContext): Promise<AttemptResult> {
     }
 
     const errorOutput = result.errorOutput ?? '';
+    // Never spend an AI call on a run that was cancelled mid-attempt.
+    if (ctx.options.signal?.aborted) {
+      throw new OrcaError('Run aborted.', 'ABORTED');
+    }
     ctx.logger.warn(`Attempt ${attempt} failed during ${result.phase}.`);
     if (attempt > maxHeals) {
       throw new HealExhaustedError(
@@ -119,9 +126,13 @@ export async function runSelfHealLoop(ctx: RunContext): Promise<AttemptResult> {
         buildHealPrompt(errorOutput, await readGeneratedFiles(ctx), attempt),
         HealSuggestionSchema,
         ctx.cost,
-        { schemaName: 'HealSuggestion' }
+        {
+          schemaName: 'HealSuggestion',
+          ...(ctx.options.signal !== undefined ? { signal: ctx.options.signal } : {}),
+        }
       );
     } catch (err) {
+      if (ctx.options.signal?.aborted) throw new OrcaError('Run aborted.', 'ABORTED');
       const message = err instanceof Error ? err.message : String(err);
       throw new HealExhaustedError(
         `Build failed and self-heal is unavailable (${message}). ` +

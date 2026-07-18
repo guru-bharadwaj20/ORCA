@@ -126,6 +126,19 @@ describe('runSelfHealLoop', () => {
     expect(ctx.diagnosis).toHaveLength(1);
   });
 
+  it('stops with ABORTED after a cancelled attempt without spending an AI call', async () => {
+    const controller = new AbortController();
+    ctx.options.signal = controller.signal;
+    mocks.runOnce.mockImplementation(() => {
+      controller.abort(); // cancelled mid-attempt
+      return Promise.resolve(failure);
+    });
+
+    await expect(runSelfHealLoop(ctx)).rejects.toMatchObject({ code: 'ABORTED' });
+    expect(mocks.runOnce).toHaveBeenCalledTimes(1);
+    expect(mocks.complete).not.toHaveBeenCalled();
+  });
+
   it('surfaces the build error when self-heal has no AI available', async () => {
     mocks.runOnce.mockResolvedValue(failure);
     mocks.complete.mockRejectedValue(new Error('No API key configured'));
