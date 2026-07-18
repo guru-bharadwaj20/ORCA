@@ -8,7 +8,11 @@ import { z } from 'zod';
 
 import { createAnthropicClient } from '../../src/ai/providers/anthropic.js';
 import { QwenProvider } from '../../src/ai/providers/qwen.js';
-import type { AIProvider, CompletionOptions, ProviderCompletion } from '../../src/ai/providers/types.js';
+import type {
+  AIProvider,
+  CompletionOptions,
+  ProviderCompletion,
+} from '../../src/ai/providers/types.js';
 import {
   AIRouter,
   routerConfigForRun,
@@ -38,7 +42,9 @@ describe('providers resolve keys through the injected resolver', () => {
     process.env['ANTHROPIC_API_KEY'] = 'sk-env-should-be-ignored';
     expect(() => createAnthropicClient(() => undefined)).toThrow(/MISSING_API_KEY|not set/);
     // A resolver that supplies a key constructs a client without dialing out.
-    const client = createAnthropicClient((name) => (name === 'ANTHROPIC_API_KEY' ? 'sk-ok' : undefined));
+    const client = createAnthropicClient((name) =>
+      name === 'ANTHROPIC_API_KEY' ? 'sk-ok' : undefined
+    );
     expect(client).toBeTruthy();
   });
 });
@@ -69,7 +75,11 @@ describe('router forwards the cancel signal to the provider', () => {
       signal: controller.signal,
     };
 
-    const result = await new AIRouter(config, factories).completeValidated(prompt, schema, ledger());
+    const result = await new AIRouter(config, factories).completeValidated(
+      prompt,
+      schema,
+      ledger()
+    );
 
     expect(result).toEqual({ answer: 'ok' });
     expect(seen?.signal).toBe(controller.signal);
