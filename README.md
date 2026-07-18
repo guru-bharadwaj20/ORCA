@@ -1,6 +1,6 @@
 # ORCA
 
-**Orchestrated Repository Comprehension Agent (ORCA)** — published as **`orca-cli`**
+**Orchestrated Repository Comprehension Agent (ORCA)** — published as **`orca-agent-cli`**
 on npm (the bare `orca` name was taken); the installed binary is `orca`.
 
 > An AI agent CLI that clones a messy student/hackathon repo, detects its stack,
@@ -17,7 +17,7 @@ on npm (the bare `orca` name was taken); the installed binary is `orca`.
 > (CLI + config convergence: env-validated settings, run-scoped model/cost-cap
 > routing, colored heal log) are done — **every stage is implemented**; the pipeline +
 > CLI run end-to-end (`--dry-run` needs no docker and no API keys). Release
-> engineering (package `orca-cli`, CI, SECURITY.md) is in place — all that remains
+> engineering (package `orca-agent-cli`, CI, SECURITY.md) is in place — all that remains
 > is the first npm publish. See [Stage progress](#stage-progress).
 
 ## Why ORCA
@@ -48,7 +48,7 @@ Anything outside this set is declined with a clear warning rather than guessed a
 
 ## Usage
 
-Once published: `npm install -g orca-cli`, then `orca run <repo-url> --dry-run`.
+Once published: `npm install -g orca-agent-cli`, then `orca run <repo-url> --dry-run`.
 
 Until then, everything works straight from a checkout:
 
@@ -116,7 +116,7 @@ npx vitest run tests/templates/golden.test.ts   # only the lossless-templatizati
 ```
 
 - **ESM only** (`"type": "module"`), TypeScript with `NodeNext` resolution.
-- **npm-workspaces monorepo**: the root package is the publishable `orca-cli` (its
+- **npm-workspaces monorepo**: the root package is the publishable `orca-agent-cli` (its
   layout unchanged), and [`vscode-extension/`](vscode-extension/) is a workspace member
   (`orca-vscode`, private) that consumes the core through its subpath exports rather than
   reimplementing anything. (It was a single package through Stage 7; the workspace was

@@ -1,27 +1,27 @@
 # Releasing the ORCA VS Code extension
 
-The extension is a thin front end that loads the `orca-cli` engine at runtime. Today it
-depends on the core via `"orca-cli": "file:.."` (a workspace symlink), which is perfect
+The extension is a thin front end that loads the `orca-agent-cli` engine at runtime. Today it
+depends on the core via `"orca-agent-cli": "file:.."` (a workspace symlink), which is perfect
 for local development and CI but **cannot ship in a `.vsix`** — the packaged extension
-would have no `orca-cli` to import.
+would have no `orca-agent-cli` to import.
 
-So a _distributable_ build has one hard prerequisite: **`orca-cli` must be published to
+So a _distributable_ build has one hard prerequisite: **`orca-agent-cli` must be published to
 npm first** (Stage 0). Until then, `npm run package` produces a structurally-valid
 `.vsix` (bundle + media + docs) that is not yet runnable once installed.
 
 ## Release checklist
 
-1. **Publish `orca-cli`** (from the repo root):
+1. **Publish `orca-agent-cli`** (from the repo root):
 
    ```bash
-   npm publish            # publishes the root orca-cli package
+   npm publish            # publishes the root orca-agent-cli package
    git tag v<version> && git push --tags
    ```
 
 2. **Point the extension at the published core.** In `vscode-extension/package.json`:
-   - change the dependency `"orca-cli": "file:.."` → `"orca-cli": "^<published version>"`;
+   - change the dependency `"orca-agent-cli": "file:.."` → `"orca-agent-cli": "^<published version>"`;
    - change the `package` script from `vsce package --no-dependencies …` to plain
-     `vsce package -o orca-vscode.vsix`, so vsce packs `node_modules/orca-cli` into the
+     `vsce package -o orca-vscode.vsix`, so vsce packs `node_modules/orca-agent-cli` into the
      `.vsix`.
      Then run `npm install` to update the lockfile.
 
@@ -35,7 +35,7 @@ npm first** (Stage 0). Until then, `npm run package` produces a structurally-val
 5. **Package & verify:**
 
    ```bash
-   npm run package -w orca-vscode      # produces orca-vscode.vsix (now including orca-cli)
+   npm run package -w orca-vscode      # produces orca-vscode.vsix (now including orca-agent-cli)
    ```
 
    Install the `.vsix` locally (Extensions view → “Install from VSIX…”) and run
@@ -49,7 +49,7 @@ npm first** (Stage 0). Until then, `npm run package` produces a structurally-val
 
 ## Notes
 
-- The `esbuild --external:orca-cli*` flags stay as-is — `orca-cli` is always loaded from
+- The `esbuild --external:orca-agent-cli*` flags stay as-is — `orca-agent-cli` is always loaded from
   node_modules at runtime (never bundled), because its ESM template loader relies on
   `import.meta.url`, which is empty in a CJS bundle.
 - `mermaid.min.js` is copied into `media/` at build time and shipped in the `.vsix`

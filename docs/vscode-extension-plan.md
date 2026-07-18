@@ -39,7 +39,7 @@ reports per-phase; the heal log updates per phase, which is enough.
 - [x] One real `orca run examples/mern-sample` on a docker machine — verified
       2026-07-18 (Docker 29.6.2): stack healthy on attempt 1, Express↔Mongo
       round-trip confirmed via `/api/hello`.
-- [ ] Publish `orca-cli@0.1.0` to npm; tag `v0.1.0`.
+- [ ] Publish `orca-agent-cli@0.1.0` to npm; tag `v0.1.0`.
 
 ## Phase 1 — core embeddability (CLI unchanged) — ✅ DONE
 
@@ -49,8 +49,8 @@ separate `0.2.0`.
 - [x] `PipelineIO.approvePlan?: (plan: ServicePlan) => Promise<ReviewOutcome>` —
       optional hook; default remains `reviewPlan`. When set, the pipeline prints
       no gate output at all — the host owns the approval experience.
-- [x] Subpath exports: `orca-cli` (pipeline + context + detect), `orca-cli/plan`,
-      `orca-cli/config`, `orca-cli/ai`. Verified by a spawned-node self-reference
+- [x] Subpath exports: `orca-agent-cli` (pipeline + context + detect), `orca-agent-cli/plan`,
+      `orca-agent-cli/config`, `orca-agent-cli/ai`. Verified by a spawned-node self-reference
       smoke test (`tests/package/exports.test.ts`).
 - [x] Credentials provider: `ResolveKey` injectable into both providers (default:
       `process.env`), carried on `RunContext.resolveKey`, wired through
@@ -64,7 +64,7 @@ separate `0.2.0`.
 
 ## Phase 2 — workspace conversion
 
-- [ ] npm workspaces: root package stays `orca-cli` (publishable, unchanged
+- [ ] npm workspaces: root package stays `orca-agent-cli` (publishable, unchanged
       layout); add `"workspaces": ["vscode-extension"]`. Update README's
       single-package note. CI builds both.
 

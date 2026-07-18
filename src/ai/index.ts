@@ -1,5 +1,5 @@
 /**
- * Public entry for `orca-cli/ai`: the provider-agnostic facade + the router an
+ * Public entry for `orca-agent-cli/ai`: the provider-agnostic facade + the router an
  * embedder uses to build a run-scoped AI client (with its own key resolver / cost
  * cap / cancel signal).
  *

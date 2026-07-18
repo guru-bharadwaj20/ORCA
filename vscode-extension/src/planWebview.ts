@@ -9,13 +9,13 @@
  * takes its normal PLAN_REJECTED path instead of hanging on an open promise.
  */
 
-import type { ReviewOutcome, ServiceNode, ServicePlan } from 'orca-cli/plan';
+import type { ReviewOutcome, ServiceNode, ServicePlan } from 'orca-agent-cli/plan';
 import * as vscode from 'vscode';
 
-// `orca-cli` is ESM and kept external (see extension.ts); load the diagram renderer
+// `orca-agent-cli` is ESM and kept external (see extension.ts); load the diagram renderer
 // at runtime rather than bundling it.
 const loadDiagram = async (): Promise<(plan: ServicePlan) => string> =>
-  (await import('orca-cli/plan')).renderDiagram;
+  (await import('orca-agent-cli/plan')).renderDiagram;
 
 /** Messages the webview posts back to the extension. */
 interface DecisionMessage {
