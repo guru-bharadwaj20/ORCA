@@ -21,6 +21,8 @@ export interface CompletionOptions {
   maxTokens?: number;
   /** Provider-specific model id override; defaults to the provider's configured model. */
   model?: string;
+  /** Cancels the in-flight request when the run is aborted. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -35,7 +37,7 @@ export interface ProviderCompletion {
   estimatedUsd: number;
 }
 
-/** One LLM backend. Implementations must be stateless per call (BYOK keys read from env). */
+/** One LLM backend. Implementations must be stateless per call (BYOK keys via a KeyResolver). */
 export interface AIProvider {
   readonly name: ProviderName;
   complete(prompt: string, options?: CompletionOptions): Promise<ProviderCompletion>;

@@ -25,11 +25,17 @@ export interface DockerCommandResult {
 const UP_WAIT_TIMEOUT_S = 120;
 
 /** Run `docker <args>` in a project dir, capturing output instead of throwing. */
-async function runDocker(args: string[], projectDir?: string): Promise<DockerCommandResult> {
+async function runDocker(
+  args: string[],
+  projectDir?: string,
+  signal?: AbortSignal
+): Promise<DockerCommandResult> {
   const result = await execa('docker', args, {
     ...(projectDir !== undefined ? { cwd: projectDir } : {}),
     reject: false,
     timeout: DEFAULT_SETTINGS.dockerTimeoutMs,
+    // A run-level cancel (e.g. the extension's cancel button) kills the docker child.
+    ...(signal !== undefined ? { cancelSignal: signal } : {}),
     // Plain buildkit progress keeps build logs line-oriented and readable for
     // the self-heal diagnosis (no ANSI redraw noise).
     env: { BUILDKIT_PROGRESS: 'plain' },
@@ -43,8 +49,8 @@ async function runDocker(args: string[], projectDir?: string): Promise<DockerCom
 }
 
 /** Verify the docker CLI exists and the daemon is reachable; throw typed if not. */
-export async function assertDockerAvailable(): Promise<void> {
-  const result = await runDocker(['info', '--format', '{{.ServerVersion}}']);
+export async function assertDockerAvailable(signal?: AbortSignal): Promise<void> {
+  const result = await runDocker(['info', '--format', '{{.ServerVersion}}'], undefined, signal);
   if (result.exitCode !== 0) {
     throw new MissingDependencyError(
       'Docker is required but unavailable (is the docker daemon running?). ' +
@@ -54,33 +60,45 @@ export async function assertDockerAvailable(): Promise<void> {
 }
 
 /** Run `docker compose build` in the given project dir. */
-export async function composeBuild(projectDir: string): Promise<DockerCommandResult> {
-  return runDocker(['compose', 'build'], projectDir);
+export async function composeBuild(
+  projectDir: string,
+  signal?: AbortSignal
+): Promise<DockerCommandResult> {
+  return runDocker(['compose', 'build'], projectDir, signal);
 }
 
 /**
  * Run `docker compose up -d --wait` — `--wait` blocks until every service is
  * running AND healthy (per its healthcheck), so an unhealthy stack fails here.
  */
-export async function composeUp(projectDir: string): Promise<DockerCommandResult> {
+export async function composeUp(
+  projectDir: string,
+  signal?: AbortSignal
+): Promise<DockerCommandResult> {
   return runDocker(
     ['compose', 'up', '-d', '--wait', '--wait-timeout', String(UP_WAIT_TIMEOUT_S)],
-    projectDir
+    projectDir,
+    signal
   );
 }
 
 /** Run `docker compose down` to tear everything down (safe on a never-started stack). */
-export async function composeDown(projectDir: string): Promise<DockerCommandResult> {
-  return runDocker(['compose', 'down', '--remove-orphans'], projectDir);
+export async function composeDown(
+  projectDir: string,
+  signal?: AbortSignal
+): Promise<DockerCommandResult> {
+  return runDocker(['compose', 'down', '--remove-orphans'], projectDir, signal);
 }
 
 /** Recent logs (all services, or one) to feed the self-heal diagnosis. */
 export async function composeLogs(
   projectDir: string,
-  service?: string
+  service?: string,
+  signal?: AbortSignal
 ): Promise<DockerCommandResult> {
   return runDocker(
     ['compose', 'logs', '--no-color', '--tail', '100', ...(service !== undefined ? [service] : [])],
-    projectDir
+    projectDir,
+    signal
   );
 }
