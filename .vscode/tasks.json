@@ -4,9 +4,26 @@
     {
       "label": "orca: build extension",
       "detail": "Build orca-agent-cli (dist) then bundle the extension so F5 has fresh output.",
-      "type": "shell",
-      "command": "npm run build && npm run build -w orca-vscode",
+      "dependsOrder": "sequence",
+      "dependsOn": ["orca: build core", "orca: bundle extension"],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "orca: build core",
+      "detail": "Compile orca-agent-cli to dist/ (the extension imports it at runtime).",
+      "type": "npm",
+      "script": "build",
       "options": { "cwd": "${workspaceFolder}" },
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "orca: bundle extension",
+      "detail": "esbuild-bundle the extension into vscode-extension/dist.",
+      "type": "npm",
+      "script": "build",
+      "path": "vscode-extension",
       "group": "build",
       "problemMatcher": []
     }
