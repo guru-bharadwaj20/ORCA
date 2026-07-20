@@ -11,6 +11,7 @@
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { combineConfidence, type Evidence } from '../model/claim.js';
 import { DEFAULT_WALK_IGNORE, readFileIfExists } from '../utils/fs.js';
 import { OrcaError } from '../utils/errors.js';
 import { detectEntrypoint } from './entrypoint.js';
@@ -213,6 +214,8 @@ export async function detectStack(repoPath: string): Promise<DetectionResult> {
     });
   }
 
+  const evidence = confidenceEvidence(frontend, backend, databases);
+
   return {
     repoPath,
     languages: await detectLanguages(repoPath),
@@ -221,26 +224,54 @@ export async function detectStack(repoPath: string): Promise<DetectionResult> {
     backend,
     databases,
     isSupported,
-    confidence: scoreConfidence(frontend, backend, databases),
+    confidence: combineConfidence(evidence),
+    reasoning: evidence.map((e) => e.signal),
     warnings,
   };
 }
 
 /**
- * Deterministic 0..1 confidence: how much of the expected shape of a supported repo
- * was actually observed. A full frontend+backend+db repo with entrypoints scores 0.95;
- * a bare unsupported repo scores 0.
+ * Build the evidence trail behind the detection confidence: one weighted signal per
+ * observed piece of the expected shape of a supported repo. Confidence is then the
+ * probabilistic-OR combination of these weights (see `combineConfidence`), so
+ * independent signals agreeing drive it up. A full frontend+backend+db repo with
+ * entrypoints scores ~0.9; a bare unsupported repo yields no evidence and scores 0.
+ *
+ * Weights are tuned to preserve the prior heuristic's decision boundaries: a full
+ * stack lands well above 0.8, a backend+db service above 0.5.
  */
-function scoreConfidence(
+function confidenceEvidence(
   frontend: DetectedComponent | null,
   backend: DetectedComponent | null,
   databases: DetectedDatabase[]
-): number {
-  let score = 0;
-  if (backend !== null) score += 0.35;
-  if (frontend !== null) score += 0.25;
-  if (databases.length > 0) score += 0.15;
-  if (frontend?.entrypoint) score += 0.1;
-  if (backend?.entrypoint) score += 0.1;
-  return Math.min(1, Number(score.toFixed(2)));
+): Evidence[] {
+  const evidence: Evidence[] = [];
+  if (backend !== null) {
+    evidence.push({
+      detector: 'index',
+      signal: `backend component detected (${backend.framework})`,
+      weight: 0.55,
+    });
+  }
+  if (frontend !== null) {
+    evidence.push({
+      detector: 'index',
+      signal: `frontend component detected (${frontend.framework})`,
+      weight: 0.45,
+    });
+  }
+  if (databases.length > 0) {
+    evidence.push({
+      detector: 'index',
+      signal: `database dependency found (${databases.map((d) => d.engine).join(', ')})`,
+      weight: 0.35,
+    });
+  }
+  if (frontend?.entrypoint) {
+    evidence.push({ detector: 'index', signal: 'frontend entrypoint resolved', weight: 0.25 });
+  }
+  if (backend?.entrypoint) {
+    evidence.push({ detector: 'index', signal: 'backend entrypoint resolved', weight: 0.25 });
+  }
+  return evidence;
 }

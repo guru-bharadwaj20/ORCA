@@ -53,6 +53,14 @@ describe('detect stage', () => {
     ]);
     expect(result.warnings).toEqual([]);
     expect(result.confidence).toBeGreaterThan(0.8);
+    // Confidence carries a reasoning trail (Universal Understanding model §4).
+    expect(result.reasoning).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('backend component detected'),
+        expect.stringContaining('frontend component detected'),
+        expect.stringContaining('database dependency found'),
+      ])
+    );
   });
 
   it('detects a Django + Postgres repo', async () => {
@@ -96,6 +104,8 @@ describe('detect stage', () => {
     expect(result.languages).toEqual(['unknown']);
     expect(result.packageManagers).toEqual([]);
     expect(result.confidence).toBe(0);
+    // No supported shape observed → no evidence, so no reasoning trail.
+    expect(result.reasoning).toEqual([]);
     expect(result.warnings.some((w) => w.code === 'unsupported-stack')).toBe(true);
   });
 

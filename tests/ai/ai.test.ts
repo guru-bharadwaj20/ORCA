@@ -48,6 +48,7 @@ const detection: DetectionResult = {
   databases: [{ engine: 'mongodb', defaultPort: 27017, detectedFrom: 'mongoose' }],
   isSupported: true,
   confidence: 0.7,
+  reasoning: [],
   warnings: [],
 };
 

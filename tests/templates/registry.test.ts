@@ -49,6 +49,7 @@ function detectionResult(parts: {
     databases: parts.databases ?? [],
     isSupported: true,
     confidence: 0.9,
+    reasoning: [],
     warnings: [],
   };
 }

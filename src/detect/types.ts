@@ -112,6 +112,13 @@ export interface DetectionResult {
   isSupported: boolean;
   /** Rough 0..1 confidence in the overall detection. */
   confidence: number;
+  /**
+   * The reasoning trail behind `confidence` — one human-readable signal per piece of
+   * evidence, e.g. "backend component detected", "database dependency found". Part of
+   * the Universal Understanding model (docs/universal-understanding-plan.md §4): every
+   * inference explains itself. May be empty for an unsupported repo.
+   */
+  reasoning: string[];
   /** Non-fatal issues surfaced during detection. */
   warnings: DetectionWarning[];
 }
