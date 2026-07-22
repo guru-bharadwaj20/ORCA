@@ -108,6 +108,26 @@ export interface DetectionWarning {
 }
 
 /**
+ * Richer, forward-looking detection signals gathered by the Phase-B/C detectors
+ * (frameworks beyond the seed set, monorepo topology, CI-recovered build commands and
+ * runtime versions). Additive and advisory: the seed-stack containerize path does not
+ * depend on it, but it feeds the reasoning trail and future generic-build stages so
+ * unfamiliar repos are understood rather than dropped.
+ */
+export interface RepoInsights {
+  /** Framework ids matched by the signature table, e.g. ["nextjs", "react"]. */
+  frameworks: string[];
+  /** Runtimes detected across the repo, e.g. ["node", "go"]. */
+  runtimes: string[];
+  /** Monorepo tooling detected, e.g. ["turborepo", "pnpm"]; empty for single-package repos. */
+  monorepoTools: string[];
+  /** Build/test/start commands recovered from CI workflows. */
+  ciCommands: { command: string; kind: string }[];
+  /** Runtime versions pinned in CI, e.g. [{ runtime: "node", version: "20" }]. */
+  ciRuntimeVersions: { runtime: string; version: string }[];
+}
+
+/**
  * The complete, aggregated output of the detect stage.
  * Populated by `src/detect/index.ts` from the individual detectors.
  */
@@ -135,6 +155,8 @@ export interface DetectionResult {
    * inference explains itself. May be empty for an unsupported repo.
    */
   reasoning: string[];
+  /** Forward-looking Phase-B/C signals (frameworks, monorepo, CI). Advisory. */
+  insights: RepoInsights;
   /** Non-fatal issues surfaced during detection. */
   warnings: DetectionWarning[];
 }

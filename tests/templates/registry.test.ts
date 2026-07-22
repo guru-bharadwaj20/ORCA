@@ -50,6 +50,13 @@ function detectionResult(parts: {
     isSupported: true,
     confidence: 0.9,
     reasoning: [],
+    insights: {
+      frameworks: [],
+      runtimes: [],
+      monorepoTools: [],
+      ciCommands: [],
+      ciRuntimeVersions: [],
+    },
     warnings: [],
   };
 }

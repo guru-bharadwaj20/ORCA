@@ -11,13 +11,25 @@
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { combineConfidence, type Evidence } from '../model/claim.js';
+import { bestClaim, combineConfidence, type Claim, type Evidence } from '../model/claim.js';
+import type { RepoContext } from '../model/detector.js';
+import type { Runtime } from '../model/recipe.js';
 import { DEFAULT_WALK_IGNORE, readFileIfExists } from '../utils/fs.js';
 import { OrcaError } from '../utils/errors.js';
+import { analyzeCi } from './ci.js';
+import { defaultDetectorRegistry } from './detectors/index.js';
 import { detectEntrypoint } from './entrypoint.js';
 import { detectBackendFramework, detectFrontendFramework } from './framework.js';
+import { matchFrameworks } from './frameworkSignatures.js';
 import { detectLanguages } from './language.js';
 import { readAllDependencies } from './manifest.js';
+import {
+  readDotnetDependencies,
+  readGoDependencies,
+  readJvmDependencies,
+  readRustDependencies,
+} from './manifestExt.js';
+import { detectMonorepo } from './monorepo.js';
 import { detectPackageManager } from './packageManager.js';
 import { detectPorts } from './ports.js';
 import { detectServices } from './services.js';
@@ -30,12 +42,28 @@ import type {
   FrontendFramework,
   Language,
   PackageManager,
+  RepoInsights,
 } from './types.js';
 
 export type { DetectionResult } from './types.js';
 
-/** Any of these marks a directory as a component root worth inspecting. */
-const MANIFEST_FILES = ['package.json', 'requirements.txt', 'pyproject.toml', 'manage.py'];
+/**
+ * Any of these marks a directory as a component root worth inspecting. The seed-stack
+ * manifests come first (their presence drives the supported containerize path); the
+ * ecosystem manifests (Phase B) widen candidate discovery so Go/Rust/JVM/.NET
+ * components surface in `insights` even though the seed path doesn't build them yet.
+ */
+const MANIFEST_FILES = [
+  'package.json',
+  'requirements.txt',
+  'pyproject.toml',
+  'manage.py',
+  'go.mod',
+  'Cargo.toml',
+  'pom.xml',
+  'build.gradle',
+  'build.gradle.kts',
+];
 
 /** Conventional directory names that disambiguate multiple candidates per role. */
 const FRONTEND_DIR_HINT = /^(client|frontend|web|ui)$/i;
@@ -214,7 +242,8 @@ export async function detectStack(repoPath: string): Promise<DetectionResult> {
     });
   }
 
-  const evidence = confidenceEvidence(frontend, backend, databases);
+  const insights = await gatherInsights(repoPath, roots);
+  const evidence = confidenceEvidence(frontend, backend, databases, insights);
 
   return {
     repoPath,
@@ -226,7 +255,87 @@ export async function detectStack(repoPath: string): Promise<DetectionResult> {
     isSupported,
     confidence: combineConfidence(evidence),
     reasoning: evidence.map((e) => e.signal),
+    insights,
     warnings,
+  };
+}
+
+/** Read every direct dependency across all ecosystems at one component root. */
+async function allEcosystemDependencies(dir: string): Promise<string[]> {
+  const [common, go, rust, jvm, dotnet] = await Promise.all([
+    readAllDependencies(dir),
+    readGoDependencies(dir),
+    readRustDependencies(dir),
+    readJvmDependencies(dir),
+    readDotnetDependencies(dir),
+  ]);
+  return [...new Set([...common, ...go, ...rust, ...jvm, ...dotnet])];
+}
+
+/** Basenames present at a directory, for file-marker matching. */
+async function filesAt(dir: string): Promise<string[]> {
+  const markers = [
+    'go.mod',
+    'Cargo.toml',
+    'pom.xml',
+    'build.gradle',
+    'build.gradle.kts',
+    'manage.py',
+    'vite.config.ts',
+    'vite.config.js',
+    'global.json',
+    'Directory.Build.props',
+  ];
+  const present: string[] = [];
+  for (const m of markers) {
+    if ((await readFileIfExists(join(dir, m))) !== null) present.push(m);
+  }
+  return present;
+}
+
+/**
+ * Gather the forward-looking Phase-B/C signals: runtime claims (via the detector
+ * registry), framework matches per candidate root, monorepo topology, and CI analysis.
+ * Advisory — failures here never fail detection.
+ */
+async function gatherInsights(repoPath: string, roots: string[]): Promise<RepoInsights> {
+  const registry = defaultDetectorRegistry();
+  const runtimeSet = new Set<Runtime>();
+  const frameworkSet = new Set<string>();
+
+  for (const rootDir of roots) {
+    const absDir = rootDir === '.' ? repoPath : join(repoPath, rootDir);
+    const ctx: RepoContext = { repoPath, scopeDir: rootDir };
+
+    // Runtime claims from tier-1 detectors, best (highest-confidence) first.
+    const claims: Claim<unknown>[] = [];
+    for (const detector of registry.atTier(1)) {
+      claims.push(...(await detector.detect(ctx)));
+    }
+    const runtimeClaim = bestClaim(claims as Claim<Runtime>[]);
+    const dependencies = await allEcosystemDependencies(absDir);
+    const files = await filesAt(absDir);
+
+    // Framework matches: try the claimed runtime, plus node/python (seed ecosystems
+    // whose deps live in the common manifests) so frameworks surface even when no
+    // dedicated runtime manifest exists (a bare React app has no runtime detector).
+    const runtimes: Runtime[] = runtimeClaim ? [runtimeClaim.value] : [];
+    for (const rt of [...runtimes, 'node', 'python'] as Runtime[]) {
+      if (rt) runtimeSet.add(rt);
+      for (const match of matchFrameworks({ runtime: rt, dependencies, files })) {
+        frameworkSet.add(match.id);
+      }
+    }
+  }
+
+  const [monorepo, ci] = await Promise.all([detectMonorepo(repoPath), analyzeCi(repoPath)]);
+
+  return {
+    frameworks: [...frameworkSet],
+    runtimes: [...runtimeSet],
+    monorepoTools: monorepo.tools,
+    ciCommands: ci.commands.map((c) => ({ command: c.command, kind: c.kind })),
+    ciRuntimeVersions: ci.runtimeVersions,
   };
 }
 
@@ -243,7 +352,8 @@ export async function detectStack(repoPath: string): Promise<DetectionResult> {
 function confidenceEvidence(
   frontend: DetectedComponent | null,
   backend: DetectedComponent | null,
-  databases: DetectedDatabase[]
+  databases: DetectedDatabase[],
+  insights: RepoInsights
 ): Evidence[] {
   const evidence: Evidence[] = [];
   if (backend !== null) {
@@ -272,6 +382,20 @@ function confidenceEvidence(
   }
   if (backend?.entrypoint) {
     evidence.push({ detector: 'index', signal: 'backend entrypoint resolved', weight: 0.25 });
+  }
+  // CI corroboration only *reinforces* an already-detected stack (the maintainer's own
+  // build recipe agreeing with detection); it never manufactures confidence on its own,
+  // so a repo with CI but no recognized component still scores 0.
+  const hasStack = frontend !== null || backend !== null;
+  const ciBuildSignals = insights.ciCommands.filter(
+    (c) => c.kind === 'build' || c.kind === 'start'
+  );
+  if (hasStack && ciBuildSignals.length > 0) {
+    evidence.push({
+      detector: 'ci',
+      signal: `CI corroborates the build (${ciBuildSignals.length} build/start step(s))`,
+      weight: 0.2,
+    });
   }
   return evidence;
 }

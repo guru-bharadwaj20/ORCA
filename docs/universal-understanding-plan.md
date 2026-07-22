@@ -340,3 +340,32 @@ framework = add a detector + a recipe," which is the unlock for every later phas
 
 I can start Phase A on request — it's a well-bounded, test-guarded refactor.
 ```
+
+---
+
+## 9. Implementation log & known follow-ups
+
+Landed on `feat/universal-understanding` (behind the full test suite):
+
+- **Phase A** — `Claim`/`Evidence`/`Detector` model, `RecipeRegistry` with the three
+  seed stacks as data, confidence reworked onto evidence-combination with a reasoning
+  trail on `DetectionResult`.
+- **Phase B** — tier-1 runtime detectors (Go/Rust/JVM/.NET), ecosystem `BuildRecipe`s,
+  the `Language` union widened to 9 ecosystems, a data-driven framework signature table
+  (Next/Vite/Nest/FastAPI/Flask/Gin/Spring/Blazor/…), non-JS/Py manifest dependency
+  readers, and monorepo topology detection.
+- **Phase C** — GitHub Actions CI analysis (recovered build/test/start commands +
+  pinned runtime versions), wired into `DetectionResult.insights` and the confidence
+  trail (CI corroboration reinforces an already-detected stack, never manufactures it).
+
+Known follow-ups surfaced during integration:
+
+- **Monorepo package globs are not expanded into candidate roots.** `findCandidateRoots`
+  scans only first-level subdirectories; a workspace glob like `services/*` (declared in
+  `insights.monorepoTools`/globs) does not yet promote `services/api` to a detected
+  component. Resolving the globs into candidate roots is the natural next step now that
+  the topology is detected.
+- **Ecosystem components are classified, not yet containerized.** Go/Rust/JVM/.NET
+  surface in `insights` and match a `BuildRecipe`, but the generate/compose path still
+  only emits Dockerfiles for the seed stacks. Wiring `RecipeRegistry` into a generic
+  Dockerfile synthesizer is Phase E.
