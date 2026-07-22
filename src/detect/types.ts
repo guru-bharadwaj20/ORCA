@@ -14,8 +14,24 @@
  * human-readable entry in `warnings`.
  */
 
-/** Programming languages ORCA can reason about. */
-export type Language = 'javascript' | 'typescript' | 'python' | 'unknown';
+/**
+ * Programming languages ORCA can reason about. The first three drive the seed stacks
+ * end-to-end; the rest (Phase B) are recognized at the detection layer — surfaced in
+ * `DetectionResult.languages` and routed to ecosystem `BuildRecipe`s — even before the
+ * full containerize path supports them, so an unfamiliar repo is *classified*, never
+ * silently dropped.
+ */
+export type Language =
+  | 'javascript'
+  | 'typescript'
+  | 'python'
+  | 'go'
+  | 'rust'
+  | 'java'
+  | 'csharp'
+  | 'php'
+  | 'ruby'
+  | 'unknown';
 
 /** Package managers ORCA can detect and drive. */
 export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'pip' | 'poetry' | 'unknown';
