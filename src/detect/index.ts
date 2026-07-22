@@ -290,6 +290,14 @@ async function allEcosystemDependencies(dir: string): Promise<string[]> {
   return [...new Set([...common, ...go, ...rust, ...jvm, ...dotnet])];
 }
 
+/** True when any of the named files exists at `dir`. */
+async function hasFile(dir: string, ...names: string[]): Promise<boolean> {
+  for (const name of names) {
+    if ((await readFileIfExists(join(dir, name))) !== null) return true;
+  }
+  return false;
+}
+
 /** Basenames present at a directory, for file-marker matching. */
 async function filesAt(dir: string): Promise<string[]> {
   const markers = [
@@ -338,12 +346,23 @@ async function gatherInsights(
     const dependencies = await allEcosystemDependencies(absDir);
     const files = await filesAt(absDir);
 
-    // Framework matches: try the claimed runtime, plus node/python (seed ecosystems
-    // whose deps live in the common manifests) so frameworks surface even when no
-    // dedicated runtime manifest exists (a bare React app has no runtime detector).
-    const runtimes: Runtime[] = runtimeClaim ? [runtimeClaim.value] : [];
-    for (const rt of [...runtimes, 'node', 'python'] as Runtime[]) {
-      if (rt) runtimeSet.add(rt);
+    // Only runtimes with a genuine manifest at this root count as present. node/python
+    // are inferred from their common manifests (package.json / requirements|pyproject),
+    // which the seed-stack readers already parsed into `dependencies`.
+    if (runtimeClaim) runtimeSet.add(runtimeClaim.value);
+    const hasNode = await hasFile(absDir, 'package.json');
+    const hasPython = await hasFile(absDir, 'requirements.txt', 'pyproject.toml', 'manage.py');
+    if (hasNode) runtimeSet.add('node');
+    if (hasPython) runtimeSet.add('python');
+
+    // Match frameworks against whichever runtimes are actually present here. A probe
+    // set is unnecessary now that runtime presence is established up front.
+    const present: Runtime[] = [
+      runtimeClaim?.value,
+      hasNode ? 'node' : undefined,
+      hasPython ? 'python' : undefined,
+    ].filter((r): r is Runtime => Boolean(r));
+    for (const rt of present) {
       for (const match of matchFrameworks({ runtime: rt, dependencies, files })) {
         frameworkSet.add(match.id);
       }

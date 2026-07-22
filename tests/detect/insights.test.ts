@@ -54,6 +54,9 @@ describe('detectStack insights integration', () => {
 
     expect(result.insights.monorepoTools).toEqual(expect.arrayContaining(['turborepo', 'npm']));
     expect(result.insights.runtimes).toContain('go');
+    // The root package.json legitimately marks node; the Go service must NOT falsely
+    // report python (audit: runtimes reflect real manifests, not matching probes).
+    expect(result.insights.runtimes).not.toContain('python');
     expect(result.insights.frameworks).toContain('gin');
     expect(result.insights.ciRuntimeVersions).toContainEqual({ runtime: 'go', version: '1.23' });
     expect(result.insights.ciCommands.some((c) => c.kind === 'build')).toBe(true);
