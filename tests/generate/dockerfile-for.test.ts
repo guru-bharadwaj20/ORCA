@@ -27,7 +27,7 @@ const recipe: BuildRecipe = {
   dependencyFiles: ['Cargo.toml'],
   installCommands: ['cargo fetch'],
   buildCommands: ['cargo build --release'],
-  startCommand: './target/release/app',
+  startCommand: './target/release/{{binary}}',
   defaultPorts: [8080],
   baseImages: { build: 'rust:1-slim', runtime: 'debian:bookworm-slim' },
 };
