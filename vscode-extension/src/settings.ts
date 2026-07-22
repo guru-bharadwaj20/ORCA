@@ -1,30 +1,15 @@
-/**
- * Extension settings + secrets glue (Phase 5).
- *
- *  - Contributed `orca.*` settings map onto ORCA's RunOptions / router config. They are
- *    applied ONLY when the user set them explicitly (via `inspect`), so the precedence
- *    stays UI > env (`ORCA_*`) > ORCA default — an unset setting never masks an env var.
- *  - API keys live in `vscode.SecretStorage`, never settings.json. They are surfaced to
- *    the ESM core through its Phase 1 `KeyResolver` seam (pre-fetched into a sync lookup,
- *    since SecretStorage is async and KeyResolver is not).
- */
-
 import type { RunOptions } from 'orca-agent-cli';
 import type { KeyResolver } from 'orca-agent-cli/config';
 import * as vscode from 'vscode';
 
-// ORCA env-var names the provider settings shadow (kept in sync with orca-agent-cli's
-// ENV_KEYS.primaryProvider / .fallbackProvider).
 const PRIMARY_PROVIDER_ENV = 'ORCA_PRIMARY_PROVIDER';
 const FALLBACK_PROVIDER_ENV = 'ORCA_FALLBACK_PROVIDER';
 
-/** The user's explicitly-set value for `orca.<key>`, or undefined if only the default. */
 function explicitValue<T>(cfg: vscode.WorkspaceConfiguration, key: string): T | undefined {
   const info = cfg.inspect<T>(key);
   return info?.workspaceFolderValue ?? info?.workspaceValue ?? info?.globalValue;
 }
 
-/** RunOptions overrides from explicitly-set `orca.*` settings (empty when none set). */
 export function readConfiguredOptions(): Partial<RunOptions> {
   const cfg = vscode.workspace.getConfiguration('orca');
   const options: Partial<RunOptions> = {};
@@ -42,10 +27,6 @@ export function readConfiguredOptions(): Partial<RunOptions> {
   return options;
 }
 
-/**
- * A synthetic env fragment carrying explicitly-set provider settings, layered over
- * `process.env` when building the router so UI wins but env still shows through.
- */
 export function configuredProviderEnv(): Record<string, string> {
   const cfg = vscode.workspace.getConfiguration('orca');
   const env: Record<string, string> = {};
@@ -60,11 +41,6 @@ export function configuredProviderEnv(): Record<string, string> {
   return env;
 }
 
-/**
- * Build a synchronous KeyResolver backed by SecretStorage. The two provider keys are
- * pre-fetched (SecretStorage is async, the seam is sync); a developer's `process.env`
- * key is used as a fallback when nothing is stored.
- */
 export async function createSecretKeyResolver(
   context: vscode.ExtensionContext
 ): Promise<KeyResolver> {
@@ -79,7 +55,6 @@ export async function createSecretKeyResolver(
   return (name: string): string | undefined => stored[name] ?? process.env[name];
 }
 
-/** "ORCA: Set API Key" — store (or clear) a provider key in SecretStorage. */
 export async function setApiKey(context: vscode.ExtensionContext): Promise<void> {
   const { ENV_KEYS } = await import('orca-agent-cli/config');
   const choice = await vscode.window.showQuickPick(
@@ -96,7 +71,7 @@ export async function setApiKey(context: vscode.ExtensionContext): Promise<void>
     password: true,
     ignoreFocusOut: true,
   });
-  if (value === undefined) return; // cancelled
+  if (value === undefined) return;
 
   if (value.trim() === '') {
     await context.secrets.delete(choice.key);

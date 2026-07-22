@@ -1,15 +1,3 @@
-/**
- * Builds the `ServicePlan` (the service graph) from the detection result plus the
- * AI-filled templates. This is where components + databases become concrete container
- * nodes with ports, env, volumes, and dependency edges. The conventions (images,
- * healthchecks, env names, volume shapes) mirror the hand-verified Stage 1 golden
- * configs — this module generalizes them.
- *
- * STAGE: 4 (plan) — REAL code.
- * Inputs: a `DetectionResult` and the filled template variables (keyed by role).
- * Outputs: a `ServicePlan` ready for review, diagram, and generation.
- */
-
 import { basename } from 'node:path';
 
 import type { FilledTemplateVars, InferredEnv } from '../ai/schema.js';
@@ -20,10 +8,8 @@ import { describeComponent } from '../templates/registry.js';
 import type { DockerfileVars } from '../templates/types.js';
 import type { Healthcheck, ServiceDependency, ServiceNode, ServicePlan } from './types.js';
 
-/** Shared dev credentials/database name across generated stacks (mirrors the goldens). */
 const DB_NAME = 'orca';
 
-/** Engine-specific container knowledge: image, data dir, healthcheck. */
 const DB_SPECS: Record<
   DetectedDatabase['engine'],
   { image: string; dataDir: string | null; healthcheck: Healthcheck }
@@ -50,7 +36,7 @@ const DB_SPECS: Record<
   },
   redis: {
     image: 'redis:7',
-    dataDir: null, // cache — no persistent volume
+    dataDir: null,
     healthcheck: {
       test: ['CMD', 'redis-cli', 'ping'],
       interval: '5s',
@@ -60,7 +46,6 @@ const DB_SPECS: Record<
   },
 };
 
-/** Sanitize a repo basename into a valid compose project name. */
 function projectNameFor(repoPath: string): string {
   const slug = basename(repoPath)
     .toLowerCase()
@@ -69,12 +54,10 @@ function projectNameFor(repoPath: string): string {
   return `orca-${slug || 'app'}`;
 }
 
-/** Compose build context for a component root ('.' stays '.', others become './dir'). */
 function contextFor(rootDir: string): string {
   return rootDir === '.' ? '.' : `./${rootDir}`;
 }
 
-/** Database/cache nodes: the first storage engine is 'db'; redis is 'cache'. */
 function databaseNodes(databases: DetectedDatabase[]): ServiceNode[] {
   const nodes: ServiceNode[] = [];
   let primaryTaken = false;
@@ -106,7 +89,6 @@ function databaseNodes(databases: DetectedDatabase[]): ServiceNode[] {
   return nodes;
 }
 
-/** Connection env a backend needs for each database node, keyed off the golden configs. */
 function connectionEnv(
   dbNodes: ServiceNode[],
   databases: DetectedDatabase[]
@@ -133,7 +115,6 @@ function connectionEnv(
   return env;
 }
 
-/** Dev-mode volumes: source bind mount, plus an anonymous node_modules shield for Node. */
 function componentVolumes(
   component: DetectedComponent,
   vars: DockerfileVars
@@ -147,11 +128,6 @@ function componentVolumes(
   return volumes;
 }
 
-/**
- * The final `DockerfileVars` for a component: registry defaults, refined by the AI
- * fill for that role when one exists. Exported so the pipeline/generate stages render
- * Dockerfiles from exactly the vars the plan was built with (no drift).
- */
 export function refinedComponentVars(
   component: DetectedComponent,
   role: 'frontend' | 'backend',
@@ -162,7 +138,6 @@ export function refinedComponentVars(
   return fill === undefined ? defaults : refineDockerfileVars(defaults, fill);
 }
 
-/** Assemble ServiceNodes for frontend/backend/databases and wire dependency edges. */
 export function buildServicePlan(
   detection: DetectionResult,
   filled: Record<string, FilledTemplateVars>,
@@ -171,7 +146,6 @@ export function buildServicePlan(
   const dbNodes = databaseNodes(detection.databases);
   const nodes: ServiceNode[] = [...dbNodes];
 
-  // Both components sharing one root would collide on ./Dockerfile — disambiguate.
   const sharedRoot =
     detection.frontend !== null &&
     detection.backend !== null &&
@@ -224,7 +198,6 @@ export function buildServicePlan(
       ports: [{ host: vars.port, container: vars.port, protocol: 'tcp' }],
       environment: {
         NODE_ENV: 'development',
-        // The browser talks to the backend from the host, hence localhost.
         ...(backendVars !== null ? { VITE_API_URL: `http://localhost:${backendVars.port}` } : {}),
       },
       dependsOn:
@@ -233,9 +206,6 @@ export function buildServicePlan(
     });
   }
 
-  // AI-inferred app env rides in a .env file attached to the app service (the
-  // backend when there is one). Vars the plan already injects inline are filtered
-  // out, so an empty selection means no .env and no env_file reference at all.
   if (inferred !== null) {
     const appNode = backendNode ?? nodes.find((n) => n.id === 'frontend');
     if (appNode !== undefined && selectEnvVars(inferred, { services: nodes }).length > 0) {

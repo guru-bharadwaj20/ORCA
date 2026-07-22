@@ -1,18 +1,6 @@
-/**
- * Prompt builder for the "diagnose and heal a failed build/run" task. Feeds the model
- * the failing command output + current configs and asks for a plain-English diagnosis
- * plus a concrete patch.
- *
- * STAGE: 3 (ai) — used by STAGE 5 (self-heal). REAL code.
- * Inputs: the error output, the current generated files, and attempt number.
- * Outputs: a { system, user } prompt pair for the client.
- */
-
 import type { PromptPair } from './fill.js';
 
-/** Keep the *tail* of build output — that's where the actual error usually is. */
 const MAX_ERROR_CHARS = 5000;
-/** Cap per-file contents so a big Dockerfile/compose can't blow the prompt. */
 const MAX_FILE_CHARS = 4000;
 
 const HEAL_SYSTEM = `You are ORCA's self-heal assistant. A docker build/run of a small student/hackathon repo just failed. Diagnose the failure and propose ONE minimal fix by patching the files ORCA generated (Dockerfiles, docker-compose.yml, .env). Never patch the repo's own application source code.
@@ -26,7 +14,6 @@ Rules:
 - Only patch files from the provided list; do not introduce new files unless strictly required to fix the error.
 - If the error is unfixable by config changes (e.g. broken application code), say so in "explanation" and return an empty "patches" array.`;
 
-/** Compose the heal prompt; demands explanation + fix + minimal patches. */
 export function buildHealPrompt(
   errorOutput: string,
   currentFiles: { path: string; contents: string }[],

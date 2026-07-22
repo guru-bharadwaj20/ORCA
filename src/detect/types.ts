@@ -1,117 +1,59 @@
-/**
- * Shared data contract: the result of STAGE 2 (static, AI-free detection).
- *
- * STAGE: 2 (detect)
- * REAL CODE — this is the type every detector writes into and every later stage
- * (templates, AI, plan, build) reads from. It is intentionally complete and stable
- * up front so the rest of the pipeline can be built against it.
- *
- * Inputs (conceptual): a cloned repo directory on disk.
- * Outputs: a fully populated `DetectionResult` describing the repo's stack.
- *
- * SCOPE: ORCA only supports a narrow set of stacks. The union types below encode
- * that scope on purpose — anything outside it is represented as `'unknown'` plus a
- * human-readable entry in `warnings`.
- */
-
-/** Programming languages ORCA can reason about. */
 export type Language = 'javascript' | 'typescript' | 'python' | 'unknown';
 
-/** Package managers ORCA can detect and drive. */
 export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'pip' | 'poetry' | 'unknown';
 
-/** Supported frontend frameworks. */
 export type FrontendFramework = 'react' | 'unknown';
 
-/** Supported backend frameworks. */
 export type BackendFramework = 'express' | 'django' | 'unknown';
 
-/** Supported database / cache engines. */
 export type DatabaseEngine = 'postgres' | 'mongodb' | 'redis';
 
-/** The high-level role a detected component plays in the app. */
 export type ComponentRole = 'frontend' | 'backend' | 'database';
 
-/**
- * A network port a component listens on, together with how ORCA learned about it.
- * `source` lets the explainable log say *why* a port was chosen.
- */
 export interface DetectedPort {
-  /** The container-internal port number, e.g. 3000, 8000, 5432. */
   port: number;
-  /** Transport protocol; ORCA only cares about tcp for supported stacks. */
   protocol: 'tcp' | 'udp';
-  /** How the port was discovered, used by the explainable log. */
   source: 'default' | 'code' | 'env' | 'dockerfile' | 'readme' | 'inferred';
 }
 
-/** The command that starts a component and where it should run. */
 export interface Entrypoint {
-  /** Which component this entrypoint belongs to. */
   role: ComponentRole;
-  /** The raw start command, e.g. `npm run dev` or `python manage.py runserver`. */
   command: string;
-  /** Working directory (relative to repo root) the command should run in. */
   workingDir: string;
-  /** How the entrypoint was discovered, used by the explainable log. */
   source: 'package-json-script' | 'procfile' | 'manage-py' | 'readme' | 'inferred';
 }
 
-/** A detected application component (frontend or backend service). */
 export interface DetectedComponent {
   role: Extract<ComponentRole, 'frontend' | 'backend'>;
-  /** Path to the component root, relative to the repo root (`.` for single-package repos). */
   rootDir: string;
   language: Language;
   packageManager: PackageManager;
-  /** The framework detected for this component, if any. */
   framework: FrontendFramework | BackendFramework | 'unknown';
-  /** Direct dependency names read from the manifest (package.json / requirements.txt). */
   dependencies: string[];
-  /** Ports this component is believed to listen on. */
   ports: DetectedPort[];
-  /** The command that starts this component, if one was found. */
   entrypoint: Entrypoint | null;
 }
 
-/** A detected database or cache dependency the app needs to run. */
 export interface DetectedDatabase {
   engine: DatabaseEngine;
-  /** The default port for this engine (5432 / 27017 / 6379). */
   defaultPort: number;
-  /** The dependency/library that revealed this database (e.g. `pg`, `mongoose`, `psycopg2`). */
   detectedFrom: string;
 }
 
-/** Non-fatal issues worth surfacing to the user (unknown stack, ambiguous config, etc.). */
 export interface DetectionWarning {
   code: string;
   message: string;
-  /** Which detector raised the warning, for traceability. */
   detector: string;
 }
 
-/**
- * The complete, aggregated output of the detect stage.
- * Populated by `src/detect/index.ts` from the individual detectors.
- */
 export interface DetectionResult {
-  /** Absolute path to the cloned repo on disk. */
   repoPath: string;
-  /** Every language seen anywhere in the repo. */
   languages: Language[];
-  /** Every package manager seen anywhere in the repo. */
   packageManagers: PackageManager[];
-  /** The detected frontend component, or null if there isn't one. */
   frontend: DetectedComponent | null;
-  /** The detected backend component, or null if there isn't one. */
   backend: DetectedComponent | null;
-  /** Databases/caches the app depends on (may be empty). */
   databases: DetectedDatabase[];
-  /** True when ORCA is confident the repo is a supported stack it can containerize. */
   isSupported: boolean;
-  /** Rough 0..1 confidence in the overall detection. */
   confidence: number;
-  /** Non-fatal issues surfaced during detection. */
   warnings: DetectionWarning[];
 }

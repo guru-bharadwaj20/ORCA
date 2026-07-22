@@ -1,9 +1,3 @@
-/**
- * STAGE 3 tests — AI template-filling / env-inference with the LLM client MOCKED.
- * The Anthropic SDK module is replaced wholesale: no real API calls are ever made,
- * but everything on our side of the boundary (prompts, cost cap, ledger, zod
- * validation) runs for real.
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const createMock = vi.hoisted(() => vi.fn());
@@ -64,8 +58,6 @@ function mockModelReply(text: string, usage = { input_tokens: 1200, output_token
 beforeEach(() => {
   createMock.mockReset();
   process.env['ANTHROPIC_API_KEY'] = 'sk-ant-test-key';
-  // Keep the suite hermetic: with no Qwen key, the router's primary attempt fails
-  // fast and escalates to the (mocked) Anthropic fallback — never the network.
   delete process.env['QWEN_API_KEY'];
 });
 
@@ -85,11 +77,9 @@ describe('ai stage (mocked LLM)', () => {
     const filled = await fillTemplate(detection, template, '# My App\nRuns on Node 20.', ledger);
 
     expect(filled).toEqual(payload);
-    // The ledger accrued this call's usage and cost.
     expect(ledger.inputTokens).toBe(1200);
     expect(ledger.outputTokens).toBe(250);
     expect(ledger.estimatedUsd).toBeCloseTo((1200 / 1e6) * 5 + (250 / 1e6) * 25, 6);
-    // One real-shaped SDK call, grounded on the template defaults.
     expect(createMock).toHaveBeenCalledTimes(1);
     const request = createMock.mock.calls[0]?.[0];
     expect(request.model).toBe('claude-opus-4-8');
@@ -98,7 +88,6 @@ describe('ai stage (mocked LLM)', () => {
   });
 
   it('rejects a response that fails schema validation', async () => {
-    // An unsupported package manager must be refused, not propagated into a Dockerfile.
     mockModelReply(JSON.stringify({ variables: { packageManager: 'cargo' } }));
 
     await expect(fillTemplate(detection, template, '', freshLedger())).rejects.toMatchObject({
@@ -120,7 +109,6 @@ describe('ai stage (mocked LLM)', () => {
     await expect(fillTemplate(detection, template, '', ledger)).rejects.toBeInstanceOf(
       CostCapExceededError
     );
-    // The cap is enforced *before* any call is made.
     expect(createMock).not.toHaveBeenCalled();
   });
 

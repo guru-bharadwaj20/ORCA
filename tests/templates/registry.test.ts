@@ -1,8 +1,3 @@
-/**
- * STAGE 1 verification — registry maps a detected component to the right Dockerfile
- * template and sane default `DockerfileVars`, WITHOUT running detection or AI. Pure,
- * deterministic switch/lookup logic.
- */
 import { describe, expect, it } from 'vitest';
 
 import type {
@@ -34,7 +29,6 @@ function port(n: number) {
   return { port: n, protocol: 'tcp' as const, source: 'default' as const };
 }
 
-/** A representative full DetectionResult, to prove registry works off real component shapes. */
 function detectionResult(parts: {
   frontend?: DetectedComponent | null;
   backend?: DetectedComponent | null;
@@ -168,7 +162,6 @@ describe('representative DetectionResults (MERN + Django)', () => {
 
     expect(selectDockerfileTemplate(result.frontend!)).toBe('node.Dockerfile.hbs');
     expect(selectDockerfileTemplate(result.backend!)).toBe('node.Dockerfile.hbs');
-    // databases use official images — registry produces no Dockerfile for them.
     expect(result.databases[0]!.engine).toBe('mongodb');
   });
 

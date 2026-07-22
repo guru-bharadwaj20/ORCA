@@ -21,4 +21,6 @@ orca run ./examples/mern-sample --dry-run     # show the plan + diagram only
 orca run ./examples/django-postgres-sample
 ```
 
-<!-- TODO(stage-8): record an asciinema cast and embed sample diagram + heal-log output. -->
+## Planned
+
+Record an asciinema cast and embed sample diagram + heal-log output.

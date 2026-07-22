@@ -1,7 +1,3 @@
-/**
- * Env-file generation tests — dedupe against the plan, explainable comments,
- * quoting, and the invalid-name guard.
- */
 import { describe, expect, it } from 'vitest';
 import { fileURLToPath } from 'node:url';
 
@@ -20,7 +16,6 @@ async function mernPlan(inferred: InferredEnv | null = null) {
 
 const inferred: InferredEnv = {
   variables: [
-    // Already injected inline by the plan (backend MONGO_URL) → must be skipped.
     { key: 'MONGO_URL', value: 'mongodb://db:27017/orca', required: true, reason: 'db url' },
     { key: 'JWT_SECRET', value: 'change-me', required: true, reason: 'README says auth needs it' },
     { key: 'LOG_LEVEL', value: 'debug', required: false, reason: 'optional tuning from README' },
@@ -41,7 +36,7 @@ describe('selectEnvVars / buildEnvFile', () => {
     expect(text).toContain('# (required) README says auth needs it');
     expect(text).toContain('LOG_LEVEL=debug');
     expect(text).toContain('# optional tuning from README');
-    expect(text).not.toContain('MONGO_URL'); // plan-owned wiring never duplicated
+    expect(text).not.toContain('MONGO_URL');
     expect(text).not.toContain('BAD KEY');
   });
 

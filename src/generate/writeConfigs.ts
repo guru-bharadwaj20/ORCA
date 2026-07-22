@@ -1,15 +1,3 @@
-/**
- * Renders the selected templates with their filled variables and writes the final
- * Dockerfiles, docker-compose.yml, .dockerignore (and, for Django, the migrate-then-run
- * entrypoint script) into the workspace.
- *
- * STAGE: 5 (generate) — REAL code.
- * Inputs: a `RunContext` (approved plan, detection, filled templates, workspace dir).
- * Outputs: files written to disk; returns the list of `GeneratedFile`s. That list is
- * also the audit trail AND the self-heal patch allowlist — the heal loop may only
- * modify files recorded here, never the repo's own source.
- */
-
 import { chmod, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -21,7 +9,6 @@ import { OrcaError } from '../utils/errors.js';
 import { readFileIfExists } from '../utils/fs.js';
 import { planToComposeVars } from './composeVars.js';
 
-/** Junk that must never be COPY'd into an image (mirrors the golden samples). */
 const DOCKERIGNORE = `node_modules
 .git
 dist
@@ -34,10 +21,6 @@ venv
 .env
 `;
 
-/**
- * The migrate-then-run entrypoint for Django + Postgres (mirrors the hand-verified
- * golden sample): wait for the db socket, migrate, then hand off to the CMD.
- */
 const DJANGO_ENTRYPOINT = `#!/bin/sh
 set -e
 
@@ -59,16 +42,10 @@ echo "starting server..."
 exec "$@"
 `;
 
-/** Repo-relative path (forward slashes) for a file inside a compose build context. */
 function inContext(context: string, name: string): string {
   return context === '.' ? name : `${context.replace(/^\.\//, '')}/${name}`;
 }
 
-/**
- * Render every config for the approved plan and write it into the workspace.
- * Existing repo files are only ever shadowed inside ORCA's temp copy — the
- * original repo is never touched.
- */
 export async function writeConfigs(ctx: RunContext): Promise<GeneratedFile[]> {
   const { detection, plan } = ctx;
   if (detection === undefined || plan === undefined) {
@@ -95,14 +72,11 @@ export async function writeConfigs(ctx: RunContext): Promise<GeneratedFile[]> {
       'dockerfile'
     );
 
-    // One .dockerignore per build context (roles can share a context).
     if (!contextsSeen.has(node.source.context)) {
       contextsSeen.add(node.source.context);
       await write(inContext(node.source.context, '.dockerignore'), DOCKERIGNORE, 'dockerignore');
     }
 
-    // The Dockerfile COPYs the entrypoint script; supply ORCA's default only when
-    // the repo doesn't ship its own (a repo-provided script is app source — keep it).
     if (vars.entrypointScript !== undefined) {
       const relPath = inContext(node.source.context, vars.entrypointScript);
       if ((await readFileIfExists(join(ctx.workspaceDir, relPath))) === null) {
@@ -112,8 +86,6 @@ export async function writeConfigs(ctx: RunContext): Promise<GeneratedFile[]> {
     }
   }
 
-  // AI-inferred app env: same selection the plan used to decide `env_file`, so the
-  // file exists exactly when the compose file references it.
   if (ctx.inferredEnv !== undefined) {
     const envText = buildEnvFile(ctx.inferredEnv, plan);
     if (envText !== '') await write('.env', envText, 'env');

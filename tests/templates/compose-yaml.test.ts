@@ -1,8 +1,3 @@
-/**
- * STAGE 1 verification — the rendered compose output must be valid, parseable YAML with
- * the expected structure (invalid YAML is a hard failure). Parses with a real YAML
- * parser and asserts service keys, build-vs-image, ports, depends_on, and healthcheck.
- */
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 
@@ -16,7 +11,6 @@ describe('renderCompose produces valid YAML', () => {
     expect(doc.name).toBe('orca-mern-sample');
     expect(Object.keys(doc.services)).toEqual(['mongo', 'server', 'client']);
 
-    // database service uses an official image (no build)
     expect(doc.services.mongo.image).toBe('mongo:7');
     expect(doc.services.mongo.build).toBeUndefined();
     expect(doc.services.mongo.healthcheck.test).toEqual([
@@ -26,7 +20,6 @@ describe('renderCompose produces valid YAML', () => {
       "db.adminCommand('ping')",
     ]);
 
-    // app service builds from a context and depends on the db
     expect(doc.services.server.build).toEqual({ context: './server', dockerfile: 'Dockerfile' });
     expect(doc.services.server.image).toBeUndefined();
     expect(doc.services.server.depends_on).toEqual(['mongo']);

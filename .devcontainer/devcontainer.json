@@ -1,5 +1,4 @@
 {
-  "$comment": "Dogfooding: ORCA has its own devcontainer. Includes Node + Docker-in-Docker so ORCA can build/run the containers it generates.",
   "name": "orca-dev",
   "image": "mcr.microsoft.com/devcontainers/typescript-node:22",
   "features": {
