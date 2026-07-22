@@ -227,6 +227,11 @@ function logInsights(insights: DetectionResult['insights'], logger: Logger): voi
     const versions = insights.ciRuntimeVersions.map((v) => `${v.runtime} ${v.version}`).join(', ');
     logger.info(`CI pins runtime versions: ${versions}.`);
   }
+  const buildTasks = insights.taskCommands.filter((t) => t.kind === 'build' || t.kind === 'start');
+  if (buildTasks.length > 0) {
+    const shown = buildTasks.map((t) => `${t.source}:${t.name}`).join(', ');
+    logger.info(`Maintainer tasks available: ${shown}.`);
+  }
 }
 
 /**
