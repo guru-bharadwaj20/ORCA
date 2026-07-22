@@ -16,10 +16,11 @@ import { join } from 'node:path';
 import type { GeneratedFile, RunContext } from '../core/context.js';
 import { buildEnvFile } from '../orchestrate/envFiles.js';
 import { refinedComponentVars } from '../plan/servicePlan.js';
-import { renderCompose, renderDockerfile } from '../templates/render.js';
+import { renderCompose } from '../templates/render.js';
 import { OrcaError } from '../utils/errors.js';
 import { readFileIfExists } from '../utils/fs.js';
 import { planToComposeVars } from './composeVars.js';
+import { dockerfileFor } from './dockerfileFor.js';
 
 /** Junk that must never be COPY'd into an image (mirrors the golden samples). */
 const DOCKERIGNORE = `node_modules
@@ -89,9 +90,11 @@ export async function writeConfigs(ctx: RunContext): Promise<GeneratedFile[]> {
     if (component === null || node === undefined || node.source.type !== 'build') continue;
 
     const vars = refinedComponentVars(component, role, filled);
+    // Seed stacks render their hand-verified template; the `dockerfileFor` seam is
+    // where ecosystem/inferred components will synthesize instead (open-role work).
     await write(
       inContext(node.source.context, node.source.dockerfile),
-      renderDockerfile(vars),
+      dockerfileFor({ kind: 'template', vars }),
       'dockerfile'
     );
 
