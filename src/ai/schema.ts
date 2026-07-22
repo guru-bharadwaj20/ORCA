@@ -54,6 +54,26 @@ export const InferredEnvSchema = z.object({
 });
 export type InferredEnv = z.infer<typeof InferredEnvSchema>;
 
+/**
+ * Validated shape for an AI-inferred build recipe (tier-3 detection fallback). The
+ * model proposes how an unfamiliar repo is built/run; each field is validated before
+ * it becomes an `ai`-sourced Claim (whose confidence is capped below determinism).
+ * `reasoning` is required — an unexplained AI inference is rejected.
+ */
+export const InferredBuildSchema = z.object({
+  runtime: z.string().min(1),
+  packageManager: z.string().min(1).optional(),
+  installCommands: stringList.default([]),
+  buildCommands: stringList.default([]),
+  startCommand: z.string().min(1),
+  ports: z.preprocess(
+    (v) => (Array.isArray(v) ? v : v === undefined ? [] : [v]),
+    z.array(z.coerce.number().int().min(1).max(65535)).default([])
+  ),
+  reasoning: z.array(z.string()).min(1),
+});
+export type InferredBuild = z.infer<typeof InferredBuildSchema>;
+
 /** Validated shape for a single self-heal suggestion from the model. */
 export const HealSuggestionSchema = z.object({
   explanation: z.string(),
