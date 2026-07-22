@@ -115,6 +115,9 @@ describe('runPipeline (walking skeleton)', () => {
     expect(ctx.plan?.source).toBe('template'); // keyless -> registry defaults
     expect(ctx.approved).toBe(true);
     expect(lines.some((l) => l.includes('using template defaults'))).toBe(true);
+    // The evidence model is surfaced to the user: reasoning trail + detected signals.
+    expect(lines.some((l) => l.includes('Detection reasoning:'))).toBe(true);
+    expect(lines.some((l) => l.includes('Detected stack signals.'))).toBe(true);
 
     const out = printed();
     expect(out).toContain('flowchart LR'); // review gate showed the diagram

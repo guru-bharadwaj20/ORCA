@@ -205,6 +205,31 @@ function logCost(cost: RunContext['cost'], logger: Logger): void {
 }
 
 /**
+ * Log the forward-looking Phase-B/C detection signals when present. Advisory context:
+ * it never changes the run, but it makes ORCA's understanding of a repo visible —
+ * frameworks and runtimes beyond the seed set, monorepo tooling, and what CI revealed.
+ */
+function logInsights(insights: DetectionResult['insights'], logger: Logger): void {
+  if (insights.frameworks.length > 0 || insights.runtimes.length > 0) {
+    logger.info('Detected stack signals.', {
+      runtimes: insights.runtimes.join(', ') || 'none',
+      frameworks: insights.frameworks.join(', ') || 'none',
+    });
+  }
+  if (insights.monorepoTools.length > 0) {
+    logger.info(`Monorepo detected: ${insights.monorepoTools.join(', ')}.`);
+  }
+  const ciBuild = insights.ciCommands.filter((c) => c.kind === 'build' || c.kind === 'start');
+  if (ciBuild.length > 0) {
+    logger.info(`CI reveals build commands: ${ciBuild.map((c) => c.command).join(' | ')}.`);
+  }
+  if (insights.ciRuntimeVersions.length > 0) {
+    const versions = insights.ciRuntimeVersions.map((v) => `${v.runtime} ${v.version}`).join(', ');
+    logger.info(`CI pins runtime versions: ${versions}.`);
+  }
+}
+
+/**
  * Run the pipeline against `ctx.repoUrl`. When `ctx.workspaceDir` is already set
  * (tests, embedders) the clone step is skipped and that directory is used as-is;
  * otherwise the repo is cloned into a temp workspace the pipeline owns.
@@ -250,6 +275,12 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
       databases: detection.databases.map((db) => db.engine).join(', ') || 'none',
       confidence: detection.confidence,
     });
+    // Surface the evidence model to the user: why this confidence, and what the
+    // richer Phase-B/C detectors saw (frameworks, monorepo tooling, CI signals).
+    if (detection.reasoning.length > 0) {
+      ctx.logger.info(`Detection reasoning: ${detection.reasoning.join('; ')}.`);
+    }
+    logInsights(detection.insights, ctx.logger);
     if (!detection.isSupported) {
       throw new UnsupportedStackError(
         detection.warnings.map((w) => w.message).join(' ') ||
