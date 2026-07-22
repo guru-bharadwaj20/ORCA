@@ -79,17 +79,17 @@ The key type every detector produces and every later stage consumes:
 ```ts
 /** One piece of evidence for a claim, so every inference is explainable. */
 interface Evidence {
-  detector: string;           // "manifest:cargo", "ci:github-actions", "ai:inference"
-  signal: string;             // human-readable: "Cargo.toml present", "CI runs `cargo build`"
-  weight: number;             // contribution to confidence, 0..1
+  detector: string; // "manifest:cargo", "ci:github-actions", "ai:inference"
+  signal: string; // human-readable: "Cargo.toml present", "CI runs `cargo build`"
+  weight: number; // contribution to confidence, 0..1
 }
 
 /** A scored claim about the repo. Detectors emit these; the aggregator ranks them. */
 interface Claim<T> {
   value: T;
-  confidence: number;         // 0..1, derived from evidence (see §4)
-  evidence: Evidence[];       // the reasoning trail — never empty
-  source: 'deterministic' | 'ci' | 'ai' | 'probe';  // which tier produced it
+  confidence: number; // 0..1, derived from evidence (see §4)
+  evidence: Evidence[]; // the reasoning trail — never empty
+  source: 'deterministic' | 'ci' | 'ai' | 'probe'; // which tier produced it
 }
 ```
 
@@ -98,8 +98,11 @@ all become `Claim<T>` (or `Claim<T>[]` when ranked). The example JSON from the b
 falls straight out of this:
 
 ```json
-{ "runtime": "rust", "confidence": 0.92,
-  "reasoning": ["Cargo.toml detected", "Binary crate present", "CI executes cargo build"] }
+{
+  "runtime": "rust",
+  "confidence": 0.92,
+  "reasoning": ["Cargo.toml detected", "Binary crate present", "CI executes cargo build"]
+}
 ```
 
 That object is just `Claim<Runtime>` with `evidence[].signal` projected to strings.
@@ -110,16 +113,16 @@ The abstraction that replaces `registry.ts`'s switch. A **recipe** is _data_, no
 
 ```ts
 interface BuildRecipe {
-  id: string;                       // "node-vite", "rust-cargo", "python-fastapi"
-  runtime: Runtime;                 // open string, e.g. "node" | "python" | "rust" | "go" | "jvm" | ...
+  id: string; // "node-vite", "rust-cargo", "python-fastapi"
+  runtime: Runtime; // open string, e.g. "node" | "python" | "rust" | "go" | "jvm" | ...
   packageManager?: PackageManager;
-  installCommands: string[];        // ["cargo fetch"] or ["npm ci"]
-  buildCommands: string[];          // ["cargo build --release"]
-  startCommand: string;             // "./target/release/{{binary}}" (templated)
-  artifacts?: string[];             // produced files a runtime stage copies (multi-stage builds)
+  installCommands: string[]; // ["cargo fetch"] or ["npm ci"]
+  buildCommands: string[]; // ["cargo build --release"]
+  startCommand: string; // "./target/release/{{binary}}" (templated)
+  artifacts?: string[]; // produced files a runtime stage copies (multi-stage builds)
   defaultPorts: number[];
-  baseImages: { build: string; runtime: string };  // multi-stage: builder + slim runtime
-  needsSystemPackages?: string[];   // apt deps (libpq-dev, etc.)
+  baseImages: { build: string; runtime: string }; // multi-stage: builder + slim runtime
+  needsSystemPackages?: string[]; // apt deps (libpq-dev, etc.)
 }
 ```
 
@@ -182,7 +185,7 @@ registered in a list, independently testable, independently extensible.
 ```ts
 interface Detector {
   id: string;
-  tier: 1 | 2 | 3 | 4;                        // ladder rung
+  tier: 1 | 2 | 3 | 4; // ladder rung
   detect(ctx: RepoContext): Promise<Claim<unknown>[]>;
 }
 ```
@@ -226,7 +229,9 @@ Sequenced by dependency, not by the brief's numbering. Each phase is independent
 shippable and leaves the product working.
 
 ### Phase A — Foundation refactor (no new ecosystems yet)
+
 _The enabling work everything else depends on._
+
 - [ ] Introduce `Claim<T>` / `Evidence` / `Detector` contracts in a new `src/model/`.
 - [ ] Refactor the existing 7 detectors to emit `Claim`s (behavior-preserving).
 - [ ] Replace `scoreConfidence()` with the evidence-combination model (§4).
@@ -237,7 +242,9 @@ _The enabling work everything else depends on._
   generic engine. Pure refactor, fully covered by the existing hermetic suite.
 
 ### Phase B — Widen deterministic detection (brief's Phase 1 + 2)
+
 _Now that adding a stack = adding data, not editing enums._
+
 - [ ] Open the taxonomy (`Runtime`, `PackageManager` become open strings + a known-set).
 - [ ] Add manifest detectors + recipes per ecosystem, in ROI order:
       **Node ecosystem** (Next/Vite/Nest/Angular/monorepos via `turbo.json`/`nx.json`/
@@ -249,7 +256,9 @@ _Now that adding a stack = adding data, not editing enums._
   a passing golden test. No AI required for these.
 
 ### Phase C — Repository & CI analysis (brief's Phase 3 + 4)
+
 _The tier-1/tier-2 signals that dramatically raise confidence and fill command gaps._
+
 - [ ] Repository-analysis detectors: `Makefile`, `Taskfile.yml`, `justfile`, package
       scripts, existing `Dockerfile`(s), shell scripts, README build sections.
 - [ ] CI parsers: `.github/workflows/*`, `.gitlab-ci.yml`, `azure-pipelines.yml`,
@@ -259,7 +268,9 @@ _The tier-1/tier-2 signals that dramatically raise confidence and fill command g
   declared commands over recipe defaults, with evidence citing the source file.
 
 ### Phase D — AI inference as the gap-filler (brief's Phase 5)
+
 _Only runs when the ladder above leaves the recipe incomplete/low-confidence._
+
 - [ ] A `synthesizeRecipe` AI task: given the repo tree + manifests + README + CI +
       the partial `RepoModel`, propose the missing recipe fields.
 - [ ] Reuse the existing router/schema machinery (`ai/router.ts`, `ai/schema.ts`) —
@@ -269,46 +280,51 @@ _Only runs when the ladder above leaves the recipe incomplete/low-confidence._
   clearly labelled as AI-inferred, that a human can approve or correct.
 
 ### Phase E — Generic Docker synthesis (brief's Phase 7)
+
 _Dockerfiles generated from the recipe, not from `.hbs` templates keyed on framework._
+
 - [ ] A synthesizer that turns a `BuildRecipe` into a multi-stage Dockerfile
       (builder stage → slim runtime stage copying `artifacts`), inferring base image,
       package-manager install, system packages, ports, and a healthcheck.
 - [ ] Keep the handful of hand-tuned `.hbs` templates only where a recipe explicitly
       references one; default path is synthesis.
 - **Exit criterion:** the Go/Rust/Java recipes from Phase B produce working multi-stage
-      images with no per-framework template file.
+  images with no per-framework template file.
 
 ### Phase F — Recipe-aware self-healing (brief's Phase 8)
+
 - [ ] Extend the existing `selfHeal.ts` loop to be recipe-aware: failures feed back as
       recipe corrections (wrong install cmd, missing system package, wrong port),
       and successful fixes are recorded as **learned recipe overrides** keyed by repo
       signature, so the next run starts from the healed recipe.
 - **Exit criterion:** a build that fails on a missing `libpq-dev` self-corrects and the
-      correction persists for that repo shape.
+  correction persists for that repo shape.
 
 ### Phase G — Dynamic probing (brief's Phase 6) — SEAMS ONLY, then STOP
+
 _Per decision #2: design the interface, do not build execution now._
+
 - [ ] Define the `Prober` interface and its `Claim<T>` outputs (observed ports,
       processes, logs, artifacts) so tier-4 has a home on the ladder.
 - [ ] Document the security model that a future build must satisfy: untrusted code runs
       **only** inside a network-isolated, resource-capped, ephemeral container; never on
       host; behind an explicit opt-in flag; with the same approve-before-run gate.
 - **Exit criterion:** the ladder has a tier-4 slot and a written security contract. No
-      arbitrary execution ships. Revisit build/no-build as a separate decision later.
+  arbitrary execution ships. Revisit build/no-build as a separate decision later.
 
 ---
 
 ## 6. Design requirements — how each is satisfied
 
-| Brief requirement | Where it's met |
-|---|---|
-| 1. Modular plugin architecture | `Detector`/`Prober` interfaces + registry list (§3) |
-| 2. Each detector independently extensible | detectors are pure `(ctx) → Claim[]`, registered, unit-testable (§3) |
-| 3. Confidence scoring | evidence-combination model, computed not guessed (§4) |
-| 4. Deterministic-first | tiered ladder; tiers 1–2 always run before AI (§3) |
-| 5. AI is fallback, not primary | AI runs only on confidence gaps; claims capped ≤0.7 (§4, Phase D) |
-| 6. All actions explainable | `Evidence[]` on every claim; recipe shown at approval gate (§2.2, §4) |
-| 7. Every inference includes reasoning | `reasoning[] = evidence.map(e => e.signal)`; never empty (§4) |
+| Brief requirement                         | Where it's met                                                        |
+| ----------------------------------------- | --------------------------------------------------------------------- |
+| 1. Modular plugin architecture            | `Detector`/`Prober` interfaces + registry list (§3)                   |
+| 2. Each detector independently extensible | detectors are pure `(ctx) → Claim[]`, registered, unit-testable (§3)  |
+| 3. Confidence scoring                     | evidence-combination model, computed not guessed (§4)                 |
+| 4. Deterministic-first                    | tiered ladder; tiers 1–2 always run before AI (§3)                    |
+| 5. AI is fallback, not primary            | AI runs only on confidence gaps; claims capped ≤0.7 (§4, Phase D)     |
+| 6. All actions explainable                | `Evidence[]` on every claim; recipe shown at approval gate (§2.2, §4) |
+| 7. Every inference includes reasoning     | `reasoning[] = evidence.map(e => e.signal)`; never empty (§4)         |
 
 ---
 
@@ -339,6 +355,7 @@ behavior, but it converts "add a framework = edit closed enums + a switch" into 
 framework = add a detector + a recipe," which is the unlock for every later phase.
 
 I can start Phase A on request — it's a well-bounded, test-guarded refactor.
+
 ```
 
 ---
@@ -357,6 +374,15 @@ Landed on `feat/universal-understanding` (behind the full test suite):
 - **Phase C** — GitHub Actions CI analysis (recovered build/test/start commands +
   pinned runtime versions), wired into `DetectionResult.insights` and the confidence
   trail (CI corroboration reinforces an already-detected stack, never manufactures it).
+- **Phase 3 (repo understanding)** — task recovery from Makefile / Taskfile / justfile /
+  package scripts, classified by intent and folded into `insights.taskCommands`.
+- **Explainability wiring** — the reasoning trail and all `insights` signals (frameworks,
+  runtimes, monorepo tooling, CI commands/versions, maintainer tasks) are logged by the
+  pipeline on every run, so ORCA's understanding of a repo is visible to the user and to
+  the VS Code OutputChannel.
+
+Test coverage across these: **189 tests** (was 115 at the start of the branch), all
+hermetic (temp-dir fixtures, no network, no Docker, no VS Code).
 
 Known follow-ups surfaced during integration:
 
@@ -369,3 +395,4 @@ Known follow-ups surfaced during integration:
   surface in `insights` and match a `BuildRecipe`, but the generate/compose path still
   only emits Dockerfiles for the seed stacks. Wiring `RecipeRegistry` into a generic
   Dockerfile synthesizer is Phase E.
+```
