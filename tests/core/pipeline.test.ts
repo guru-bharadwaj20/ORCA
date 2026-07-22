@@ -196,6 +196,34 @@ describe('runPipeline (walking skeleton)', () => {
     await expect(result).rejects.toMatchObject({ code: 'UNSUPPORTED_STACK' });
   });
 
+  it('logs a graded AI understanding before rejecting an unsupported repo (with a key)', async () => {
+    const repoDir = fixture('unsupported-repo'); // the Rust fixture — not containerizable yet
+    const { logger, lines } = collectLogger();
+    const ctx = createRunContext({
+      repoUrl: repoDir,
+      workspaceDir: repoDir,
+      logger,
+      options: { ...DEFAULT_RUN_OPTIONS, dryRun: true, autoApprove: true },
+      resolveKey: (name) => (name === 'ANTHROPIC_API_KEY' ? 'sk-ant-test' : undefined),
+    });
+    // Inject a fake AI facade so the tier-3 diagnostic runs without the network.
+    ctx.ai = {
+      complete: () =>
+        Promise.resolve({
+          runtime: 'rust',
+          installCommands: ['cargo fetch'],
+          buildCommands: ['cargo build --release'],
+          startCommand: './target/release/app',
+          ports: [],
+          reasoning: ['Cargo.toml present', 'binary crate in src/main.rs'],
+        }),
+    };
+
+    await expect(runPipeline(ctx, {})).rejects.toMatchObject({ code: 'UNSUPPORTED_STACK' });
+    expect(lines.some((l) => l.includes('AI understanding') && l.includes('rust'))).toBe(true);
+    expect(lines.some((l) => l.includes('AI reasoning') && l.includes('Cargo.toml'))).toBe(true);
+  });
+
   it('lets an injected approvePlan hook replace the terminal gate entirely', async () => {
     const repoDir = fixture('mern-repo');
     const { logger } = collectLogger();
