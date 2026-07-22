@@ -380,9 +380,17 @@ Landed on `feat/universal-understanding` (behind the full test suite):
   runtimes, monorepo tooling, CI commands/versions, maintainer tasks) are logged by the
   pipeline on every run, so ORCA's understanding of a repo is visible to the user and to
   the VS Code OutputChannel.
+- **Phase 5 (AI-assisted inference)** — a tier-3 `inferBuild` fallback over the existing
+  router (Qwen→Claude, cost-capped, ledgered): it proposes a runtime + build/run commands
+  for an under-determined repo, schema-validated and wrapped as an `ai`-sourced `Claim`
+  whose confidence is mechanically capped below determinism. Wired into the pipeline as a
+  diagnostic on the unsupported-stack path — when a key is present, ORCA logs a graded
+  "here's what I think this is and how it'd build, with reasoning" before the hard stop,
+  delivering the "honest about uncertainty" promise. (Driving a real build from an
+  inferred recipe is Phase E — the generic Dockerfile synthesizer.)
 
-Test coverage across these: **189 tests** (was 115 at the start of the branch), all
-hermetic (temp-dir fixtures, no network, no Docker, no VS Code).
+Test coverage across these: **194 tests** (was 115 at the start of the branch), all
+hermetic (temp-dir fixtures, injected AI facade, no network, no Docker, no VS Code).
 
 Known follow-ups surfaced during integration:
 

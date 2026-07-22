@@ -57,15 +57,16 @@ The full architecture and phased roadmap live in
 foundation and deterministic-detection layers have landed: an open, evidence-based
 detection model where **adding a framework is adding data, not editing an enum**.
 
-| Concept                 | What it is                                                                             | Status                |
-| ----------------------- | -------------------------------------------------------------------------------------- | --------------------- |
-| `Claim<T>` / `Evidence` | Every detected fact carries computed confidence + a traceable reasoning trail          | ✅ Landed             |
-| `Detector` plugins      | Standalone `(ctx) → Claim[]` units, registered in a list, independently testable       | ✅ Landed             |
-| `BuildRecipe`           | The generic build/run model; 3 seed stacks + Go/Rust/JVM/.NET re-expressed as **data** | ✅ Landed             |
-| Deterministic detection | 9 languages, framework signatures, monorepo topology, non-JS/Py manifest readers       | ✅ Landed             |
-| CI & repo understanding | GitHub Actions + Makefile/Taskfile/justfile/scripts recovered into `insights`          | ✅ Landed             |
-| AI-assisted inference   | LLM fallback when deterministic tiers are thin, capped below determinism               | 📋 Next               |
-| Dynamic probing         | Observe real runtime behavior in an isolated sandbox                                   | 📋 Designed, deferred |
+| Concept                  | What it is                                                                             | Status                 |
+| ------------------------ | -------------------------------------------------------------------------------------- | ---------------------- |
+| `Claim<T>` / `Evidence`  | Every detected fact carries computed confidence + a traceable reasoning trail          | ✅ Landed              |
+| `Detector` plugins       | Standalone `(ctx) → Claim[]` units, registered in a list, independently testable       | ✅ Landed              |
+| `BuildRecipe`            | The generic build/run model; 3 seed stacks + Go/Rust/JVM/.NET re-expressed as **data** | ✅ Landed              |
+| Deterministic detection  | 9 languages, framework signatures, monorepo topology, non-JS/Py manifest readers       | ✅ Landed              |
+| CI & repo understanding  | GitHub Actions + Makefile/Taskfile/justfile/scripts recovered into `insights`          | ✅ Landed              |
+| AI-assisted inference    | LLM fallback when deterministic tiers are thin, capped below determinism               | ✅ Landed (diagnostic) |
+| Generic Dockerfile synth | Build/run any matched or inferred recipe, not just the seed stacks                     | 📋 Next                |
+| Dynamic probing          | Observe real runtime behavior in an isolated sandbox                                   | 📋 Designed, deferred  |
 
 > ORCA stays **honest about uncertainty**: an unfamiliar repo yields a graded,
 > reviewable plan ("62% confident this is a Go/Gin service — here's why") rather than
