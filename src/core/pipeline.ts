@@ -37,8 +37,10 @@ import {
   type Workspace,
 } from '../clone/workspace.js';
 import { ENV_KEYS, type KeyResolver } from '../config/settings.js';
+import { inferBuild, type InferenceInput } from '../detect/aiInference.js';
 import { detectStack } from '../detect/index.js';
 import type { DetectedComponent, DetectionResult } from '../detect/types.js';
+import { reasoning } from '../model/claim.js';
 import { planToComposeVars } from '../generate/composeVars.js';
 import { writeConfigs } from '../generate/writeConfigs.js';
 import { buildEnvFile } from '../orchestrate/envFiles.js';
@@ -48,7 +50,7 @@ import type { ServicePlan } from '../plan/types.js';
 import { describeComponent } from '../templates/registry.js';
 import { renderCompose, renderDockerfile } from '../templates/render.js';
 import { OrcaError, PlanRejectedError, UnsupportedStackError } from '../utils/errors.js';
-import { readFileIfExists } from '../utils/fs.js';
+import { readFileIfExists, walk } from '../utils/fs.js';
 import type { Logger, RunContext } from './context.js';
 
 /** Injectable IO for the review gate and the --dry-run preview (defaults to the TTY). */
@@ -234,6 +236,40 @@ function logInsights(insights: DetectionResult['insights'], logger: Logger): voi
   }
 }
 
+/** README + a couple of high-value manifest snippets to ground AI build inference. */
+async function inferenceInputFor(repoDir: string): Promise<InferenceInput> {
+  const tree = (await walk(repoDir)).map((p) => p.replace(`${repoDir}/`, ''));
+  const readme = await readReadme(repoDir);
+  const snippets: Record<string, string> = {};
+  for (const name of ['Makefile', 'Dockerfile', 'go.mod', 'Cargo.toml', 'pom.xml']) {
+    const body = await readFileIfExists(join(repoDir, name));
+    if (body !== null) snippets[name] = body;
+  }
+  return { tree, readme, snippets };
+}
+
+/**
+ * Best-effort diagnostic: run tier-3 AI inference on an unsupported repo and log the
+ * graded understanding (runtime + how it'd build, with the model's reasoning). Never
+ * throws — a failed inference just means no extra diagnostic before the hard stop.
+ */
+async function logInferredUnderstanding(ctx: RunContext): Promise<void> {
+  try {
+    const input = await inferenceInputFor(ctx.workspaceDir);
+    const inferred = await inferBuild(input, ctx.cost, ctx.ai ?? ai);
+    if (inferred === null) return;
+    const pct = Math.round(inferred.confidence * 100);
+    ctx.logger.info(
+      `AI understanding (${pct}% confident): ${inferred.value.runtime} — ` +
+        `build \`${inferred.value.buildCommands?.join(' && ') || 'n/a'}\`, ` +
+        `run \`${inferred.value.startCommand}\`.`
+    );
+    ctx.logger.info(`AI reasoning: ${reasoning(inferred).join('; ')}.`);
+  } catch {
+    // Diagnostic only — never let it affect the run's outcome.
+  }
+}
+
 /**
  * Run the pipeline against `ctx.repoUrl`. When `ctx.workspaceDir` is already set
  * (tests, embedders) the clone step is skipped and that directory is used as-is;
@@ -287,6 +323,13 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
     }
     logInsights(detection.insights, ctx.logger);
     if (!detection.isSupported) {
+      // Tier-3 ladder rung: when deterministic detection can't place the repo but a
+      // key is present, ask the model for a graded understanding and log it before the
+      // hard stop — "here's what I think this is and how it'd build" beats a bare
+      // rejection. The build path for inferred stacks is Phase E; this is diagnostic.
+      if (aiKeyPresent(ctx.resolveKey)) {
+        await logInferredUnderstanding(ctx);
+      }
       throw new UnsupportedStackError(
         detection.warnings.map((w) => w.message).join(' ') ||
           'No supported stack detected in this repo.'
