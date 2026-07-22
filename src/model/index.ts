@@ -25,3 +25,4 @@ export {
   type RecipeMatcher,
   type Runtime,
 } from './recipe.js';
+export { ALL_RECIPES, ECOSYSTEM_RECIPES, defaultRecipeRegistry } from './recipes/index.js';
