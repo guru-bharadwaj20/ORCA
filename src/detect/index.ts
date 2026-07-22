@@ -29,10 +29,11 @@ import {
   readJvmDependencies,
   readRustDependencies,
 } from './manifestExt.js';
-import { detectMonorepo } from './monorepo.js';
+import { detectMonorepo, type MonorepoInfo } from './monorepo.js';
 import { detectPackageManager } from './packageManager.js';
 import { detectPorts } from './ports.js';
 import { detectServices } from './services.js';
+import { expandWorkspaceGlobs } from './workspaceGlobs.js';
 import type {
   BackendFramework,
   DetectedComponent,
@@ -85,8 +86,16 @@ async function hasManifest(dir: string): Promise<boolean> {
   return false;
 }
 
-/** The repo root plus every first-level subdirectory that declares a manifest. */
-async function findCandidateRoots(repoPath: string): Promise<string[]> {
+/**
+ * The repo root plus every first-level subdirectory that declares a manifest, plus any
+ * `workspaceDirs` (already expanded from monorepo globs) that declare one. Nested
+ * workspace packages (`services/api`) only appear when passed via `workspaceDirs`,
+ * since the base scan is intentionally single-level.
+ */
+async function findCandidateRoots(
+  repoPath: string,
+  workspaceDirs: readonly string[] = []
+): Promise<string[]> {
   let entries;
   try {
     entries = await readdir(repoPath, { withFileTypes: true });
@@ -103,6 +112,11 @@ async function findCandidateRoots(repoPath: string): Promise<string[]> {
     .sort((a, b) => a.localeCompare(b));
   for (const name of subdirs) {
     if (await hasManifest(join(repoPath, name))) roots.push(name);
+  }
+
+  // Nested workspace packages (deeper than one level) discovered via monorepo globs.
+  for (const dir of workspaceDirs) {
+    if (!roots.includes(dir) && (await hasManifest(join(repoPath, dir)))) roots.push(dir);
   }
   return roots;
 }
@@ -174,7 +188,11 @@ async function buildComponent(
 export async function detectStack(repoPath: string): Promise<DetectionResult> {
   const warnings: DetectionWarning[] = [];
 
-  const roots = await findCandidateRoots(repoPath);
+  // Monorepo topology is resolved first so its workspace globs can promote nested
+  // packages to candidate roots (and is reused by gatherInsights — detected once).
+  const monorepo = await detectMonorepo(repoPath);
+  const workspaceDirs = await expandWorkspaceGlobs(repoPath, monorepo.packageGlobs);
+  const roots = await findCandidateRoots(repoPath, workspaceDirs);
   const candidates: Candidate[] = await Promise.all(
     roots.map(async (rootDir) => {
       const absDir = rootDir === '.' ? repoPath : join(repoPath, rootDir);
@@ -242,7 +260,7 @@ export async function detectStack(repoPath: string): Promise<DetectionResult> {
     });
   }
 
-  const insights = await gatherInsights(repoPath, roots);
+  const insights = await gatherInsights(repoPath, roots, monorepo);
   const evidence = confidenceEvidence(frontend, backend, databases, insights);
 
   return {
@@ -298,7 +316,11 @@ async function filesAt(dir: string): Promise<string[]> {
  * registry), framework matches per candidate root, monorepo topology, and CI analysis.
  * Advisory — failures here never fail detection.
  */
-async function gatherInsights(repoPath: string, roots: string[]): Promise<RepoInsights> {
+async function gatherInsights(
+  repoPath: string,
+  roots: string[],
+  monorepo: MonorepoInfo
+): Promise<RepoInsights> {
   const registry = defaultDetectorRegistry();
   const runtimeSet = new Set<Runtime>();
   const frameworkSet = new Set<string>();
@@ -328,7 +350,7 @@ async function gatherInsights(repoPath: string, roots: string[]): Promise<RepoIn
     }
   }
 
-  const [monorepo, ci] = await Promise.all([detectMonorepo(repoPath), analyzeCi(repoPath)]);
+  const ci = await analyzeCi(repoPath);
 
   return {
     frameworks: [...frameworkSet],

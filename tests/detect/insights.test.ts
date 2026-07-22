@@ -26,7 +26,7 @@ describe('detectStack insights integration', () => {
     await writeFile(join(repo, 'turbo.json'), JSON.stringify({ pipeline: {} }));
     await writeFile(
       join(repo, 'package.json'),
-      JSON.stringify({ name: 'root', workspaces: ['api'] })
+      JSON.stringify({ name: 'root', workspaces: ['services/*'] })
     );
     const wf = join(repo, '.github', 'workflows');
     await mkdir(wf, { recursive: true });
@@ -42,8 +42,8 @@ describe('detectStack insights integration', () => {
         '      - run: go build ./...',
       ].join('\n')
     );
-    // A Go service component with a gin dependency (first-level candidate root).
-    const svc = join(repo, 'api');
+    // A Go service nested under the workspace glob (services/api → promoted via globs).
+    const svc = join(repo, 'services', 'api');
     await mkdir(svc, { recursive: true });
     await writeFile(
       join(svc, 'go.mod'),
