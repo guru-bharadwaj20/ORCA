@@ -94,13 +94,24 @@ describe('detect stage', () => {
     expect(result.confidence).toBeGreaterThan(0.5);
   });
 
-  it('flags an unsupported stack with a warning and isSupported=false', async () => {
+  it('classifies a recognized-but-not-yet-containerizable stack (Rust) rather than dropping it', async () => {
+    // The Rust fixture: its language is now *classified* (Phase B), but the
+    // containerize path has no Rust framework component yet, so isSupported stays
+    // false and confidence stays 0 — honest about what ORCA can and cannot run.
     const result = await detectStack(fixture('unsupported-repo'));
 
+    expect(result.languages).toEqual(['rust']);
     expect(result.isSupported).toBe(false);
     expect(result.frontend).toBeNull();
     expect(result.backend).toBeNull();
-    expect(result.databases).toEqual([]);
+    expect(result.confidence).toBe(0);
+    expect(result.warnings.some((w) => w.code === 'unsupported-stack')).toBe(true);
+  });
+
+  it('flags a genuinely unrecognizable repo with no language and no evidence', async () => {
+    const result = await detectStack(fixture('unknown-repo'));
+
+    expect(result.isSupported).toBe(false);
     expect(result.languages).toEqual(['unknown']);
     expect(result.packageManagers).toEqual([]);
     expect(result.confidence).toBe(0);

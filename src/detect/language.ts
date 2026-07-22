@@ -22,6 +22,13 @@ const EXTENSION_LANGUAGE: Record<string, Exclude<Language, 'unknown'>> = {
   '.mjs': 'javascript',
   '.cjs': 'javascript',
   '.py': 'python',
+  '.go': 'go',
+  '.rs': 'rust',
+  '.java': 'java',
+  '.kt': 'java',
+  '.cs': 'csharp',
+  '.php': 'php',
+  '.rb': 'ruby',
 };
 
 /** Manifest files that reveal a language even when no source files were found yet. */
@@ -32,6 +39,12 @@ const MANIFEST_LANGUAGE: Record<string, Exclude<Language, 'unknown'>> = {
   'pyproject.toml': 'python',
   'manage.py': 'python',
   'setup.py': 'python',
+  'go.mod': 'go',
+  'Cargo.toml': 'rust',
+  'pom.xml': 'java',
+  'build.gradle': 'java',
+  'composer.json': 'php',
+  Gemfile: 'ruby',
 };
 
 /**
