@@ -20,6 +20,33 @@ could later become separate agents.
 | 7     | `cli/`                 | Command parsing, flags, terminal output                                   |
 | 8     | `docs/`                | This documentation                                                        |
 
+## Repository layout
+
+```
+src/
+├── clone/        temp-workspace clone/copy + cleanup
+├── detect/       static, AI-free stack detection
+├── templates/    Handlebars Dockerfile/Compose templates + registry
+├── ai/           multi-provider router (Qwen primary, Claude fallback), BYOK
+├── plan/         service plan, Mermaid diagram, approval gate
+├── generate/     writes configs into the workspace
+├── orchestrate/  healthchecks, startup order, explainable .env generation
+├── build/        docker build/run + the explainable self-heal loop
+├── core/         RunContext + runPipeline (the embeddable engine)
+├── cli/          the `orca` binary, interactive menu, output rendering
+├── config/       ORCA_* settings parsing + validation
+└── utils/        errors, filesystem helpers, logging
+
+scripts/          build/clean helpers (template packaging, workspace cleanup)
+examples/         runnable sample apps + golden reference configs
+tests/            vitest suites (nothing mocked beyond the Docker/AI boundaries)
+vscode-extension/ the VS Code front end (workspace member)
+docs/             architecture, supported stacks, demo
+```
+
+The package entry point is `src/core/index.ts` (`orca-agent-cli`); `plan/`, `config/`,
+and `ai/` each expose a barrel for their subpath export.
+
 ## Data contracts (stable up front)
 
 - `src/detect/types.ts` — `DetectionResult`
