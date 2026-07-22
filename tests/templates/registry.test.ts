@@ -56,6 +56,7 @@ function detectionResult(parts: {
       monorepoTools: [],
       ciCommands: [],
       ciRuntimeVersions: [],
+      taskCommands: [],
     },
     warnings: [],
   };

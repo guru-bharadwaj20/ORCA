@@ -33,6 +33,7 @@ import { detectMonorepo, type MonorepoInfo } from './monorepo.js';
 import { detectPackageManager } from './packageManager.js';
 import { detectPorts } from './ports.js';
 import { detectServices } from './services.js';
+import { recoverTasks } from './taskRunners.js';
 import { expandWorkspaceGlobs } from './workspaceGlobs.js';
 import type {
   BackendFramework,
@@ -332,10 +333,26 @@ async function gatherInsights(
   const registry = defaultDetectorRegistry();
   const runtimeSet = new Set<Runtime>();
   const frameworkSet = new Set<string>();
+  const taskCommands: RepoInsights['taskCommands'] = [];
+  const seenTask = new Set<string>();
 
   for (const rootDir of roots) {
     const absDir = rootDir === '.' ? repoPath : join(repoPath, rootDir);
     const ctx: RepoContext = { repoPath, scopeDir: rootDir };
+
+    // Maintainer-declared tasks (Makefile/Taskfile/justfile/package scripts), deduped
+    // by source+name across roots.
+    for (const task of await recoverTasks(absDir)) {
+      const key = `${task.source}:${task.name}:${task.command}`;
+      if (seenTask.has(key)) continue;
+      seenTask.add(key);
+      taskCommands.push({
+        source: task.source,
+        name: task.name,
+        command: task.command,
+        kind: task.kind,
+      });
+    }
 
     // Runtime claims from tier-1 detectors, best (highest-confidence) first.
     const claims: Claim<unknown>[] = [];
@@ -377,6 +394,7 @@ async function gatherInsights(
     monorepoTools: monorepo.tools,
     ciCommands: ci.commands.map((c) => ({ command: c.command, kind: c.kind })),
     ciRuntimeVersions: ci.runtimeVersions,
+    taskCommands,
   };
 }
 

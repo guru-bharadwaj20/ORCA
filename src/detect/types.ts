@@ -125,6 +125,11 @@ export interface RepoInsights {
   ciCommands: { command: string; kind: string }[];
   /** Runtime versions pinned in CI, e.g. [{ runtime: "node", version: "20" }]. */
   ciRuntimeVersions: { runtime: string; version: string }[];
+  /**
+   * Build/run/test tasks recovered from the repo's task runners (Makefile, Taskfile,
+   * justfile, package scripts) — the maintainer's own entrypoints. Phase-3 signal.
+   */
+  taskCommands: { source: string; name: string; command: string; kind: string }[];
 }
 
 /**
