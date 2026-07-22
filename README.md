@@ -54,16 +54,18 @@ every inference carrying a confidence score and a reasoning trail.
 
 The full architecture and phased roadmap live in
 [`docs/universal-understanding-plan.md`](docs/universal-understanding-plan.md). The
-foundation refactor (Phase A) is landing now: an open, evidence-based detection model
-where **adding a framework is adding data, not editing an enum**.
+foundation and deterministic-detection layers have landed: an open, evidence-based
+detection model where **adding a framework is adding data, not editing an enum**.
 
-| Concept                 | What it is                                                                 | Status         |
-| ----------------------- | -------------------------------------------------------------------------- | -------------- |
-| `Claim<T>` / `Evidence` | Every detected fact carries confidence + a traceable reasoning trail       | 🚧 Phase A     |
-| `Detector` plugins      | Standalone `(ctx) → Claim[]` units, registered in a list, independently testable | 🚧 Phase A |
-| `BuildRecipe`           | The generic build/run model; the current 3 stacks re-expressed as **data** | 🚧 Phase A     |
-| Inference ladder        | manifest → repo analysis → CI → AI → [probe], deterministic tiers first     | 📋 Planned     |
-| Dynamic probing         | Observe real runtime behavior in an isolated sandbox                        | 📋 Designed, deferred |
+| Concept                 | What it is                                                                             | Status                |
+| ----------------------- | -------------------------------------------------------------------------------------- | --------------------- |
+| `Claim<T>` / `Evidence` | Every detected fact carries computed confidence + a traceable reasoning trail          | ✅ Landed             |
+| `Detector` plugins      | Standalone `(ctx) → Claim[]` units, registered in a list, independently testable       | ✅ Landed             |
+| `BuildRecipe`           | The generic build/run model; 3 seed stacks + Go/Rust/JVM/.NET re-expressed as **data** | ✅ Landed             |
+| Deterministic detection | 9 languages, framework signatures, monorepo topology, non-JS/Py manifest readers       | ✅ Landed             |
+| CI & repo understanding | GitHub Actions + Makefile/Taskfile/justfile/scripts recovered into `insights`          | ✅ Landed             |
+| AI-assisted inference   | LLM fallback when deterministic tiers are thin, capped below determinism               | 📋 Next               |
+| Dynamic probing         | Observe real runtime behavior in an isolated sandbox                                   | 📋 Designed, deferred |
 
 > ORCA stays **honest about uncertainty**: an unfamiliar repo yields a graded,
 > reviewable plan ("62% confident this is a Go/Gin service — here's why") rather than
