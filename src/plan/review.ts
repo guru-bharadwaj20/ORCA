@@ -1,37 +1,21 @@
-/**
- * The approval gate. Presents the plan + diagram and only lets the pipeline proceed
- * to build once the user approves. Nothing is built before this returns an approved
- * result. (Plan *editing* is deliberately out of scope for v1 — the outcome contract
- * supports it, but the gate is approve/reject only.)
- *
- * STAGE: 4 (plan) — headline feature: approve-before-build. REAL code.
- * Inputs: a `ServicePlan` and the run options (auto-approve short-circuits prompts).
- * Outputs: a `ReviewOutcome` — approved or rejected (with a reason).
- */
-
 import { createInterface } from 'node:readline/promises';
 
-import { renderPlanTable } from '../cli/output/index.js';
+import { renderPlanTable } from '../cli/output.js';
 import type { RunOptions } from '../core/context.js';
 import { renderDiagram } from './diagram.js';
 import type { ServicePlan } from './types.js';
 
-/** The result of the human review gate. */
 export interface ReviewOutcome {
   approved: boolean;
-  /** The plan to build — may differ from the input if the user made edits. */
   plan: ServicePlan;
-  /** Optional reason when rejected. */
   reason?: string;
 }
 
-/** Injectable streams so the gate is testable and embeddable; defaults to the TTY. */
 export interface ReviewIO {
   input?: NodeJS.ReadableStream;
   output?: NodeJS.WritableStream;
 }
 
-/** Render the human-readable plan summary: diagram source + service table. */
 function renderSummary(plan: ServicePlan): string {
   return [
     '',
@@ -48,10 +32,6 @@ function renderSummary(plan: ServicePlan): string {
   ].join('\n');
 }
 
-/**
- * Print the diagram + plan table and gate on approval. `--auto-approve` skips the
- * prompt; a non-interactive stdin (CI) without auto-approve rejects, never hangs.
- */
 export async function reviewPlan(
   plan: ServicePlan,
   options: RunOptions,

@@ -1,20 +1,8 @@
-/**
- * Builds and formats the plain-English, attempt-by-attempt self-heal log. Turns raw
- * error output + the AI diagnosis into a `DiagnosisEntry` and renders the running log
- * for the user. Headline feature: explainable self-heal.
- *
- * STAGE: 5 (build) — REAL code.
- * Inputs: attempt number, error signature, AI explanation/fix, changed files.
- * Outputs: a `DiagnosisEntry` and a human-readable rendering of the log.
- */
-
 import type { DiagnosisEntry } from '../core/context.js';
 import type { HealSuggestion } from '../ai/schema.js';
 
-/** How much raw error tail to keep as the machine-matchable signature. */
 const SIGNATURE_CHARS = 400;
 
-/** Construct a DiagnosisEntry from one failed attempt + the AI's suggestion. */
 export function toDiagnosisEntry(
   attempt: number,
   errorOutput: string,
@@ -34,7 +22,6 @@ export function toDiagnosisEntry(
   };
 }
 
-/** Render the full diagnosis log as plain English for the terminal ('' when empty). */
 export function formatDiagnosisLog(entries: DiagnosisEntry[]): string {
   if (entries.length === 0) return '';
 

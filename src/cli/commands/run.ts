@@ -1,21 +1,11 @@
-/**
- * The `orca run <repo-url>` command. Collects flags, builds a RunContext, and
- * invokes the core pipeline.
- *
- * STAGE: 7 (cli) — REAL code (walking skeleton).
- * Inputs: repo URL/path + flags (--dry-run, --auto-approve, --model, etc.).
- * Outputs: side effects (generated configs, running containers) + terminal output.
- */
-
 import { Command, InvalidArgumentError } from 'commander';
 
 import { loadSettings } from '../../config/settings.js';
 import { createRunContext, DEFAULT_RUN_OPTIONS, type RunOptions } from '../../core/context.js';
 import { runPipeline } from '../../core/pipeline.js';
 import { createLogger } from '../../utils/logging.js';
-import { renderDiagnosisLog } from '../output/index.js';
+import { renderDiagnosisLog } from '../output.js';
 
-/** Flags accepted by `orca run`, before defaults are applied. */
 export interface RunCommandFlags {
   dryRun?: boolean;
   autoApprove?: boolean;
@@ -25,10 +15,6 @@ export interface RunCommandFlags {
   verbose?: boolean;
 }
 
-/**
- * Merge raw CLI flags into a fully-populated `RunOptions`.
- * Precedence: explicit flag > ORCA_* env override (via loadSettings) > default.
- */
 export function toRunOptions(
   flags: RunCommandFlags,
   env: NodeJS.ProcessEnv = process.env
@@ -48,7 +34,6 @@ export function toRunOptions(
   };
 }
 
-/** Commander coercion: a strictly positive integer. */
 function parsePositiveInt(value: string): number {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isInteger(parsed) || parsed < 1) {
@@ -57,7 +42,6 @@ function parsePositiveInt(value: string): number {
   return parsed;
 }
 
-/** Commander coercion: a non-negative dollar amount. */
 function parseNonNegativeFloat(value: string): number {
   const parsed = Number.parseFloat(value);
   if (!Number.isFinite(parsed) || parsed < 0) {
@@ -66,7 +50,6 @@ function parseNonNegativeFloat(value: string): number {
   return parsed;
 }
 
-/** Build the RunContext and drive the pipeline; errors propagate to `main`. */
 export async function executeRun(repoUrl: string, flags: RunCommandFlags): Promise<void> {
   const options = toRunOptions(flags);
   const logger = createLogger(options.verbose ? 'debug' : 'info');
@@ -74,14 +57,12 @@ export async function executeRun(repoUrl: string, flags: RunCommandFlags): Promi
   try {
     await runPipeline(ctx);
   } catch (err) {
-    // Even a failed run gets the explainable heal story: what ORCA tried and why.
     const healLog = renderDiagnosisLog(ctx.diagnosis);
     if (healLog !== '') process.stderr.write(`\n${healLog}`);
     throw err;
   }
 }
 
-/** Define the `run` subcommand on the given program. */
 export function registerRunCommand(program: Command): Command {
   return program
     .command('run')

@@ -1,7 +1,3 @@
-/**
- * STAGE 5 tests — one build+run attempt with the docker wrappers MOCKED.
- * No docker is invoked.
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { runOnce } from '../../src/build/runner.js';
@@ -55,6 +51,6 @@ describe('runOnce', () => {
 
     expect(result.phase).toBe('healthcheck');
     expect(result.errorOutput).toContain('unhealthy');
-    expect(result.errorOutput).toContain('db | ready'); // service logs included
+    expect(result.errorOutput).toContain('db | ready');
   });
 });

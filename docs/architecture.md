@@ -26,4 +26,6 @@ could later become separate agents.
 - `src/plan/types.ts` — `ServicePlan` / `ServiceNode`
 - `src/core/context.ts` — `RunContext`
 
-<!-- TODO(stage-8): add sequence diagram, error-handling model, and the cost/heal budget flow. -->
+## Planned
+
+Sequence diagram, error-handling model, and the cost/heal budget flow.

@@ -1,25 +1,3 @@
-/**
- * Orchestrates every stage end-to-end: clone -> detect -> fill templates (AI) ->
- * build plan -> review/approve -> generate configs -> build/run with self-heal.
- *
- * STAGE: core (drives all stages) — REAL code.
- * Inputs: a `RunContext` (repo URL + options + logger) and optional injectable IO
- * streams for the review gate / previews (tests drive the gate through these).
- * Outputs: a resolved `RunContext` with detection, plan, generated files, and the
- * self-heal diagnosis populated; throws `OrcaError`s on unsupported stacks,
- * rejection, and unrecoverable failure.
- *
- * `--dry-run` renders the docker-compose.yml + Dockerfiles in memory and prints them
- * WITHOUT writing anything. A full run writes the configs into the temp workspace,
- * then builds/starts the stack with the explainable self-heal loop; on success the
- * workspace is kept alive (the running stack lives there), on any failure the stack
- * is torn down and the workspace removed.
- *
- * AI is optional by design: with no API key (or if every fill attempt fails) the plan
- * falls back to the deterministic registry defaults — ORCA stays useful keyless
- * (though a failed build cannot self-heal without a key).
- */
-
 import { join } from 'node:path';
 
 import { ai, aiFor } from '../ai/client.js';
@@ -51,18 +29,10 @@ import { OrcaError, PlanRejectedError, UnsupportedStackError } from '../utils/er
 import { readFileIfExists } from '../utils/fs.js';
 import type { Logger, RunContext } from './context.js';
 
-/** Injectable IO for the review gate and the --dry-run preview (defaults to the TTY). */
 export interface PipelineIO extends ReviewIO {
-  /**
-   * Optional approval hook. When provided it fully owns the approval decision,
-   * replacing the default `reviewPlan` gate — an embedder (the VS Code webview)
-   * wires its Approve/Reject panel here. A disposed panel must reject/return a
-   * rejected `ReviewOutcome` so the pipeline takes its normal rejection path.
-   */
   approvePlan?: (plan: ServicePlan) => Promise<ReviewOutcome>;
 }
 
-/** The component roles the pipeline fills and renders, in plan order. */
 const COMPONENT_ROLES = ['backend', 'frontend'] as const;
 type ComponentRole = (typeof COMPONENT_ROLES)[number];
 
@@ -70,12 +40,10 @@ function componentFor(detection: DetectionResult, role: ComponentRole): Detected
   return role === 'backend' ? detection.backend : detection.frontend;
 }
 
-/** True when at least one configured provider has a key — AI refinement is possible. */
 function aiKeyPresent(resolveKey: KeyResolver): boolean {
   return Boolean(resolveKey(ENV_KEYS.qwenApiKey) || resolveKey(ENV_KEYS.apiKey));
 }
 
-/** The repo README text used to ground the AI fill ('' when there is none). */
 async function readReadme(repoDir: string): Promise<string> {
   for (const name of ['README.md', 'readme.md', 'README']) {
     const text = await readFileIfExists(join(repoDir, name));
@@ -84,11 +52,6 @@ async function readReadme(repoDir: string): Promise<string> {
   return '';
 }
 
-/**
- * STAGE 3: fill template vars per component via the AI router. Every failure mode
- * (no key, provider errors, cost cap) degrades to the registry defaults with a
- * warning — the AI refines the plan, it is never required to produce one.
- */
 async function fillComponents(
   detection: DetectionResult,
   ctx: RunContext,
@@ -120,10 +83,6 @@ async function fillComponents(
   return filled;
 }
 
-/**
- * STAGE 3: infer the app's own env vars (secrets, tuning) for the generated .env.
- * Purely additive — any failure just means no .env, never a failed run.
- */
 async function inferAppEnv(
   detection: DetectionResult,
   ctx: RunContext,
@@ -141,7 +100,6 @@ async function inferAppEnv(
   }
 }
 
-/** Render the compose file + every to-be-built Dockerfile in memory (no writes). */
 function renderPreview(
   detection: DetectionResult,
   plan: ServicePlan,
@@ -171,7 +129,6 @@ function renderPreview(
   return `${sections.join('\n\n')}\n`;
 }
 
-/** The end-of-run success summary: URLs, heal log, and how to stop the stack. */
 function renderSuccess(ctx: RunContext): string {
   const plan = ctx.plan;
   const lines = ['', 'Stack is up ✔', ''];
@@ -193,7 +150,6 @@ function renderSuccess(ctx: RunContext): string {
   return lines.join('\n');
 }
 
-/** Log the run's LLM spend (with the per-provider breakdown when there was any). */
 function logCost(cost: RunContext['cost'], logger: Logger): void {
   if (cost.estimatedUsd === 0) return;
   const byProvider = Object.entries(cost.byProvider ?? {})
@@ -204,19 +160,12 @@ function logCost(cost: RunContext['cost'], logger: Logger): void {
   });
 }
 
-/**
- * Run the pipeline against `ctx.repoUrl`. When `ctx.workspaceDir` is already set
- * (tests, embedders) the clone step is skipped and that directory is used as-is;
- * otherwise the repo is cloned into a temp workspace the pipeline owns.
- */
 export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise<RunContext> {
   const output = io.output ?? process.stdout;
   const signal = ctx.options.signal;
   let workspace: Workspace | null = null;
   let keepWorkspace = false;
 
-  // Run-scoped AI: this run's --model / --cost-cap / cancel / BYOK-key resolution
-  // apply to every AI call it makes.
   ctx.ai ??= aiFor(
     new AIRouter(
       routerConfigForRun({
@@ -230,14 +179,12 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
 
   try {
     signal?.throwIfAborted();
-    // STAGE 0/1: clone into an owned temp workspace (skipped when pre-materialized).
     if (ctx.workspaceDir === '') {
       workspace = await createWorkspace();
       ctx.logger.info(`Fetching ${ctx.repoUrl} ...`);
       ctx.workspaceDir = await cloneRepo(ctx.repoUrl, workspace, signal);
     }
 
-    // STAGE 2: static detection.
     signal?.throwIfAborted();
     const detection = await detectStack(ctx.workspaceDir);
     ctx.detection = detection;
@@ -257,7 +204,6 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
       );
     }
 
-    // STAGE 3: AI fill + env inference (both degrade gracefully when keyless).
     signal?.throwIfAborted();
     let filled: Record<string, FilledTemplateVars> = {};
     let inferred: InferredEnv | null = null;
@@ -273,11 +219,8 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
     ctx.filled = filled;
     if (inferred !== null) ctx.inferredEnv = inferred;
 
-    // STAGE 4: plan + approval gate. Nothing is built or written before approval.
     signal?.throwIfAborted();
     ctx.plan = buildServicePlan(detection, filled, inferred);
-    // An embedder's approvePlan hook (e.g. the VS Code webview) owns the decision
-    // when provided; otherwise the default reviewPlan gate runs.
     const outcome = io.approvePlan
       ? await io.approvePlan(ctx.plan)
       : await reviewPlan(ctx.plan, ctx.options, io);
@@ -293,7 +236,6 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
       return ctx;
     }
 
-    // STAGE 5: generate configs into the workspace, then build/run with self-heal.
     signal?.throwIfAborted();
     await assertDockerAvailable(signal);
     const files = await writeConfigs(ctx);
@@ -305,19 +247,15 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
       const result = await runSelfHealLoop(ctx);
       ctx.logger.debug(`Stack came up (final phase: ${result.phase}).`);
     } catch (err) {
-      // Best-effort teardown of any half-started stack before the workspace goes.
-      // An abort tears down exactly like any other failure; the down itself is not
-      // gated on the (already-aborted) signal so cleanup always runs.
       await composeDown(ctx.workspaceDir);
       throw err;
     }
 
-    keepWorkspace = true; // the running stack lives here — don't delete it
+    keepWorkspace = true;
     output.write(renderSuccess(ctx));
     logCost(ctx.cost, ctx.logger);
     return ctx;
   } finally {
-    // A clone the pipeline made is disposable unless it now hosts a running stack.
     if (workspace !== null && !keepWorkspace) await cleanupWorkspace(workspace);
   }
 }

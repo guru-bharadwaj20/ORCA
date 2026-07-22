@@ -6,7 +6,7 @@ detects the stack, generates Docker + Compose configs, shows you the planned ser
 graph **for approval before anything runs**, then builds and starts the containers
 with a self-healing retry loop that explains each fix in plain English.
 
-Published as **`orca-cli`** on npm (the bare `orca` name was taken); the installed
+Published as **`orca-agent-cli`** on npm (the bare `orca` name was taken); the installed
 binary is `orca`. A companion [VS Code extension](vscode-extension/) wraps the same
 engine in the editor.
 
@@ -47,10 +47,10 @@ See [`docs/supported-stacks.md`](docs/supported-stacks.md) for details.
 ## Install
 
 ```bash
-npm install -g orca-cli      # once published
+npm install -g orca-agent-cli
 ```
 
-Until then, run straight from a checkout:
+Or run straight from a checkout:
 
 ```bash
 npm install && npm run build
@@ -134,9 +134,9 @@ npm run typecheck    # tsc --noEmit
 
 - **ESM-only** TypeScript with `NodeNext` resolution; intra-project imports use explicit
   `.js` extensions.
-- **npm-workspaces monorepo**: the root package is the publishable `orca-cli`;
+- **npm-workspaces monorepo**: the root package is the publishable `orca-agent-cli`;
   `vscode-extension/` is a private workspace member that consumes the core through its
-  subpath exports (`orca-cli`, `/plan`, `/config`, `/ai`) rather than reimplementing it.
+  subpath exports (`orca-agent-cli`, `/plan`, `/config`, `/ai`) rather than reimplementing it.
 - The bundled samples are real and runnable with Docker — see
   [`examples/README.md`](examples/README.md):
 
@@ -149,22 +149,28 @@ npm run typecheck    # tsc --noEmit
 
 ```
 src/
+├── clone/        temp-workspace clone/copy + cleanup
 ├── detect/       static, AI-free stack detection
 ├── templates/    Handlebars Dockerfile/Compose templates + registry
 ├── ai/           multi-provider router (Qwen primary, Claude fallback), BYOK
 ├── plan/         service plan, Mermaid diagram, approval gate
-├── generate/     writes configs + explainable .env into the workspace
+├── generate/     writes configs into the workspace
+├── orchestrate/  healthchecks, startup order, explainable .env generation
 ├── build/        docker build/run + the explainable self-heal loop
-├── clone/        temp-workspace clone/copy + cleanup
 ├── core/         RunContext + runPipeline (the embeddable engine)
 ├── cli/          the `orca` binary, interactive menu, output rendering
-└── config/       ORCA_* settings parsing + validation
+├── config/       ORCA_* settings parsing + validation
+└── utils/        errors, filesystem helpers, logging
 
+scripts/          build/clean helpers (template packaging, workspace cleanup)
 examples/         runnable sample apps + golden reference configs
 tests/            vitest suites (nothing mocked beyond the Docker/AI boundaries)
 vscode-extension/ the VS Code front end (workspace member)
 docs/             architecture, supported stacks, demo
 ```
+
+The package entry point is `src/core/index.ts` (`orca-agent-cli`); `plan/`, `config/`,
+and `ai/` each expose a barrel for their subpath export.
 
 ## Security
 

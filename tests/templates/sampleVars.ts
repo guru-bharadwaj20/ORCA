@@ -1,11 +1,4 @@
-/**
- * Known-good render-contexts that describe the bundled sample apps. These are the
- * hand-written `DockerfileVars` / `ComposeVars` that MUST render byte-for-byte into the
- * committed `.orca-golden/` files — that equality is what proves templatization is lossless.
- */
 import type { ComposeVars, DockerfileVars } from '../../src/templates/types.js';
-
-// --- MERN sample -----------------------------------------------------------------
 
 export const mernClientDockerfileVars: DockerfileVars = {
   baseImage: 'node:20-slim',
@@ -73,8 +66,6 @@ export const mernComposeVars: ComposeVars = {
     },
   ],
 };
-
-// --- Django + Postgres sample ----------------------------------------------------
 
 export const djangoDockerfileVars: DockerfileVars = {
   baseImage: 'python:3.12-slim',

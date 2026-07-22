@@ -1,13 +1,3 @@
-/**
- * Runs every independent detector and aggregates their output into a single
- * `DetectionResult`. This is the one place that composes the detect stage; each
- * detector stays standalone so it could later become its own agent.
- *
- * STAGE: 2 (detect) — REAL code.
- * Inputs: an absolute repo path.
- * Outputs: a fully-populated `DetectionResult` (the STAGE 2 contract).
- */
-
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -33,16 +23,12 @@ import type {
 
 export type { DetectionResult } from './types.js';
 
-/** Any of these marks a directory as a component root worth inspecting. */
 const MANIFEST_FILES = ['package.json', 'requirements.txt', 'pyproject.toml', 'manage.py'];
 
-/** Conventional directory names that disambiguate multiple candidates per role. */
 const FRONTEND_DIR_HINT = /^(client|frontend|web|ui)$/i;
 const BACKEND_DIR_HINT = /^(server|backend|api|service)$/i;
 
-/** A directory that declared a manifest, plus what its manifest revealed. */
 interface Candidate {
-  /** Repo-relative root (`.` for the repo root itself). */
   rootDir: string;
   absDir: string;
   frontend: FrontendFramework;
@@ -56,7 +42,6 @@ async function hasManifest(dir: string): Promise<boolean> {
   return false;
 }
 
-/** The repo root plus every first-level subdirectory that declares a manifest. */
 async function findCandidateRoots(repoPath: string): Promise<string[]> {
   let entries;
   try {
@@ -78,7 +63,6 @@ async function findCandidateRoots(repoPath: string): Promise<string[]> {
   return roots;
 }
 
-/** Component-level language from its own manifests (repo-wide scan is separate). */
 async function componentLanguage(absDir: string): Promise<Language> {
   for (const pythonMarker of ['manage.py', 'requirements.txt', 'pyproject.toml']) {
     if ((await readFileIfExists(join(absDir, pythonMarker))) !== null) return 'python';
@@ -88,10 +72,6 @@ async function componentLanguage(absDir: string): Promise<Language> {
   return 'unknown';
 }
 
-/**
- * Pick the single candidate for a role. Multiple matches are resolved by the
- * conventional directory-name hint, then by first (alphabetical) order plus a warning.
- */
 function pickCandidate(
   matches: Candidate[],
   hint: RegExp,
@@ -111,7 +91,6 @@ function pickCandidate(
   return chosen ?? null;
 }
 
-/** Run the per-component detectors and assemble a `DetectedComponent`. */
 async function buildComponent(
   role: 'frontend' | 'backend',
   candidate: Candidate
@@ -132,16 +111,10 @@ async function buildComponent(
     framework: role === 'frontend' ? candidate.frontend : candidate.backend,
     dependencies,
     ports,
-    // The entrypoint detector only sees the component dir; anchor its workingDir
-    // to the repo-relative root so later stages can `cd` from the repo root.
     entrypoint: entrypoint === null ? null : { ...entrypoint, workingDir: candidate.rootDir },
   };
 }
 
-/**
- * Locate frontend/backend component roots, run each detector, decide
- * `isSupported` + `confidence`, and collect warnings.
- */
 export async function detectStack(repoPath: string): Promise<DetectionResult> {
   const warnings: DetectionWarning[] = [];
 
@@ -157,7 +130,6 @@ export async function detectStack(repoPath: string): Promise<DetectionResult> {
     })
   );
 
-  // A candidate may serve both roles (single-package repos with react + express).
   const frontendPick = pickCandidate(
     candidates.filter((c) => c.frontend !== 'unknown'),
     FRONTEND_DIR_HINT,
@@ -186,7 +158,6 @@ export async function detectStack(repoPath: string): Promise<DetectionResult> {
     backendPick === null ? null : buildComponent('backend', backendPick),
   ]);
 
-  // Databases: union across every candidate root, first-found per engine wins.
   const databases: DetectedDatabase[] = [];
   for (const c of candidates) {
     for (const db of await detectServices(c.absDir)) {
@@ -194,7 +165,6 @@ export async function detectStack(repoPath: string): Promise<DetectionResult> {
     }
   }
 
-  // Package managers seen anywhere (per candidate root), 'unknown' filtered out.
   const packageManagers: PackageManager[] = [];
   for (const c of candidates) {
     const pm = await detectPackageManager(c.absDir);
@@ -226,11 +196,6 @@ export async function detectStack(repoPath: string): Promise<DetectionResult> {
   };
 }
 
-/**
- * Deterministic 0..1 confidence: how much of the expected shape of a supported repo
- * was actually observed. A full frontend+backend+db repo with entrypoints scores 0.95;
- * a bare unsupported repo scores 0.
- */
 function scoreConfidence(
   frontend: DetectedComponent | null,
   backend: DetectedComponent | null,

@@ -1,6 +1,3 @@
-/**
- * STAGE 7 tests — loadSettings: the single place ORCA_* env overrides are parsed.
- */
 import { describe, expect, it } from 'vitest';
 
 import { DEFAULT_SETTINGS, loadSettings } from '../../src/config/settings.js';
@@ -14,7 +11,7 @@ describe('loadSettings', () => {
     const settings = loadSettings({
       ORCA_MODEL: 'claude-sonnet-5',
       ORCA_QWEN_MODEL: 'qwen3-coder-flash',
-      QWEN_BASE_URL: 'http://localhost:11434/v1/', // trailing slash stripped
+      QWEN_BASE_URL: 'http://localhost:11434/v1/',
       ORCA_PRIMARY_PROVIDER: 'anthropic',
       ORCA_FALLBACK_PROVIDER: 'qwen',
       ORCA_MAX_PRIMARY_ATTEMPTS: '3',
@@ -38,7 +35,7 @@ describe('loadSettings', () => {
 
   it('falls back to defaults on invalid values instead of crashing', () => {
     const settings = loadSettings({
-      ORCA_PRIMARY_PROVIDER: 'openai', // unsupported
+      ORCA_PRIMARY_PROVIDER: 'openai',
       ORCA_MAX_PRIMARY_ATTEMPTS: 'lots',
       ORCA_COST_CAP_USD: '-3',
       ORCA_MAX_HEAL_ATTEMPTS: '0',

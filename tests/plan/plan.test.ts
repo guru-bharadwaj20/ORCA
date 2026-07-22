@@ -1,7 +1,3 @@
-/**
- * STAGE 4 tests — plan assembly, Mermaid rendering, and the plan → compose round-trip.
- * Detection runs for real against the Stage 2 fixtures; nothing is mocked.
- */
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
@@ -76,7 +72,6 @@ describe('buildServicePlan', () => {
       POSTGRES_HOST: 'db',
       POSTGRES_PORT: '5432',
     });
-    // Python components get the bind mount but no node_modules shield.
     expect(backend?.volumes).toEqual([{ source: '.', target: '/app', kind: 'bind' }]);
   });
 
@@ -93,7 +88,6 @@ describe('buildServicePlan', () => {
     const backend = plan.services.find((s) => s.id === 'backend');
     expect(backend?.ports).toEqual([{ host: 4000, container: 4000, protocol: 'tcp' }]);
     expect(backend?.environment['PORT']).toBe('4000');
-    // The frontend's API URL follows the refined backend port.
     const frontend = plan.services.find((s) => s.id === 'frontend');
     expect(frontend?.environment['VITE_API_URL']).toBe('http://localhost:4000');
   });
@@ -105,7 +99,7 @@ describe('renderDiagram', () => {
     const diagram = renderDiagram(buildServicePlan(detection, {}));
 
     expect(diagram.startsWith('flowchart LR')).toBe(true);
-    expect(diagram).toContain('db[("'); // database renders as a cylinder
+    expect(diagram).toContain('db[("');
     expect(diagram).toContain('backend("');
     expect(diagram).toContain('backend -->|service_healthy| db');
     expect(diagram).toContain('frontend -->|service_started| backend');
@@ -137,12 +131,10 @@ describe('planToComposeVars → renderCompose round-trip', () => {
     expect(compose.name).toBe('orca-mern-repo');
     expect(Object.keys(compose.services)).toEqual(['db', 'backend', 'frontend']);
     expect(compose.services['db']?.image).toBe('mongo:7');
-    // Long-form depends_on: startup gated on the db's healthcheck.
     expect(compose.services['backend']?.depends_on).toEqual({
       db: { condition: 'service_healthy' },
     });
     expect(compose.services['backend']?.ports).toEqual(['3000:3000']);
-    // Anonymous volume renders target-only; bind renders source:target.
     expect(compose.services['backend']?.volumes).toEqual(['./server:/app', '/app/node_modules']);
     expect(Object.keys(compose.volumes)).toEqual(['db-data']);
     expect(Object.keys(compose.networks)).toEqual(['orca-net']);

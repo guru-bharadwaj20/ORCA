@@ -1,7 +1,3 @@
-/**
- * STAGE 3 tests — the typed AI-output boundary: FilledTemplateVarsSchema coercions and
- * the refineDockerfileVars merge onto registry defaults. Pure functions; nothing mocked.
- */
 import { describe, expect, it } from 'vitest';
 
 import { refineDockerfileVars } from '../../src/ai/refineVars.js';
@@ -32,7 +28,6 @@ describe('typed AI-output boundary', () => {
       baseImage: 'node:22-slim',
       port: 8080,
     });
-    // The input defaults are never mutated.
     expect(defaults.port).toBe(3000);
   });
 
@@ -77,7 +72,7 @@ describe('typed AI-output boundary', () => {
       filled
     );
 
-    expect(refined.dependencyFiles).toEqual(['package.json']); // kept
-    expect(refined.systemPackages).toEqual([]); // explicit "none" honored
+    expect(refined.dependencyFiles).toEqual(['package.json']);
+    expect(refined.systemPackages).toEqual([]);
   });
 });

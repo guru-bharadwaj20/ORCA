@@ -1,6 +1,3 @@
-/**
- * STAGE 4 tests — the approval gate, driven through injected streams (no TTY).
- */
 import { PassThrough } from 'node:stream';
 import { describe, expect, it } from 'vitest';
 
@@ -22,7 +19,6 @@ async function mernPlan() {
   return buildServicePlan(detection, {});
 }
 
-/** Drive reviewPlan with scripted stdin; capture everything it prints. */
 async function runGate(answer: string | null, opts: RunOptions) {
   const input = new PassThrough();
   const output = new PassThrough();
@@ -42,7 +38,7 @@ describe('reviewPlan approval gate', () => {
     expect(outcome).toEqual({ approved: true, plan });
     expect(printed).toContain('flowchart LR');
     expect(printed).toContain('Approve this plan and continue?');
-    expect(printed).toContain('backend'); // service table
+    expect(printed).toContain('backend');
     expect(printed).toContain('Nothing has been built or run yet.');
   });
 

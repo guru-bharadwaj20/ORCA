@@ -1,8 +1,3 @@
-/**
- * STAGE 5 tests — the self-heal retry loop with the runner and the AI facade MOCKED.
- * No docker and no network. The patch allowlist is exercised for real against a
- * temp workspace (canonicalization, traversal, app-source rejection).
- */
 import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -63,8 +58,8 @@ describe('runSelfHealLoop', () => {
 
     await expect(runSelfHealLoop(ctx)).rejects.toMatchObject({ code: 'HEAL_EXHAUSTED' });
 
-    expect(mocks.runOnce).toHaveBeenCalledTimes(3); // initial + 2 healed retries
-    expect(mocks.complete).toHaveBeenCalledTimes(2); // exactly maxHealAttempts heals
+    expect(mocks.runOnce).toHaveBeenCalledTimes(3);
+    expect(mocks.complete).toHaveBeenCalledTimes(2);
     expect(await readFile(join(dir, 'docker-compose.yml'), 'utf8')).toBe('name: patched\n');
   });
 
@@ -100,9 +95,9 @@ describe('runSelfHealLoop', () => {
       explanation: 'The app source has a bug.',
       fix: 'Patch the application code.',
       patches: [
-        { file: 'server/index.js', contents: 'hacked' }, // app source
-        { file: '../outside.txt', contents: 'escape' }, // traversal
-        { file: '/etc/orca-test', contents: 'absolute' }, // absolute path
+        { file: 'server/index.js', contents: 'hacked' },
+        { file: '../outside.txt', contents: 'escape' },
+        { file: '/etc/orca-test', contents: 'absolute' },
       ],
     });
 
@@ -110,7 +105,7 @@ describe('runSelfHealLoop', () => {
 
     expect(existsSync(join(dir, 'server/index.js'))).toBe(false);
     expect(existsSync(join(dir, '..', 'outside.txt'))).toBe(false);
-    expect(ctx.diagnosis[0]?.changedFiles).toEqual([]); // nothing was actually written
+    expect(ctx.diagnosis[0]?.changedFiles).toEqual([]);
   });
 
   it('gives up immediately when the AI declares the failure unfixable', async () => {
@@ -130,7 +125,7 @@ describe('runSelfHealLoop', () => {
     const controller = new AbortController();
     ctx.options.signal = controller.signal;
     mocks.runOnce.mockImplementation(() => {
-      controller.abort(); // cancelled mid-attempt
+      controller.abort();
       return Promise.resolve(failure);
     });
 

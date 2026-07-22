@@ -1,32 +1,13 @@
-/**
- * The ORCA plan approval webview — the headline "approve-before-build" gate, done
- * natively. Renders the service-graph as a Mermaid diagram (from the bundled
- * media/mermaid.min.js, never a CDN) next to a service table, with Approve / Reject
- * buttons. Wired into the pipeline as the Phase 1 `approvePlan` hook.
- *
- * The returned promise ALWAYS settles: a button click resolves it, and a panel
- * disposed without a decision resolves a rejected `ReviewOutcome` — so the pipeline
- * takes its normal PLAN_REJECTED path instead of hanging on an open promise.
- */
-
 import type { ReviewOutcome, ServiceNode, ServicePlan } from 'orca-agent-cli/plan';
 import * as vscode from 'vscode';
 
-// `orca-agent-cli` is ESM and kept external (see extension.ts); load the diagram renderer
-// at runtime rather than bundling it.
 const loadDiagram = async (): Promise<(plan: ServicePlan) => string> =>
   (await import('orca-agent-cli/plan')).renderDiagram;
 
-/** Messages the webview posts back to the extension. */
 interface DecisionMessage {
   type: 'approve' | 'reject';
 }
 
-/**
- * Show the plan approval panel and resolve with the user's decision. Resolves a
- * rejected outcome if the panel is closed without deciding (never leaves the pipeline
- * waiting).
- */
 export async function approvePlanViaWebview(
   context: vscode.ExtensionContext,
   plan: ServicePlan
@@ -60,7 +41,6 @@ export async function approvePlanViaWebview(
     });
 
     panel.onDidDispose(() => {
-      // Closed without a decision → reject so the pipeline doesn't hang.
       if (!settled) {
         settled = true;
         resolve({ approved: false, plan, reason: 'plan view closed without a decision' });
@@ -76,7 +56,6 @@ export async function approvePlanViaWebview(
   });
 }
 
-/** Build the full webview HTML: CSP, bundled mermaid, the diagram, the table, buttons. */
 function renderPlanHtml(
   webview: vscode.Webview,
   extensionUri: vscode.Uri,
@@ -95,8 +74,6 @@ function renderPlanHtml(
     `script-src 'nonce-${nonce}'`,
   ].join('; ');
 
-  // The diagram source is handed to mermaid via JS (not HTML) to avoid any markup
-  // injection; `<` is escaped so it can't break out of the <script> element.
   const diagramJson = JSON.stringify(diagramSource).replace(/</g, '\\u003c');
 
   return `<!DOCTYPE html>
@@ -164,7 +141,6 @@ function renderPlanHtml(
 </html>`;
 }
 
-/** One <tr> for a service, mirroring the CLI's plan table columns. */
 function serviceRow(node: ServiceNode): string {
   const source =
     node.source.type === 'image'

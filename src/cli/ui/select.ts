@@ -1,29 +1,15 @@
-/**
- * A tiny zero-dependency arrow-key menu (and a text prompt) for the interactive
- * ORCA shell. Built on Node's readline keypress events + raw mode; the whole panel
- * is redrawn on each keystroke against the black screen from `theme.ts`.
- *
- * STAGE: 7 (cli) — REAL code (presentation only).
- * Inputs: menu items / a prompt message + the process TTY streams.
- * Outputs: the chosen value (or typed string); null when the user quits.
- */
-
 import { createInterface } from 'node:readline/promises';
 import { emitKeypressEvents } from 'node:readline';
 
 import { screen, theme } from './theme.js';
 
-/** A selectable menu row. */
 export interface SelectItem<T> {
   label: string;
-  /** A short trailing description, shown dimmed. */
   hint?: string;
-  /** An emoji/glyph shown before the label. */
   icon?: string;
   value: T;
 }
 
-/** A non-selectable section heading. */
 export interface SelectSeparator {
   separator: string;
 }
@@ -34,14 +20,11 @@ function isSeparator<T>(row: SelectRow<T>): row is SelectSeparator {
   return (row as SelectSeparator).separator !== undefined;
 }
 
-/** Options for {@link select}. */
 export interface SelectOptions<T> {
-  /** Pre-rendered block (banner + question) printed above the list. */
   header: string;
   items: SelectRow<T>[];
 }
 
-/** Render one frame of the list with `active` highlighted. */
 function renderList<T>(rows: SelectRow<T>[], active: number): string {
   const lines = rows.map((row, i) => {
     if (isSeparator(row)) {
@@ -58,7 +41,6 @@ function renderList<T>(rows: SelectRow<T>[], active: number): string {
   return lines.join('\n');
 }
 
-/** The next selectable index in `dir` (+1/-1), wrapping and skipping separators. */
 function step<T>(rows: SelectRow<T>[], from: number, dir: 1 | -1): number {
   const n = rows.length;
   let i = from;
@@ -69,10 +51,6 @@ function step<T>(rows: SelectRow<T>[], from: number, dir: 1 | -1): number {
   return from;
 }
 
-/**
- * Show an arrow-key menu and resolve with the chosen value. Resolves `null` if the
- * user quits (q / Esc / Ctrl-C) or when stdin is not a TTY (no way to navigate).
- */
 export function select<T>(opts: SelectOptions<T>): Promise<T | null> {
   const stdin = process.stdin;
   const stdout = process.stdout;
@@ -136,10 +114,6 @@ export function select<T>(opts: SelectOptions<T>): Promise<T | null> {
   });
 }
 
-/**
- * Prompt for a single line of text. Returns the trimmed answer, or `fallback`
- * (default '') when the user submits nothing.
- */
 export async function textPrompt(message: string, fallback = ''): Promise<string> {
   stdoutWrite(screen.clearStyle + '\n');
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -152,7 +126,6 @@ export async function textPrompt(message: string, fallback = ''): Promise<string
   }
 }
 
-/** Block until the user presses Enter — used to hold a result on screen. */
 export async function pressEnter(message = 'Press Enter to return to the menu…'): Promise<void> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   try {
