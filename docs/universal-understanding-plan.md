@@ -389,7 +389,20 @@ Landed on `feat/universal-understanding` (behind the full test suite):
   delivering the "honest about uncertainty" promise. (Driving a real build from an
   inferred recipe is Phase E — the generic Dockerfile synthesizer.)
 
-Test coverage across these: **194 tests** (was 115 at the start of the branch), all
+- **Phase E (generic Dockerfile synthesis)** — `synthesizeDockerfile(recipe)` turns any
+  `BuildRecipe` (registry-matched or AI-inferred) into an actual Dockerfile: multi-stage
+  (builder → slim runtime) for compiled runtimes, single-stage for interpreted ones, with
+  system-package blocks, `EXPOSE`, and `{{binary}}`/`{{jar}}`/`{{dll}}` placeholder
+  resolution. The seed stacks keep their handwritten Handlebars templates; everything else
+  flows through here. Verified end-to-end producing idiomatic Rust and Go (distroless)
+  images.
+
+Remaining to reach "build any repo": route synthesized recipes through the existing
+`writeConfigs` + compose + build path (today only the seed-stack Dockerfile templates are
+wired into generate). The synthesizer and recipes exist; connecting them to `writeConfigs`
+for ecosystem/inferred stacks is the next integration step.
+
+Test coverage across these: **199 tests** (was 115 at the start of the branch), all
 hermetic (temp-dir fixtures, injected AI facade, no network, no Docker, no VS Code).
 
 Known follow-ups surfaced during integration:
