@@ -61,6 +61,9 @@ describe('detect stage', () => {
         expect.stringContaining('database dependency found'),
       ])
     );
+    // Phase-B/C insights surface the richer framework signals alongside the seed path.
+    expect(result.insights.frameworks).toEqual(expect.arrayContaining(['react', 'express']));
+    expect(result.insights.monorepoTools).toEqual([]);
   });
 
   it('detects a Django + Postgres repo', async () => {

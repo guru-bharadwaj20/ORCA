@@ -49,6 +49,13 @@ const detection: DetectionResult = {
   isSupported: true,
   confidence: 0.7,
   reasoning: [],
+  insights: {
+    frameworks: [],
+    runtimes: [],
+    monorepoTools: [],
+    ciCommands: [],
+    ciRuntimeVersions: [],
+  },
   warnings: [],
 };
 
