@@ -31,9 +31,10 @@ It is deliberately **narrow** — a small set of common stacks rather than anyth
 - **Keyless-capable, bring-your-own-key.** With no key, ORCA falls back to deterministic
   template defaults and the run still completes. Qwen3-Coder is primary, Claude the
   automatic fallback.
-- **Safe by construction.** The original repo is never modified, and the self-heal loop
-  may only patch files ORCA itself generated — an allowlist enforced in code, not in the
-  prompt.
+- **Safe by construction.** The original repo is never modified; the self-heal loop may
+  only patch files ORCA itself generated; and AI-proposed build commands, base images and
+  paths are validated against a strict allowlist before they reach a Dockerfile — all
+  enforced in code, not in the prompt.
 
 ## Supported stacks
 
