@@ -59,7 +59,9 @@ networks:
   {{networkName}}:
     driver: bridge
 
+{{#if (hasItems namedVolumes)}}
 volumes:
 {{#each namedVolumes}}
   {{this}}:
 {{/each}}
+{{/if}}
