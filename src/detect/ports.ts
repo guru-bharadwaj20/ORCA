@@ -14,6 +14,10 @@ const CODE_PORT_PATTERNS: RegExp[] = [
   /runserver\s+(?:0\.0\.0\.0:)?(\d{2,5})/,
 ];
 
+const KNOWN_SERVICE_PORTS = new Set([
+  1433, 1521, 3306, 5432, 5672, 6379, 9200, 9300, 11211, 15672, 27017, 27018, 27019,
+]);
+
 function isValidPort(port: number): boolean {
   return Number.isInteger(port) && port >= 1 && port <= 65535;
 }
@@ -53,7 +57,7 @@ async function portsFromCode(componentPath: string): Promise<number[]> {
       const match = pattern.exec(raw);
       if (match?.[1]) {
         const port = Number(match[1]);
-        if (isValidPort(port)) found.push(port);
+        if (isValidPort(port) && !KNOWN_SERVICE_PORTS.has(port)) found.push(port);
       }
     }
   }

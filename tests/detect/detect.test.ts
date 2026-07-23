@@ -92,6 +92,14 @@ describe('detect stage', () => {
     expect(result.warnings.some((w) => w.code === 'unsupported-stack')).toBe(true);
   });
 
+  it('ignores a database port in config and picks the port the app listens on', async () => {
+    const result = await detectStack(fixture('express-dbconfig-repo'));
+
+    expect(result.backend?.framework).toBe('express');
+    expect(result.backend?.ports.map((p) => p.port)).toEqual([4000]);
+    expect(result.backend?.ports.map((p) => p.port)).not.toContain(5432);
+  });
+
   it('orders languages by evidence and detects package managers from lockfiles', async () => {
     await expect(detectLanguages(fixture('mern-repo'))).resolves.toEqual(['javascript']);
     await expect(detectPackageManager(fixture('mern-repo/client'))).resolves.toBe('yarn');
