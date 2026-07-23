@@ -56,9 +56,11 @@ function asPositiveInt(value: string | undefined): number | undefined {
   return value !== undefined && Number.isInteger(parsed) && parsed >= 1 ? parsed : undefined;
 }
 
-function asPositiveNumber(value: string | undefined): number | undefined {
+function asNonNegativeNumber(value: string | undefined): number | undefined {
   const parsed = Number(value);
-  return value !== undefined && Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  return value !== undefined && value !== '' && Number.isFinite(parsed) && parsed >= 0
+    ? parsed
+    : undefined;
 }
 
 export function loadSettings(env: NodeJS.ProcessEnv = process.env): Settings {
@@ -75,7 +77,7 @@ export function loadSettings(env: NodeJS.ProcessEnv = process.env): Settings {
         : (asProvider(fallbackRaw) ?? DEFAULT_SETTINGS.fallbackProvider),
     maxPrimaryAttempts:
       asPositiveInt(env[ENV_KEYS.maxPrimaryAttempts]) ?? DEFAULT_SETTINGS.maxPrimaryAttempts,
-    costCapUsd: asPositiveNumber(env[ENV_KEYS.costCap]) ?? DEFAULT_SETTINGS.costCapUsd,
+    costCapUsd: asNonNegativeNumber(env[ENV_KEYS.costCap]) ?? DEFAULT_SETTINGS.costCapUsd,
     maxHealAttempts:
       asPositiveInt(env[ENV_KEYS.maxHealAttempts]) ?? DEFAULT_SETTINGS.maxHealAttempts,
   });

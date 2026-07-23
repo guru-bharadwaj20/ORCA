@@ -47,6 +47,11 @@ describe('loadSettings', () => {
     expect(settings.maxHealAttempts).toBe(DEFAULT_SETTINGS.maxHealAttempts);
   });
 
+  it('honours a zero cost cap instead of falling back to the default', () => {
+    expect(loadSettings({ ORCA_COST_CAP_USD: '0' }).costCapUsd).toBe(0);
+    expect(loadSettings({ ORCA_COST_CAP_USD: '' }).costCapUsd).toBe(DEFAULT_SETTINGS.costCapUsd);
+  });
+
   it('returns a frozen object', () => {
     expect(Object.isFrozen(loadSettings({}))).toBe(true);
   });

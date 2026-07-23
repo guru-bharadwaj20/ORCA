@@ -18,7 +18,9 @@ export function readConfiguredOptions(): Partial<RunOptions> {
   if (typeof model === 'string' && model.trim() !== '') options.model = model.trim();
 
   const costCap = explicitValue<number>(cfg, 'costCapUsd');
-  if (typeof costCap === 'number' && costCap > 0) options.costCapUsd = costCap;
+  if (typeof costCap === 'number' && Number.isFinite(costCap) && costCap >= 0) {
+    options.costCapUsd = costCap;
+  }
 
   const heal = explicitValue<number>(cfg, 'maxHealAttempts');
   if (typeof heal === 'number' && Number.isInteger(heal) && heal >= 1)
