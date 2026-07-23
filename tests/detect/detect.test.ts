@@ -108,6 +108,27 @@ describe('detect stage', () => {
     });
   });
 
+  it('supports a FastAPI repo via an ecosystem recipe, not the seed backend path', async () => {
+    // FastAPI has no seed BackendFramework, so the seed path leaves backend null; the
+    // Python ecosystem recipe places it as an open 'service' instead. Django's seed path
+    // is untouched (it carries manage.py and stays on the backend path).
+    const result = await detectStack(fixture('fastapi-repo'));
+
+    expect(result.isSupported).toBe(true);
+    expect(result.languages).toEqual(['python']);
+    expect(result.backend).toBeNull();
+    expect(result.frontend).toBeNull();
+    expect(result.insights.ecosystemComponents).toContainEqual({
+      rootDir: '.',
+      runtime: 'python',
+      recipeId: 'python-fastapi',
+    });
+    // The Postgres dependency is still detected — it wires into the service's plan node.
+    expect(result.databases).toEqual([
+      { engine: 'postgres', defaultPort: 5432, detectedFrom: 'psycopg2-binary' },
+    ]);
+  });
+
   it('treats an existing Dockerfile as a supported deterministic signal', async () => {
     const result = await detectStack(fixture('dockerfile-node-repo'));
 

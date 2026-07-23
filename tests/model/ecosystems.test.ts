@@ -50,6 +50,27 @@ describe('ecosystem recipes via defaultRecipeRegistry', () => {
     expect(recipe?.buildCommands?.[0]).toContain('dotnet publish');
   });
 
+  it('resolves FastAPI by dependency to an interpreted (build-less) recipe', () => {
+    const recipe = registry.match(facts({ runtime: 'python', dependencies: ['fastapi'] }));
+    expect(recipe?.id).toBe('python-fastapi');
+    expect(recipe?.buildCommands).toBeUndefined();
+    expect(recipe?.startCommand).toContain('uvicorn');
+    expect(recipe?.defaultPorts).toEqual([8000]);
+  });
+
+  it('resolves Flask by dependency and runs it under gunicorn', () => {
+    const recipe = registry.match(facts({ runtime: 'python', dependencies: ['flask'] }));
+    expect(recipe?.id).toBe('python-flask');
+    expect(recipe?.startCommand).toContain('gunicorn');
+  });
+
+  it('keeps Django ahead of Flask/FastAPI when manage.py is present', () => {
+    const recipe = registry.match(
+      facts({ runtime: 'python', dependencies: ['django', 'flask'], files: ['manage.py'] })
+    );
+    expect(recipe?.id).toBe('python-django');
+  });
+
   it('still returns null for an unknown runtime (synthesis signal)', () => {
     expect(registry.match(facts({ runtime: 'haskell', files: ['stack.yaml'] }))).toBeNull();
   });

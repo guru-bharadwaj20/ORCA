@@ -439,6 +439,17 @@ async function gatherInsights(
         });
       }
     }
+
+    // A Python root whose framework the seed backend path can't place (Django is the
+    // only seed Python backend) but which matches an ecosystem recipe — FastAPI/Flask —
+    // becomes an open 'service' too. Django carries a `manage.py`, so its recipe never
+    // matches here; the seed backend detector owns it. This keeps the two paths disjoint.
+    if (hasPython) {
+      const recipe = recipes.match({ runtime: 'python', dependencies, files });
+      if (recipe && recipe.id !== 'python-django') {
+        ecosystemComponents.push({ rootDir, runtime: 'python', recipeId: recipe.id });
+      }
+    }
   }
 
   for (const dockerfile of dockerfiles) {
