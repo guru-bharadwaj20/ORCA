@@ -82,6 +82,20 @@ echo "starting server..."
 exec "$@"
 `;
 
+/**
+ * A minimal passthrough entrypoint for a synthesized recipe that declares an
+ * `entrypointScript` but whose repo doesn't ship one. It just execs the CMD, so the
+ * ENTRYPOINT the synthesizer emitted resolves to a real, executable file (a dangling
+ * `COPY`/`ENTRYPOINT` would otherwise fail the build). A recipe with real pre-launch work
+ * ships its own script in the repo, which this never overwrites.
+ */
+const PASSTHROUGH_ENTRYPOINT = `#!/bin/sh
+set -e
+
+# ORCA default entrypoint: no pre-launch steps declared — hand straight off to the CMD.
+exec "$@"
+`;
+
 /** Repo-relative path (forward slashes) for a file inside a compose build context. */
 function inContext(context: string, name: string): string {
   return context === '.' ? name : `${context.replace(/^\.\//, '')}/${name}`;
@@ -157,6 +171,17 @@ export async function writeConfigs(ctx: RunContext): Promise<GeneratedFile[]> {
         dockerignoreFor(recipe.runtime),
         'dockerignore'
       );
+    }
+
+    // The synthesizer emits `COPY <entrypointScript>` + `ENTRYPOINT` when the recipe
+    // declares one. Supply a passthrough default so that COPY resolves, unless the repo
+    // already ships the script (then it's app source — keep it, never overwrite).
+    if (recipe.entrypointScript !== undefined && recipe.entrypointScript !== '') {
+      const relPath = inContext(node.source.context, recipe.entrypointScript);
+      if ((await readFileIfExists(join(ctx.workspaceDir, relPath))) === null) {
+        await write(relPath, PASSTHROUGH_ENTRYPOINT, 'entrypoint');
+        await chmod(join(ctx.workspaceDir, relPath), 0o755);
+      }
     }
   }
 
