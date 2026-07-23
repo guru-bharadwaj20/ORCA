@@ -52,4 +52,14 @@ describe('renderCompose produces valid YAML', () => {
     const doc = parse(renderCompose(mernComposeVars));
     expect(doc.services.mongo.environment).toBeUndefined();
   });
+
+  it('omits the top-level volumes key entirely when there are no named volumes', () => {
+    const noVolumes = { ...mernComposeVars, namedVolumes: [] };
+    const rendered = renderCompose(noVolumes);
+    const doc = parse(rendered);
+
+    expect(rendered).not.toMatch(/^volumes:/m);
+    expect('volumes' in doc).toBe(false);
+    expect(doc.networks['orca-mern-net'].driver).toBe('bridge');
+  });
 });
