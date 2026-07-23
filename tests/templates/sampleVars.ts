@@ -1,3 +1,11 @@
+// Hand-written template inputs for the golden tests. These deliberately use the
+// bundled samples' service names (mongo/server/client, db/web) rather than the ids
+// the planner emits (db/backend/frontend), because the goldens under
+// examples/*/.orca-golden/ are reference output for the templates alone.
+//
+// They therefore prove nothing about buildServicePlan -> planToComposeVars. That path
+// is covered against real fixtures by tests/plan/composeShape.test.ts and the
+// round-trip case in tests/plan/plan.test.ts; keep both in mind when changing either.
 import type { ComposeVars, DockerfileVars } from '../../src/templates/types.js';
 
 export const mernClientDockerfileVars: DockerfileVars = {
