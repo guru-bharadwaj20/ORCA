@@ -421,22 +421,26 @@ Landed on `feat/universal-understanding` (behind the full test suite):
   health-gated `depends_on` a seed backend would (`connectionEnv` + `dbDeps` applied in
   `buildServicePlan`). No database → the service stays unwired (empty env, no deps).
 
-Remaining toward "build any repo": dynamic probing (Phase G seams), recipe-aware
-self-healing for ecosystem/inferred stacks (Phase F), and per-ecosystem entrypoint
-scripts (e.g. a JVM/.NET migrate-then-run analogue to the Django entrypoint).
+- **Recipe-aware self-healing (Phase F, landed)** — the self-heal loop already heals any
+  ORCA-generated file, so a synthesized ecosystem/inferred Dockerfile is in scope for free.
+  On top of that, `buildHealPrompt` now receives each synthesized service's recipe context
+  (runtime + intended install/build/start commands) so a fix stays faithful to the runtime
+  and never silently switches, say, a Rust service to Node. Seed-stack (template) runs pass
+  no recipe context, so their heal prompt is unchanged.
 
-Test coverage across these: **210 tests** (was 115 at the start of the branch), all
+Remaining toward "build any repo": dynamic probing (Phase G seams), and per-ecosystem
+entrypoint scripts (e.g. a JVM/.NET migrate-then-run analogue to the Django entrypoint) —
+deferred until a recipe actually needs one, to avoid unused machinery.
+
+Test coverage across these: **215 tests** (was 115 at the start of the branch), all
 hermetic (temp-dir fixtures, injected AI facade, no network, no Docker, no VS Code).
 
 Known follow-ups surfaced during integration:
 
-- **Monorepo package globs are not expanded into candidate roots.** `findCandidateRoots`
-  scans only first-level subdirectories; a workspace glob like `services/*` (declared in
-  `insights.monorepoTools`/globs) does not yet promote `services/api` to a detected
-  component. Resolving the globs into candidate roots is the natural next step now that
-  the topology is detected.
-- **Ecosystem components are classified, not yet containerized.** Go/Rust/JVM/.NET
-  surface in `insights` and match a `BuildRecipe`, but the generate/compose path still
-  only emits Dockerfiles for the seed stacks. Wiring `RecipeRegistry` into a generic
-  Dockerfile synthesizer is Phase E.
+- **Monorepo package globs → candidate roots (resolved).** `expandWorkspaceGlobs` now
+  promotes workspace globs like `services/*` to candidate roots, so a package two levels
+  deep is detected.
+- **Ecosystem components are containerized (resolved, Phase E).** Go/Rust/JVM/.NET and
+  AI-inferred stacks flow through the generic multi-stage synthesizer end-to-end
+  (detection → plan → generate/preview → self-heal). See the landed entries above.
 ```
