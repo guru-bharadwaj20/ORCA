@@ -36,6 +36,12 @@ volumes) is shown and approved. Non-interactive sessions **reject** by default;
   substitution or redirects; base images must be official `node:*` / `python:*` tags;
   and file paths must stay inside the build context. A response that violates any of
   these is discarded and the run falls back to ORCA's deterministic template defaults.
+- The same constraint covers **tier-3 inferred build recipes**, whose commands are
+  synthesized into a Dockerfile and executed: install/build commands must name a
+  supported toolchain (npm, pip, python, cargo, go, mvn, gradle, java, dotnet), and an
+  inferred entrypoint may additionally be an executable path inside the image
+  (`./target/release/app`, `/app/server`) but may not climb out of it. A violating
+  inference is dropped and detection simply proceeds without it.
 - Self-heal patches are restricted by a **code-enforced allowlist**: a patch may only
   touch files ORCA itself generated (Dockerfiles, docker-compose.yml, .dockerignore,
   .env, entrypoint script). Paths are canonicalized against the workspace root —

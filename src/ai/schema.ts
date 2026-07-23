@@ -16,14 +16,20 @@ const splitWords = (value: unknown): unknown =>
   typeof value === 'string' ? value.split(/\s+/).filter(Boolean) : value;
 
 /**
- * A whitespace-splitting list of plain strings. Used by the tier-3 inference schema,
- * whose command lists are reviewed as part of the graded plan rather than constrained
- * to the seed-stack binary allowlist below (see `shellCommand`).
+ * Wrap a lone value into a list. Commands must NOT be split on whitespace — a
+ * `startCommand` of "cargo build --release" is one command, not three.
  */
-const stringList = z.preprocess(splitWords, z.array(z.string()));
+const asList = (value: unknown): unknown =>
+  Array.isArray(value) ? value : value === undefined || value === null ? [] : [value];
 
 const SHELL_METACHARACTERS = /[;&|`$(){}[\]<>\\\n\r'"]/;
 
+/**
+ * Every toolchain ORCA can legitimately invoke inside a build. Broad enough to cover
+ * the ecosystem recipes (cargo/go/mvn/gradle/java/dotnet) as well as the seed stacks,
+ * because the security property is the metacharacter guard below — this list only
+ * stops a model naming something no supported stack would ever run.
+ */
 const COMMAND_BINARIES = new Set([
   'npm',
   'npx',
@@ -40,7 +46,18 @@ const COMMAND_BINARIES = new Set([
   'daphne',
   'vite',
   'serve',
+  'cargo',
+  'go',
+  'mvn',
+  'gradle',
+  'java',
+  'dotnet',
 ]);
+
+/** `./server`, `./target/release/app`, `/app/server` — a compiled artifact to exec. */
+const EXECUTABLE_PATH = /^\.?\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/;
+
+const head = (command: string): string => command.trim().split(/\s+/)[0] ?? '';
 
 const BASE_IMAGE = /^(node|python):[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const SYSTEM_PACKAGE = /^[a-z0-9][a-z0-9.+-]*$/;
@@ -51,16 +68,43 @@ function hasTraversal(path: string): boolean {
   return path.split('/').includes('..');
 }
 
+const NO_METACHARACTERS = {
+  message:
+    'must not contain shell metacharacters (; & | ` $ ( ) { } [ ] < > \\ quotes or newlines)',
+} as const;
+
 const shellCommand = z
   .string()
   .min(1)
-  .refine((value) => !SHELL_METACHARACTERS.test(value), {
-    message:
-      'must not contain shell metacharacters (; & | ` $ ( ) { } [ ] < > \\ quotes or newlines)',
-  })
-  .refine((value) => COMMAND_BINARIES.has(value.trim().split(/\s+/)[0] ?? ''), {
+  .refine((value) => !SHELL_METACHARACTERS.test(value), NO_METACHARACTERS)
+  .refine((value) => COMMAND_BINARIES.has(head(value)), {
     message: `must start with a supported binary (${[...COMMAND_BINARIES].join(', ')})`,
   });
+
+/**
+ * A command proposed by tier-3 inference. Same guarantee as `shellCommand`: it is
+ * built into a Dockerfile and executed, so chaining, substitution, pipes, redirects
+ * and newlines are refused outright rather than trusted to the prompt.
+ */
+const inferredCommand = shellCommand;
+
+/**
+ * An inferred entrypoint. Compiled ecosystems exec an artifact rather than a
+ * toolchain ("./target/release/app", "/app/server"), so a plain executable path is
+ * allowed alongside a known binary — still with no shell metacharacters.
+ */
+const inferredStartCommand = z
+  .string()
+  .min(1)
+  .refine((value) => !SHELL_METACHARACTERS.test(value), NO_METACHARACTERS)
+  .refine((value) => COMMAND_BINARIES.has(head(value)) || EXECUTABLE_PATH.test(head(value)), {
+    message: 'must start with a supported binary or an executable path inside the image',
+  })
+  .refine((value) => !head(value).split('/').includes('..'), {
+    message: 'must not escape the image root with ".." segments',
+  });
+
+const stringList = z.preprocess(asList, z.array(inferredCommand));
 
 const relativePath = z
   .string()
@@ -133,7 +177,7 @@ export const InferredBuildSchema = z.object({
   packageManager: z.string().min(1).optional(),
   installCommands: stringList.default([]),
   buildCommands: stringList.default([]),
-  startCommand: z.string().min(1),
+  startCommand: inferredStartCommand,
   ports: z.preprocess(
     (v) => (Array.isArray(v) ? v : v === undefined ? [] : [v]),
     z.array(z.coerce.number().int().min(1).max(65535)).default([])
