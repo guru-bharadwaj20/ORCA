@@ -116,8 +116,15 @@ export async function recoverTasks(dir: string): Promise<RecoveredTask[]> {
     (await readFileIfExists(join(dir, 'makefile')));
   if (makefile !== null) tasks.push(...parseMakefile(makefile));
 
-  const justfile = await readFileIfExists(join(dir, 'justfile'));
-  if (justfile !== null) tasks.push(...parseJustfile(justfile));
+  // `just` resolves any of these names (case + dotfile variants), so check them all —
+  // a repo shipping `Justfile` would otherwise have its tasks silently missed.
+  for (const name of ['justfile', 'Justfile', '.justfile', '.Justfile']) {
+    const justfile = await readFileIfExists(join(dir, name));
+    if (justfile !== null) {
+      tasks.push(...parseJustfile(justfile));
+      break;
+    }
+  }
 
   for (const name of ['Taskfile.yml', 'Taskfile.yaml']) {
     const taskfile = await readFileIfExists(join(dir, name));

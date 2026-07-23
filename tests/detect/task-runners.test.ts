@@ -67,6 +67,14 @@ describe('recoverTasks', () => {
     });
   });
 
+  it('recognizes a capitalized Justfile (a valid `just` filename)', async () => {
+    await writeFile(join(dir, 'Justfile'), 'build:\n    npm run build\n');
+    expect(byName(await recoverTasks(dir), 'build')).toMatchObject({
+      source: 'justfile',
+      kind: 'build',
+    });
+  });
+
   it('includes package.json scripts', async () => {
     await writeFile(
       join(dir, 'package.json'),
