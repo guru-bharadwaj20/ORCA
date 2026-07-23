@@ -42,11 +42,17 @@ import { detectStack } from '../detect/index.js';
 import type { DetectedComponent, DetectionResult } from '../detect/types.js';
 import { reasoning } from '../model/claim.js';
 import { planToComposeVars } from '../generate/composeVars.js';
+import { dockerfileFor } from '../generate/dockerfileFor.js';
 import { writeConfigs } from '../generate/writeConfigs.js';
 import { buildEnvFile } from '../orchestrate/envFiles.js';
 import { reviewPlan, type ReviewIO, type ReviewOutcome } from '../plan/review.js';
-import { buildServicePlan, refinedComponentVars } from '../plan/servicePlan.js';
+import {
+  buildServicePlan,
+  refinedComponentVars,
+  type EcosystemComponent,
+} from '../plan/servicePlan.js';
 import type { ServicePlan } from '../plan/types.js';
+import { ALL_RECIPES } from '../model/recipes/index.js';
 import { describeComponent } from '../templates/registry.js';
 import { renderCompose, renderDockerfile } from '../templates/render.js';
 import { OrcaError, PlanRejectedError, UnsupportedStackError } from '../utils/errors.js';
@@ -70,6 +76,36 @@ type ComponentRole = (typeof COMPONENT_ROLES)[number];
 
 function componentFor(detection: DetectionResult, role: ComponentRole): DetectedComponent | null {
   return role === 'backend' ? detection.backend : detection.frontend;
+}
+
+/**
+ * Resolve the detected ecosystem components (Go/Rust/JVM/.NET) into the
+ * `EcosystemComponent[]` the plan places as open `'service'` nodes. Each id is the
+ * root's basename (or "app" at the repo root); unknown recipe ids are skipped. The
+ * `DetectedComponent` is minimal by design — synthesis needs only the root + recipe.
+ */
+function ecosystemComponentsFrom(detection: DetectionResult): EcosystemComponent[] {
+  const result: EcosystemComponent[] = [];
+  for (const eco of detection.insights.ecosystemComponents) {
+    const recipe = ALL_RECIPES.find((e) => e.recipe.id === eco.recipeId)?.recipe;
+    if (recipe === undefined) continue;
+    const id = eco.rootDir === '.' ? 'app' : (eco.rootDir.split('/').pop() ?? 'app');
+    result.push({
+      id,
+      recipe,
+      component: {
+        role: 'backend',
+        rootDir: eco.rootDir,
+        language: 'unknown',
+        packageManager: 'unknown',
+        framework: 'unknown',
+        dependencies: [],
+        ports: [],
+        entrypoint: null,
+      },
+    });
+  }
+  return result;
 }
 
 /** True when at least one configured provider has a key — AI refinement is possible. */
@@ -167,6 +203,19 @@ function renderPreview(
     sections.push(
       `# --- ${node.source.context}/${node.source.dockerfile} (${role}, preview) ---`,
       renderDockerfile(refinedComponentVars(component, role, filled)).trimEnd()
+    );
+  }
+
+  // Ecosystem 'service' nodes: preview their synthesized Dockerfile from the recipe.
+  for (const node of plan.services) {
+    if (node.kind !== 'service' || node.source.type !== 'build') continue;
+    const { context, dockerfile, recipeId } = node.source;
+    if (recipeId === undefined) continue;
+    const recipe = ALL_RECIPES.find((e) => e.recipe.id === recipeId)?.recipe;
+    if (recipe === undefined) continue;
+    sections.push(
+      `# --- ${context}/${dockerfile} (${node.id}, preview) ---`,
+      dockerfileFor({ kind: 'recipe', recipe }).trimEnd()
     );
   }
 
@@ -354,7 +403,7 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
 
     // STAGE 4: plan + approval gate. Nothing is built or written before approval.
     signal?.throwIfAborted();
-    ctx.plan = buildServicePlan(detection, filled, inferred);
+    ctx.plan = buildServicePlan(detection, filled, inferred, ecosystemComponentsFrom(detection));
     // An embedder's approvePlan hook (e.g. the VS Code webview) owns the decision
     // when provided; otherwise the default reviewPlan gate runs.
     const outcome = io.approvePlan
