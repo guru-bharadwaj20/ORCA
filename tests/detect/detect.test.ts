@@ -108,6 +108,24 @@ describe('detect stage', () => {
     });
   });
 
+  it('treats an existing Dockerfile as a supported deterministic signal', async () => {
+    const result = await detectStack(fixture('dockerfile-node-repo'));
+
+    expect(result.isSupported).toBe(true);
+    expect(result.frontend).toBeNull();
+    expect(result.backend).toBeNull();
+    expect(result.insights.dockerfiles).toHaveLength(1);
+    expect(result.insights.dockerfiles[0]).toMatchObject({
+      rootDir: '.',
+      file: 'Dockerfile',
+      baseImage: 'node:20-slim',
+      exposedPorts: [3000],
+      startCommand: 'npm start',
+      workingDir: '/app',
+    });
+    expect(result.reasoning).toEqual(expect.arrayContaining([expect.stringContaining('Dockerfile parsed')]));
+  });
+
   it('flags a genuinely unrecognizable repo with no language and no evidence', async () => {
     const result = await detectStack(fixture('unknown-repo'));
 
