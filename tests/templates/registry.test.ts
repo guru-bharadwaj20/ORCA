@@ -10,6 +10,7 @@ import type {
   PackageManager,
 } from '../../src/detect/types.js';
 import { defaultDockerfileVars, selectDockerfileTemplate } from '../../src/templates/registry.js';
+import { KNOWN_PACKAGE_MANAGERS } from '../../src/templates/types.js';
 
 function component(overrides: Partial<DetectedComponent>): DetectedComponent {
   return {
@@ -189,5 +190,23 @@ describe('representative DetectionResults (MERN + Django)', () => {
     expect(selectDockerfileTemplate(result.backend!)).toBe('python.Dockerfile.hbs');
     expect(defaultDockerfileVars(result.backend!).systemPackages).toEqual(['libpq-dev', 'gcc']);
     expect(result.databases[0]!.engine).toBe('postgres');
+  });
+});
+
+describe('open PackageManager taxonomy', () => {
+  it('accepts an ecosystem manager outside the known set (open string)', () => {
+    // The point of the open taxonomy: a new ecosystem's manager is data, not an enum
+    // edit. `cargo` is not a known member, yet it's a valid PackageManager.
+    const cargo: PackageManager = 'cargo';
+    expect(cargo).toBe('cargo');
+  });
+
+  it('exposes the known managers as the closed hand-tuned core', () => {
+    expect([...KNOWN_PACKAGE_MANAGERS]).toEqual(['npm', 'yarn', 'pnpm', 'pip', 'poetry', 'uv']);
+    // Every known member is, of course, assignable to the open type.
+    for (const pm of KNOWN_PACKAGE_MANAGERS) {
+      const assigned: PackageManager = pm;
+      expect(assigned).toBe(pm);
+    }
   });
 });

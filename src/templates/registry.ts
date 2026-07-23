@@ -24,6 +24,9 @@ function resolvePackageManager(detected: DetectedPackageManager, python: boolean
   return detected;
 }
 
+// `PackageManager` is an open taxonomy, so these seed-stack helpers carry a `default`.
+// Only known managers reach them here (seed components resolve to npm/yarn/pnpm/pip/…);
+// the default keeps them total and picks the npm manifest as the safe fallback.
 function dependencyFilesFor(pm: PackageManager): string[] {
   switch (pm) {
     case 'npm':
@@ -35,6 +38,8 @@ function dependencyFilesFor(pm: PackageManager): string[] {
     case 'poetry':
     case 'uv':
       return ['pyproject.toml'];
+    default:
+      return ['package.json'];
   }
 }
 
@@ -52,6 +57,8 @@ function installCommandFor(pm: PackageManager): string {
       return 'poetry install';
     case 'uv':
       return 'uv sync --frozen';
+    default:
+      return 'npm install';
   }
 }
 
