@@ -117,4 +117,46 @@ describe('buildServicePlan — ecosystem DB wiring', () => {
     const svc = plan.services.find((s) => s.kind === 'service');
     expect(svc?.envFile).toBe('.env');
   });
+
+  it('wires BOTH a seed backend and a coexisting ecosystem service to the database (polyglot repo)', () => {
+    // A repo with a Django backend AND a Go worker sharing one Postgres: the ecosystem
+    // service gets the same DB env + health-gated dependency the seed backend does, and
+    // the two nodes coexist without colliding.
+    const detection = detectionWithPostgres();
+    detection.backend = {
+      role: 'backend',
+      rootDir: '.',
+      language: 'python',
+      packageManager: 'pip',
+      framework: 'django',
+      dependencies: ['django', 'psycopg2-binary'],
+      ports: [{ port: 8000, protocol: 'tcp', source: 'default' }],
+      entrypoint: null,
+    };
+    const eco: EcosystemComponent[] = [{ id: 'worker', recipe, component: component('worker') }];
+    const plan = buildServicePlan(detection, {}, null, eco);
+
+    const backend = plan.services.find((s) => s.id === 'backend');
+    const worker = plan.services.find((s) => s.id === 'worker');
+    expect(backend).toBeDefined();
+    expect(worker?.kind).toBe('service');
+    // Both talk to the same db, both health-gate on it.
+    expect(backend?.environment).toMatchObject({ POSTGRES_HOST: 'db' });
+    expect(worker?.environment).toMatchObject({ POSTGRES_HOST: 'db' });
+    expect(worker?.dependsOn).toContainEqual({ serviceId: 'db', condition: 'service_healthy' });
+    // No id collision: db, backend, worker are all distinct nodes.
+    expect(plan.services.map((s) => s.id).sort()).toEqual(['backend', 'db', 'worker']);
+  });
+
+  it('does not double-place an ecosystem component whose id collides with an existing node', () => {
+    // If an ecosystem id matches a node already placed (e.g. "db"), it is skipped rather
+    // than overwriting the database node.
+    const detection = detectionWithPostgres();
+    const eco: EcosystemComponent[] = [{ id: 'db', recipe, component: component('.') }];
+    const plan = buildServicePlan(detection, {}, null, eco);
+
+    const dbNodes = plan.services.filter((s) => s.id === 'db');
+    expect(dbNodes).toHaveLength(1);
+    expect(dbNodes[0]?.kind).toBe('database'); // the real db, not overwritten by the service
+  });
 });
