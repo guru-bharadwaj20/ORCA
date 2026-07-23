@@ -10,7 +10,12 @@ import { renderCompose } from '../../src/templates/render.js';
 const fixture = (name: string): string =>
   fileURLToPath(new URL(`../fixtures/${name}`, import.meta.url));
 
-const SUPPORTED_FIXTURES = ['mern-repo', 'django-postgres-repo', 'express-dbconfig-repo'];
+const SUPPORTED_FIXTURES = [
+  'mern-repo',
+  'django-postgres-repo',
+  'express-dbconfig-repo',
+  'react-express-nodb-repo',
+];
 
 interface ComposeDoc {
   name?: unknown;
