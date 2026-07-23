@@ -13,8 +13,13 @@
  * can render it without a second modelling step.
  */
 
-/** The kind of service a node represents. */
-export type ServiceKind = 'frontend' | 'backend' | 'database' | 'cache';
+/**
+ * The kind of service a node represents. `'service'` is the open, role-agnostic kind
+ * for ecosystem/inferred components (a Go worker, a Rust CLI, a JVM app) that don't fit
+ * the web-shaped frontend/backend split — the Universal Understanding open-role model
+ * (docs/universal-understanding-plan.md §2.3).
+ */
+export type ServiceKind = 'frontend' | 'backend' | 'database' | 'cache' | 'service';
 
 /** How a service's image is obtained: built from a Dockerfile or pulled from a registry. */
 export type ServiceSource =
