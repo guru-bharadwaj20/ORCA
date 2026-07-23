@@ -24,6 +24,8 @@ that is the exact synthesizer output, pinned by `tests/examples/ecosystem-golden
 | --- | --- | --- | --- |
 | [`go-sample/`](./go-sample/) | Go (`net/http`) | `go-mod` | `:8080/` returns `{"status":"ok","service":"orca-go-sample"}` |
 | [`rust-sample/`](./rust-sample/) | Rust (std TCP) | `rust-cargo` | `:8080/` returns `{"status":"ok","service":"orca-rust-sample"}` |
+| [`jvm-maven-sample/`](./jvm-maven-sample/) | Java (JDK HTTP server) | `jvm-maven` | `:8080/` returns `{"status":"ok","service":"orca-jvm-sample"}` |
+| [`dotnet-sample/`](./dotnet-sample/) | .NET (`HttpListener`) | `dotnet-sdk` | `:8080/` returns `{"status":"ok","service":"orca-dotnet-sample"}` |
 
 Each sample's own `README.md` documents its layout and the gotchas it handles.
 
