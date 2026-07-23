@@ -34,6 +34,14 @@ import {
 import type { FilledTemplateVars, InferredEnv } from '../ai/schema.js';
 import { assertDockerAvailable, composeDown } from '../build/docker.js';
 import { formatDiagnosisLog } from '../build/diagnosisLog.js';
+import {
+  HealOverrideStore,
+  applyLearnedOverride,
+  buildOverrideRecord,
+  overrideMatchesShape,
+  snapshotGeneratedFiles,
+} from '../build/healStore.js';
+import { repoShapeFrom, signatureFor } from '../build/repoSignature.js';
 import { runSelfHealLoop } from '../build/selfHeal.js';
 import {
   cleanupWorkspace,
@@ -517,15 +525,59 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
       files: files.map((f) => f.path).join(', '),
     });
 
+    // PHASE F: apply a learned heal override (if any) BEFORE the first build attempt, so a
+    // repo ORCA has already healed once starts from the healed config instead of re-paying
+    // for a fresh heal cycle. Precedence: matched recipe → learned override → self-heal.
+    // The recipe fingerprint guards staleness — a changed detected recipe shape discards
+    // the stored override rather than blindly applying it.
+    const healStore = new HealOverrideStore();
+    const shape = repoShapeFrom(ctx);
+    const signature = signatureFor(shape.repoId);
+    const originalConfigs = await snapshotGeneratedFiles(ctx);
+    let overrideApplied = false;
+    const learned = await healStore.lookup(signature);
+    if (learned !== null) {
+      if (overrideMatchesShape(learned, shape)) {
+        const applied = await applyLearnedOverride(ctx, learned);
+        overrideApplied = applied.length > 0;
+        if (overrideApplied) {
+          ctx.logger.info(
+            `Applied a learned heal override from a previous run (${applied.join(', ')}).`
+          );
+        }
+      } else {
+        await healStore.evict(signature);
+        ctx.logger.info(
+          'Discarded a stale heal override — the repo’s detected recipe shape has changed.'
+        );
+      }
+    }
+
     try {
       const result = await runSelfHealLoop(ctx);
       ctx.logger.debug(`Stack came up (final phase: ${result.phase}).`);
     } catch (err) {
+      // A learned override that still could not produce a healthy stack is not helping —
+      // drop it so the next run starts clean. Best-effort; never mask the real error.
+      if (overrideApplied) await healStore.evict(signature).catch(() => undefined);
       // Best-effort teardown of any half-started stack before the workspace goes.
       // An abort tears down exactly like any other failure; the down itself is not
       // gated on the (already-aborted) signal so cleanup always runs.
       await composeDown(ctx.workspaceDir);
       throw err;
+    }
+
+    // Persist a freshly-learned fix (a heal actually ran this attempt) so the next run
+    // reuses it. An override that sufficed on its own leaves the diagnosis empty and is
+    // not rewritten. Best-effort: a store write failure must not fail a healthy run.
+    if (ctx.diagnosis.length > 0) {
+      try {
+        await healStore.save(await buildOverrideRecord(ctx, signature, shape, originalConfigs));
+        ctx.logger.info('Saved a learned heal override for this repo.');
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        ctx.logger.warn('Could not persist the heal override.', { message });
+      }
     }
 
     keepWorkspace = true; // the running stack lives here — don't delete it

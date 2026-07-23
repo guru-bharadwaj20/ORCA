@@ -38,8 +38,12 @@ function excerpt(errorOutput: string): string {
  * Canonicalize a patch path against the workspace root and check it against the
  * allowlist. Returns the absolute path to write, or null when the patch must be
  * rejected (escapes the workspace, or targets a file ORCA did not generate).
+ *
+ * Exported so the Phase-F learned-override applier reuses this exact path-safety when it
+ * writes stored healed contents back — an override is held to the same "generated files
+ * only" invariant as a live heal patch.
  */
-function resolveAllowedPath(
+export function resolveAllowedPath(
   workspaceDir: string,
   file: string,
   allowlist: ReadonlySet<string>
