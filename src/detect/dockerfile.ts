@@ -116,7 +116,10 @@ function parseDockerfile(raw: string): Omit<DockerfileDetection, 'rootDir' | 'fi
     const value = (match[2] ?? '').trim();
 
     if (directive === 'FROM') {
-      const image = value.replace(/^--\S+\s+/, '').replace(/\s+AS\s+.+$/i, '').trim();
+      const image = value
+        .replace(/^--\S+\s+/, '')
+        .replace(/\s+AS\s+.+$/i, '')
+        .trim();
       if (image !== '') baseImage = image.split(/\s+/)[0] ?? baseImage;
       continue;
     }

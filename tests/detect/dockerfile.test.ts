@@ -8,12 +8,11 @@ import { describe, expect, it } from 'vitest';
 
 import { analyzeDockerfiles } from '../../src/detect/dockerfile.js';
 
-const fixture = (name: string): string => fileURLToPath(new URL(`../fixtures/${name}`, import.meta.url));
+const fixture = (name: string): string =>
+  fileURLToPath(new URL(`../fixtures/${name}`, import.meta.url));
 
-const dockerfileFor = (
-  analysis: Awaited<ReturnType<typeof analyzeDockerfiles>>,
-  rootDir: string
-) => analysis.dockerfiles.find((dockerfile) => dockerfile.rootDir === rootDir);
+const dockerfileFor = (analysis: Awaited<ReturnType<typeof analyzeDockerfiles>>, rootDir: string) =>
+  analysis.dockerfiles.find((dockerfile) => dockerfile.rootDir === rootDir);
 
 describe('analyzeDockerfiles', () => {
   it('parses a root-level Node Dockerfile', async () => {

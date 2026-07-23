@@ -144,7 +144,9 @@ describe('detect stage', () => {
       startCommand: 'npm start',
       workingDir: '/app',
     });
-    expect(result.reasoning).toEqual(expect.arrayContaining([expect.stringContaining('Dockerfile parsed')]));
+    expect(result.reasoning).toEqual(
+      expect.arrayContaining([expect.stringContaining('Dockerfile parsed')])
+    );
   });
 
   it('flags a genuinely unrecognizable repo with no language and no evidence', async () => {
