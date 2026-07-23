@@ -7,6 +7,7 @@ const LOCKFILE_MANAGER: ReadonlyArray<readonly [string, PackageManager]> = [
   ['pnpm-lock.yaml', 'pnpm'],
   ['yarn.lock', 'yarn'],
   ['package-lock.json', 'npm'],
+  ['uv.lock', 'uv'],
   ['poetry.lock', 'poetry'],
 ];
 
@@ -21,6 +22,7 @@ export async function detectPackageManager(componentPath: string): Promise<Packa
 
   const pyproject = await readFileIfExists(join(componentPath, 'pyproject.toml'));
   if (pyproject !== null && pyproject.includes('[tool.poetry]')) return 'poetry';
+  if (pyproject !== null && pyproject.includes('[tool.uv]')) return 'uv';
   if (await exists(componentPath, 'requirements.txt')) return 'pip';
   if (await exists(componentPath, 'package.json')) return 'npm';
 

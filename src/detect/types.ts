@@ -34,7 +34,7 @@ export type Language =
   | 'unknown';
 
 /** Package managers ORCA can detect and drive. */
-export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'pip' | 'poetry' | 'unknown';
+export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'pip' | 'poetry' | 'uv' | 'unknown';
 
 /** Supported frontend frameworks. */
 export type FrontendFramework = 'react' | 'unknown';

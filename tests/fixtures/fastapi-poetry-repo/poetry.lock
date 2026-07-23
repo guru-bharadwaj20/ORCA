@@ -1,0 +1,3 @@
+# Fixture stub. Only this file's PRESENCE matters — it is what selects the
+# `python-fastapi-poetry` recipe variant over the pip one. Real content is irrelevant
+# to detection, so it is not reproduced here.

@@ -38,7 +38,11 @@ const pythonDockerfileTemplate = compileTemplate('dockerfiles/python.Dockerfile.
 const composeTemplate = compileTemplate('compose/docker-compose.hbs');
 
 function isPythonPackageManager(vars: DockerfileVars): boolean {
-  return vars.packageManager === 'pip' || vars.packageManager === 'poetry';
+  return (
+    vars.packageManager === 'pip' ||
+    vars.packageManager === 'poetry' ||
+    vars.packageManager === 'uv'
+  );
 }
 
 export function renderDockerfile(vars: DockerfileVars): string {
