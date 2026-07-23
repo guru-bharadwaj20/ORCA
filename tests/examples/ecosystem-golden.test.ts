@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
+import { detectStack } from '../../src/detect/index.js';
 import { synthesizeDockerfile, type SynthesisOptions } from '../../src/generate/synthesizeDockerfile.js';
 import { defaultRecipeRegistry } from '../../src/model/recipes/index.js';
 import type { MatchFacts } from '../../src/model/recipe.js';
@@ -84,4 +85,33 @@ describe('ecosystem example goldens', () => {
     });
     expect(normalize(rendered)).toBe(normalize(goldenDockerfile('ruby-sample')));
   });
+});
+
+/**
+ * The golden cases above test synthesis in isolation. These run the FULL detect stage on
+ * the real sample directories, so a candidate-root or matcher regression that leaves a
+ * sample undetectable (as `.csproj`-only .NET repos once were) is caught — not just a
+ * change to the emitted Dockerfile.
+ */
+describe('ecosystem examples detect end-to-end', () => {
+  const cases: ReadonlyArray<readonly [sample: string, runtime: string, recipeId: string]> = [
+    ['go-sample', 'go', 'go-mod'],
+    ['rust-sample', 'rust', 'rust-cargo'],
+    ['jvm-maven-sample', 'jvm', 'jvm-maven'],
+    ['dotnet-sample', 'dotnet', 'dotnet-sdk'],
+    ['php-sample', 'php', 'php-composer'],
+    ['ruby-sample', 'ruby', 'ruby-sinatra'],
+  ];
+
+  for (const [sample, runtime, recipeId] of cases) {
+    it(`${sample} is detected as ${recipeId}`, async () => {
+      const result = await detectStack(join(repoRoot, 'examples', sample));
+      expect(result.isSupported).toBe(true);
+      expect(result.insights.ecosystemComponents).toContainEqual({
+        rootDir: '.',
+        runtime,
+        recipeId,
+      });
+    });
+  }
 });
