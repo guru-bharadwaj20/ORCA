@@ -16,6 +16,7 @@ export {
   type Evidence,
 } from './claim.js';
 export { DetectorRegistry, type Detector, type RepoContext } from './detector.js';
+export type { Prober, ProbeContext, ProbeObservation } from './prober.js';
 export {
   RecipeRegistry,
   SEED_RECIPES,
