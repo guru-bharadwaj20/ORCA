@@ -63,6 +63,14 @@ describe('ecosystem example goldens', () => {
     expect(normalize(rendered)).toBe(normalize(goldenDockerfile('jvm-maven-sample')));
   });
 
+  it('jvm-gradle-sample synthesizes its committed Dockerfile', () => {
+    const rendered = synthesizeFor(
+      { runtime: 'jvm', dependencies: [], files: ['build.gradle', 'settings.gradle'] },
+      { artifactName: 'orca-gradle-sample.jar' }
+    );
+    expect(normalize(rendered)).toBe(normalize(goldenDockerfile('jvm-gradle-sample')));
+  });
+
   it('dotnet-sample synthesizes its committed Dockerfile', () => {
     // Matched by the project-file extension — the universal .NET signal.
     const rendered = synthesizeFor(
@@ -98,6 +106,7 @@ describe('ecosystem examples detect end-to-end', () => {
     ['go-sample', 'go', 'go-mod'],
     ['rust-sample', 'rust', 'rust-cargo'],
     ['jvm-maven-sample', 'jvm', 'jvm-maven'],
+    ['jvm-gradle-sample', 'jvm', 'jvm-gradle'],
     ['dotnet-sample', 'dotnet', 'dotnet-sdk'],
     ['php-sample', 'php', 'php-composer'],
     ['ruby-sample', 'ruby', 'ruby-sinatra'],
