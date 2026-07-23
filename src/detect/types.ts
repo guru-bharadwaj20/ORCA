@@ -130,6 +130,13 @@ export interface RepoInsights {
    * justfile, package scripts) — the maintainer's own entrypoints. Phase-3 signal.
    */
   taskCommands: { source: string; name: string; command: string; kind: string }[];
+  /**
+   * Ecosystem components (Go/Rust/JVM/.NET) that matched a `BuildRecipe` but fall
+   * outside the seed-stack frontend/backend split. Each pairs a repo-relative root with
+   * the id of its matched recipe, so the pipeline can place them as open `'service'`
+   * nodes and synthesize their Dockerfiles.
+   */
+  ecosystemComponents: { rootDir: string; runtime: string; recipeId: string }[];
 }
 
 /**

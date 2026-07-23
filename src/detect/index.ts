@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import { bestClaim, combineConfidence, type Claim, type Evidence } from '../model/claim.js';
 import type { RepoContext } from '../model/detector.js';
 import type { Runtime } from '../model/recipe.js';
+import { defaultRecipeRegistry } from '../model/recipes/index.js';
 import { DEFAULT_WALK_IGNORE, readFileIfExists } from '../utils/fs.js';
 import { OrcaError } from '../utils/errors.js';
 import { analyzeCi } from './ci.js';
@@ -331,10 +332,12 @@ async function gatherInsights(
   monorepo: MonorepoInfo
 ): Promise<RepoInsights> {
   const registry = defaultDetectorRegistry();
+  const recipes = defaultRecipeRegistry();
   const runtimeSet = new Set<Runtime>();
   const frameworkSet = new Set<string>();
   const taskCommands: RepoInsights['taskCommands'] = [];
   const seenTask = new Set<string>();
+  const ecosystemComponents: RepoInsights['ecosystemComponents'] = [];
 
   for (const rootDir of roots) {
     const absDir = rootDir === '.' ? repoPath : join(repoPath, rootDir);
@@ -384,6 +387,20 @@ async function gatherInsights(
         frameworkSet.add(match.id);
       }
     }
+
+    // A non-seed ecosystem root (Go/Rust/JVM/.NET) with a matched recipe becomes an
+    // open 'service' component. node/python roots stay on the seed frontend/backend
+    // path, so they're excluded here to avoid double-placing the same directory.
+    if (runtimeClaim && runtimeClaim.value !== 'node' && runtimeClaim.value !== 'python') {
+      const recipe = recipes.match({ runtime: runtimeClaim.value, dependencies, files });
+      if (recipe) {
+        ecosystemComponents.push({
+          rootDir,
+          runtime: runtimeClaim.value,
+          recipeId: recipe.id,
+        });
+      }
+    }
   }
 
   const ci = await analyzeCi(repoPath);
@@ -395,6 +412,7 @@ async function gatherInsights(
     ciCommands: ci.commands.map((c) => ({ command: c.command, kind: c.kind })),
     ciRuntimeVersions: ci.runtimeVersions,
     taskCommands,
+    ecosystemComponents,
   };
 }
 

@@ -57,6 +57,7 @@ function detectionResult(parts: {
       ciCommands: [],
       ciRuntimeVersions: [],
       taskCommands: [],
+      ecosystemComponents: [],
     },
     warnings: [],
   };

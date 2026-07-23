@@ -60,5 +60,12 @@ describe('detectStack insights integration', () => {
     expect(result.insights.frameworks).toContain('gin');
     expect(result.insights.ciRuntimeVersions).toContainEqual({ runtime: 'go', version: '1.23' });
     expect(result.insights.ciCommands.some((c) => c.kind === 'build')).toBe(true);
+    // The Go service surfaces as an ecosystem component (root + matched recipe id),
+    // ready for the pipeline to place as an open 'service' node.
+    expect(result.insights.ecosystemComponents).toContainEqual({
+      rootDir: 'services/api',
+      runtime: 'go',
+      recipeId: 'go-mod',
+    });
   });
 });
