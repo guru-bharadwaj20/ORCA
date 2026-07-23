@@ -43,6 +43,16 @@ function detectionResult(parts: {
     databases: parts.databases ?? [],
     isSupported: true,
     confidence: 0.9,
+    reasoning: [],
+    insights: {
+      frameworks: [],
+      runtimes: [],
+      monorepoTools: [],
+      ciCommands: [],
+      ciRuntimeVersions: [],
+      taskCommands: [],
+      ecosystemComponents: [],
+    },
     warnings: [],
   };
 }

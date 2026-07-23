@@ -47,6 +47,17 @@ describe('detect stage', () => {
     ]);
     expect(result.warnings).toEqual([]);
     expect(result.confidence).toBeGreaterThan(0.8);
+    // Confidence carries a reasoning trail (Universal Understanding model §4).
+    expect(result.reasoning).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('backend component detected'),
+        expect.stringContaining('frontend component detected'),
+        expect.stringContaining('database dependency found'),
+      ])
+    );
+    // Phase-B/C insights surface the richer framework signals alongside the seed path.
+    expect(result.insights.frameworks).toEqual(expect.arrayContaining(['react', 'express']));
+    expect(result.insights.monorepoTools).toEqual([]);
   });
 
   it('detects a Django + Postgres repo', async () => {
@@ -79,16 +90,33 @@ describe('detect stage', () => {
     expect(result.confidence).toBeGreaterThan(0.5);
   });
 
-  it('flags an unsupported stack with a warning and isSupported=false', async () => {
+  it('supports a Rust repo via an ecosystem recipe (open-role containerization)', async () => {
+    // The Rust fixture matches the cargo recipe, so it's now containerizable as an
+    // open 'service' even without a seed frontend/backend: supported, non-zero
+    // confidence, and the ecosystem component surfaced for the plan to place.
     const result = await detectStack(fixture('unsupported-repo'));
 
-    expect(result.isSupported).toBe(false);
+    expect(result.languages).toEqual(['rust']);
+    expect(result.isSupported).toBe(true);
     expect(result.frontend).toBeNull();
     expect(result.backend).toBeNull();
-    expect(result.databases).toEqual([]);
+    expect(result.confidence).toBeGreaterThan(0);
+    expect(result.insights.ecosystemComponents).toContainEqual({
+      rootDir: '.',
+      runtime: 'rust',
+      recipeId: 'rust-cargo',
+    });
+  });
+
+  it('flags a genuinely unrecognizable repo with no language and no evidence', async () => {
+    const result = await detectStack(fixture('unknown-repo'));
+
+    expect(result.isSupported).toBe(false);
     expect(result.languages).toEqual(['unknown']);
     expect(result.packageManagers).toEqual([]);
     expect(result.confidence).toBe(0);
+    // No supported shape observed → no evidence, so no reasoning trail.
+    expect(result.reasoning).toEqual([]);
     expect(result.warnings.some((w) => w.code === 'unsupported-stack')).toBe(true);
   });
 
