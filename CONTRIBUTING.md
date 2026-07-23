@@ -36,8 +36,7 @@ extensions. The repo is an npm-workspaces monorepo — the root package is the p
 
 ## Roadmap
 
-At-a-glance status. The canonical copy lives in [`ROADMAP.md`](ROADMAP.md); the full
-architecture and rationale are in
+At-a-glance status. The full architecture and rationale are in
 [`docs/universal-understanding-plan.md`](docs/universal-understanding-plan.md).
 
 ### Legend
@@ -45,13 +44,13 @@ architecture and rationale are in
 Each item has **one** stub. A completed item is green; a not-started item is red; an
 item someone is **actively working on** shows **that person's** colour instead.
 
-| Stub | Meaning                   |
-| ---- | ------------------------- |
-| 🟢   | Completed                 |
-| 🔴   | Yet to be done            |
-| 🟠   | In progress — Diya        |
-| 🟣   | In progress — Guru        |
-| 🔵   | In progress — Harsha      |
+| Stub | Meaning              |
+| ---- | -------------------- |
+| 🟢   | Completed            |
+| 🔴   | Yet to be done       |
+| 🟠   | In progress — Diya   |
+| 🟣   | In progress — Guru   |
+| 🔵   | In progress — Harsha |
 | ⚪   | In progress — Vivian |
 
 ### Universal Repository Understanding — phases
@@ -90,4 +89,4 @@ item someone is **actively working on** shows **that person's** colour instead.
 |  🔴  | Plan-doc reconciliation        | `docs/universal-understanding-plan.md` status table lags the code (Phase F persistence, 19 recipes)                                             |
 
 **When you start on a red item, change its stub to your colour; when you finish, make it
-green** — here and in [`ROADMAP.md`](ROADMAP.md).
+green.**
