@@ -21,7 +21,6 @@ async function runDocker(
     ...(signal !== undefined ? { cancelSignal: signal } : {}),
     reject: false,
     timeout: DEFAULT_SETTINGS.dockerTimeoutMs,
-    ...(signal !== undefined ? { cancelSignal: signal } : {}),
     env: { BUILDKIT_PROGRESS: 'plain' },
     extendEnv: true,
   });
