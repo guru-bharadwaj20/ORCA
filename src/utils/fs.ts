@@ -1,5 +1,5 @@
-import { mkdir, readdir, readFile, writeFile as fsWriteFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { readdir, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
 export const DEFAULT_WALK_IGNORE: string[] = [
   'node_modules',
@@ -24,11 +24,6 @@ export async function readFileIfExists(path: string): Promise<string | null> {
   }
 }
 
-export async function readJson<T>(path: string): Promise<T> {
-  const raw = await readFile(path, 'utf8');
-  return JSON.parse(raw) as T;
-}
-
 export async function walk(dir: string, ignore: string[] = DEFAULT_WALK_IGNORE): Promise<string[]> {
   const out: string[] = [];
   const entries = await readdir(dir, { withFileTypes: true });
@@ -42,13 +37,4 @@ export async function walk(dir: string, ignore: string[] = DEFAULT_WALK_IGNORE):
     }
   }
   return out;
-}
-
-export async function ensureDir(dir: string): Promise<void> {
-  await mkdir(dir, { recursive: true });
-}
-
-export async function writeFile(path: string, contents: string): Promise<void> {
-  await ensureDir(dirname(path));
-  await fsWriteFile(path, contents, 'utf8');
 }
