@@ -12,7 +12,42 @@
  * STAGE: 5 (generate) / PHASE E — REAL code.
  */
 
-import type { BuildRecipe } from '../model/recipe.js';
+import type { BuildRecipe, Runtime } from '../model/recipe.js';
+
+/**
+ * Per-runtime fallback base images for a recipe that leaves `baseImages` blank — the
+ * shape `inferBuild` returns, since AI inference proposes commands, not images. Keeps
+ * inferred recipes buildable without asking the model to name (and get wrong) tags.
+ * Deterministic recipes always ship their own images and never reach these.
+ */
+const DEFAULT_BASE_IMAGES: Record<string, { build: string; runtime: string }> = {
+  node: { build: 'node:20', runtime: 'node:20-slim' },
+  python: { build: 'python:3.12', runtime: 'python:3.12-slim' },
+  go: { build: 'golang:1.23', runtime: 'gcr.io/distroless/base-debian12' },
+  rust: { build: 'rust:1', runtime: 'debian:bookworm-slim' },
+  jvm: { build: 'eclipse-temurin:21-jdk', runtime: 'eclipse-temurin:21-jre' },
+  dotnet: {
+    build: 'mcr.microsoft.com/dotnet/sdk:8.0',
+    runtime: 'mcr.microsoft.com/dotnet/aspnet:8.0',
+  },
+  php: { build: 'php:8.3-cli', runtime: 'php:8.3-cli' },
+  ruby: { build: 'ruby:3.3', runtime: 'ruby:3.3-slim' },
+};
+
+/** A generic last resort when the runtime is unknown to the fallback table. */
+const GENERIC_BASE = { build: 'debian:bookworm', runtime: 'debian:bookworm-slim' };
+
+/**
+ * Resolve the build/runtime base images for a recipe, filling blanks (inferred recipes)
+ * from the per-runtime defaults so synthesis never emits a bare `FROM`.
+ */
+function resolveBaseImages(recipe: BuildRecipe): { build: string; runtime: string } {
+  const fallback = DEFAULT_BASE_IMAGES[recipe.runtime as Runtime] ?? GENERIC_BASE;
+  return {
+    build: recipe.baseImages.build || fallback.build,
+    runtime: recipe.baseImages.runtime || fallback.runtime,
+  };
+}
 
 /** Options controlling synthesis; sane defaults keep the common call a one-liner. */
 export interface SynthesisOptions {
@@ -59,6 +94,7 @@ export function synthesizeDockerfile(recipe: BuildRecipe, options: SynthesisOpti
     recipe.defaultPorts[0] !== undefined ? `EXPOSE ${recipe.defaultPorts[0]}\n` : '';
   const depFiles = recipe.dependencyFiles.length > 0 ? recipe.dependencyFiles.join(' ') : '.';
   const hasBuild = (recipe.buildCommands?.length ?? 0) > 0;
+  const baseImages = resolveBaseImages(recipe);
 
   const header = `# syntax=docker/dockerfile:1\n# ORCA synthesized image — recipe ${recipe.id} (${recipe.runtime}).`;
 
@@ -66,7 +102,7 @@ export function synthesizeDockerfile(recipe: BuildRecipe, options: SynthesisOpti
   if (!hasBuild) {
     return [
       header,
-      `FROM ${recipe.baseImages.runtime || recipe.baseImages.build}`,
+      `FROM ${baseImages.runtime}`,
       `WORKDIR ${workdir}`,
       '',
       systemPackagesBlock(recipe),
@@ -85,7 +121,7 @@ export function synthesizeDockerfile(recipe: BuildRecipe, options: SynthesisOpti
   // Compiled/bundled runtime: builder stage produces the artifact, runtime stage runs it.
   return [
     header,
-    `FROM ${recipe.baseImages.build} AS builder`,
+    `FROM ${baseImages.build} AS builder`,
     `WORKDIR ${workdir}`,
     '',
     systemPackagesBlock(recipe),
@@ -95,7 +131,7 @@ export function synthesizeDockerfile(recipe: BuildRecipe, options: SynthesisOpti
     'COPY . .',
     runLines(recipe.buildCommands ?? []),
     '',
-    `FROM ${recipe.baseImages.runtime}`,
+    `FROM ${baseImages.runtime}`,
     `WORKDIR ${workdir}`,
     `COPY --from=builder ${workdir} ${workdir}`,
     '',

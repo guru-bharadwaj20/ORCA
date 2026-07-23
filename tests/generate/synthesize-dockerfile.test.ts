@@ -73,6 +73,41 @@ describe('synthesizeDockerfile', () => {
     expect(df).toContain('java -jar target/app.jar');
   });
 
+  it('fills blank base images from per-runtime defaults (AI-inferred recipe shape)', () => {
+    // inferBuild returns recipes with empty baseImages — synthesis must fill them so a
+    // bare `FROM` never leaks into the Dockerfile.
+    const inferred: BuildRecipe = {
+      id: 'ai-go',
+      runtime: 'go',
+      dependencyFiles: [],
+      installCommands: ['go mod download'],
+      buildCommands: ['go build -o /app/server ./...'],
+      startCommand: '/app/server',
+      defaultPorts: [8080],
+      baseImages: { build: '', runtime: '' },
+    };
+    const df = synthesizeDockerfile(inferred);
+    expect(df).not.toContain('FROM  ');
+    expect(df).not.toContain('FROM  AS builder');
+    expect(df).toContain('FROM golang:1.23 AS builder');
+    expect(df).toContain('FROM gcr.io/distroless/base-debian12');
+  });
+
+  it('falls back to a generic base image for an unknown runtime', () => {
+    const inferred: BuildRecipe = {
+      id: 'ai-haskell',
+      runtime: 'haskell',
+      dependencyFiles: [],
+      installCommands: ['stack build'],
+      startCommand: 'stack exec app',
+      defaultPorts: [],
+      baseImages: { build: '', runtime: '' },
+    };
+    const df = synthesizeDockerfile(inferred);
+    expect(df).toContain('FROM debian:bookworm-slim');
+    expect(df).not.toContain('FROM \n');
+  });
+
   it('omits EXPOSE when the recipe declares no ports', () => {
     const df = synthesizeDockerfile({
       id: 'cli',
