@@ -1,3 +1,25 @@
+/**
+ * Orchestrates every stage end-to-end: clone -> detect -> fill templates (AI) ->
+ * build plan -> review/approve -> generate configs -> build/run with self-heal.
+ *
+ * STAGE: core (drives all stages) — REAL code.
+ * Inputs: a `RunContext` (repo URL + options + logger) and optional injectable IO
+ * streams for the review gate / previews (tests drive the gate through these).
+ * Outputs: a resolved `RunContext` with detection, plan, generated files, and the
+ * self-heal diagnosis populated; throws `OrcaError`s on unsupported stacks,
+ * rejection, and unrecoverable failure.
+ *
+ * `--dry-run` renders the docker-compose.yml + Dockerfiles in memory and prints them
+ * WITHOUT writing anything. A full run writes the configs into the temp workspace,
+ * then builds/starts the stack with the explainable self-heal loop; on success the
+ * workspace is kept alive (the running stack lives there), on any failure the stack
+ * is torn down and the workspace removed.
+ *
+ * AI is optional by design: with no API key (or if every fill attempt fails) the plan
+ * falls back to the deterministic registry defaults — ORCA stays useful keyless
+ * (though a failed build cannot self-heal without a key).
+ */
+
 import { join } from 'node:path';
 
 import { ai, aiFor } from '../ai/client.js';
@@ -20,25 +42,41 @@ import {
   type Workspace,
 } from '../clone/workspace.js';
 import { ENV_KEYS, type KeyResolver } from '../config/settings.js';
+import { inferBuild, type InferenceInput } from '../detect/aiInference.js';
 import { detectStack } from '../detect/index.js';
 import type { DetectedComponent, DetectionResult } from '../detect/types.js';
+import { reasoning } from '../model/claim.js';
 import { planToComposeVars } from '../generate/composeVars.js';
+import { dockerfileFor } from '../generate/dockerfileFor.js';
 import { writeConfigs } from '../generate/writeConfigs.js';
 import { buildEnvFile } from '../orchestrate/envFiles.js';
 import { resolveHostPortConflicts } from '../plan/hostPorts.js';
 import { reviewPlan, type ReviewIO, type ReviewOutcome } from '../plan/review.js';
-import { buildServicePlan, refinedComponentVars } from '../plan/servicePlan.js';
+import {
+  buildServicePlan,
+  refinedComponentVars,
+  type EcosystemComponent,
+} from '../plan/servicePlan.js';
 import type { ServicePlan } from '../plan/types.js';
+import { ALL_RECIPES } from '../model/recipes/index.js';
 import { describeComponent } from '../templates/registry.js';
 import { renderCompose, renderDockerfile } from '../templates/render.js';
 import { OrcaError, PlanRejectedError, UnsupportedStackError } from '../utils/errors.js';
-import { readFileIfExists } from '../utils/fs.js';
+import { readFileIfExists, walk } from '../utils/fs.js';
 import type { Logger, RunContext } from './context.js';
 
+/** Injectable IO for the review gate and the --dry-run preview (defaults to the TTY). */
 export interface PipelineIO extends ReviewIO {
+  /**
+   * Optional approval hook. When provided it fully owns the approval decision,
+   * replacing the default `reviewPlan` gate — an embedder (the VS Code webview)
+   * wires its Approve/Reject panel here. A disposed panel must reject/return a
+   * rejected `ReviewOutcome` so the pipeline takes its normal rejection path.
+   */
   approvePlan?: (plan: ServicePlan) => Promise<ReviewOutcome>;
 }
 
+/** The component roles the pipeline fills and renders, in plan order. */
 const COMPONENT_ROLES = ['backend', 'frontend'] as const;
 type ComponentRole = (typeof COMPONENT_ROLES)[number];
 
@@ -46,10 +84,42 @@ function componentFor(detection: DetectionResult, role: ComponentRole): Detected
   return role === 'backend' ? detection.backend : detection.frontend;
 }
 
+/**
+ * Resolve the detected ecosystem components (Go/Rust/JVM/.NET) into the
+ * `EcosystemComponent[]` the plan places as open `'service'` nodes. Each id is the
+ * root's basename (or "app" at the repo root); unknown recipe ids are skipped. The
+ * `DetectedComponent` is minimal by design — synthesis needs only the root + recipe.
+ */
+function ecosystemComponentsFrom(detection: DetectionResult): EcosystemComponent[] {
+  const result: EcosystemComponent[] = [];
+  for (const eco of detection.insights.ecosystemComponents) {
+    const recipe = ALL_RECIPES.find((e) => e.recipe.id === eco.recipeId)?.recipe;
+    if (recipe === undefined) continue;
+    const id = eco.rootDir === '.' ? 'app' : (eco.rootDir.split('/').pop() ?? 'app');
+    result.push({
+      id,
+      recipe,
+      component: {
+        role: 'backend',
+        rootDir: eco.rootDir,
+        language: 'unknown',
+        packageManager: 'unknown',
+        framework: 'unknown',
+        dependencies: [],
+        ports: [],
+        entrypoint: null,
+      },
+    });
+  }
+  return result;
+}
+
+/** True when at least one configured provider has a key — AI refinement is possible. */
 function aiKeyPresent(resolveKey: KeyResolver): boolean {
   return Boolean(resolveKey(ENV_KEYS.qwenApiKey) || resolveKey(ENV_KEYS.apiKey));
 }
 
+/** The repo README text used to ground the AI fill ('' when there is none). */
 async function readReadme(repoDir: string): Promise<string> {
   for (const name of ['README.md', 'readme.md', 'README']) {
     const text = await readFileIfExists(join(repoDir, name));
@@ -58,6 +128,11 @@ async function readReadme(repoDir: string): Promise<string> {
   return '';
 }
 
+/**
+ * STAGE 3: fill template vars per component via the AI router. Every failure mode
+ * (no key, provider errors, cost cap) degrades to the registry defaults with a
+ * warning — the AI refines the plan, it is never required to produce one.
+ */
 async function fillComponents(
   detection: DetectionResult,
   ctx: RunContext,
@@ -89,6 +164,10 @@ async function fillComponents(
   return filled;
 }
 
+/**
+ * STAGE 3: infer the app's own env vars (secrets, tuning) for the generated .env.
+ * Purely additive — any failure just means no .env, never a failed run.
+ */
 async function inferAppEnv(
   detection: DetectionResult,
   ctx: RunContext,
@@ -106,6 +185,7 @@ async function inferAppEnv(
   }
 }
 
+/** Render the compose file + every to-be-built Dockerfile in memory (no writes). */
 function renderPreview(
   detection: DetectionResult,
   plan: ServicePlan,
@@ -132,9 +212,22 @@ function renderPreview(
     );
   }
 
+  // Ecosystem/inferred 'service' nodes: preview the Dockerfile synthesized from the
+  // recipe carried inline on the node (so AI-inferred `ai-*` recipes preview too).
+  for (const node of plan.services) {
+    if (node.kind !== 'service' || node.source.type !== 'build') continue;
+    const { context, dockerfile, recipe } = node.source;
+    if (recipe === undefined) continue;
+    sections.push(
+      `# --- ${context}/${dockerfile} (${node.id}, preview) ---`,
+      dockerfileFor({ kind: 'recipe', recipe }).trimEnd()
+    );
+  }
+
   return `${sections.join('\n\n')}\n`;
 }
 
+/** The end-of-run success summary: URLs, heal log, and how to stop the stack. */
 function renderSuccess(ctx: RunContext): string {
   const plan = ctx.plan;
   const lines = ['', 'Stack is up ✔', ''];
@@ -156,6 +249,7 @@ function renderSuccess(ctx: RunContext): string {
   return lines.join('\n');
 }
 
+/** Log the run's LLM spend (with the per-provider breakdown when there was any). */
 function logCost(cost: RunContext['cost'], logger: Logger): void {
   if (cost.estimatedUsd === 0) return;
   const byProvider = Object.entries(cost.byProvider ?? {})
@@ -166,15 +260,104 @@ function logCost(cost: RunContext['cost'], logger: Logger): void {
   });
 }
 
+/**
+ * Log the forward-looking Phase-B/C detection signals when present. Advisory context:
+ * it never changes the run, but it makes ORCA's understanding of a repo visible —
+ * frameworks and runtimes beyond the seed set, monorepo tooling, and what CI revealed.
+ */
+function logInsights(insights: DetectionResult['insights'], logger: Logger): void {
+  if (insights.frameworks.length > 0 || insights.runtimes.length > 0) {
+    logger.info('Detected stack signals.', {
+      runtimes: insights.runtimes.join(', ') || 'none',
+      frameworks: insights.frameworks.join(', ') || 'none',
+    });
+  }
+  if (insights.monorepoTools.length > 0) {
+    logger.info(`Monorepo detected: ${insights.monorepoTools.join(', ')}.`);
+  }
+  const ciBuild = insights.ciCommands.filter((c) => c.kind === 'build' || c.kind === 'start');
+  if (ciBuild.length > 0) {
+    logger.info(`CI reveals build commands: ${ciBuild.map((c) => c.command).join(' | ')}.`);
+  }
+  if (insights.ciRuntimeVersions.length > 0) {
+    const versions = insights.ciRuntimeVersions.map((v) => `${v.runtime} ${v.version}`).join(', ');
+    logger.info(`CI pins runtime versions: ${versions}.`);
+  }
+  const buildTasks = insights.taskCommands.filter((t) => t.kind === 'build' || t.kind === 'start');
+  if (buildTasks.length > 0) {
+    const shown = buildTasks.map((t) => `${t.source}:${t.name}`).join(', ');
+    logger.info(`Maintainer tasks available: ${shown}.`);
+  }
+}
+
+/** README + a couple of high-value manifest snippets to ground AI build inference. */
+async function inferenceInputFor(repoDir: string): Promise<InferenceInput> {
+  const tree = (await walk(repoDir)).map((p) => p.replace(`${repoDir}/`, ''));
+  const readme = await readReadme(repoDir);
+  const snippets: Record<string, string> = {};
+  for (const name of ['Makefile', 'Dockerfile', 'go.mod', 'Cargo.toml', 'pom.xml']) {
+    const body = await readFileIfExists(join(repoDir, name));
+    if (body !== null) snippets[name] = body;
+  }
+  return { tree, readme, snippets };
+}
+
+/**
+ * Tier-3 (AI) rung of the inference ladder for a deterministically-unsupported repo:
+ * run build inference, log the graded understanding (runtime + how it'd build, with the
+ * model's reasoning), and — when it yields a recipe — return it as an `EcosystemComponent`
+ * so the repo builds through the same open-role synthesis path as a matched ecosystem
+ * recipe. The inferred `ai-*` recipe rides inline on the plan node; it is never in the
+ * shipped registry, so carrying it (not looking it up) is what makes this build.
+ *
+ * Never throws — a failed inference just returns null, and the caller hard-stops as
+ * before. The component root is the repo root (`.`), which is where inference reasons.
+ */
+async function inferEcosystemComponent(ctx: RunContext): Promise<EcosystemComponent | null> {
+  try {
+    const input = await inferenceInputFor(ctx.workspaceDir);
+    const inferred = await inferBuild(input, ctx.cost, ctx.ai ?? ai);
+    if (inferred === null) return null;
+    const pct = Math.round(inferred.confidence * 100);
+    ctx.logger.info(
+      `AI understanding (${pct}% confident): ${inferred.value.runtime} — ` +
+        `build \`${inferred.value.buildCommands?.join(' && ') || 'n/a'}\`, ` +
+        `run \`${inferred.value.startCommand}\`.`
+    );
+    ctx.logger.info(`AI reasoning: ${reasoning(inferred).join('; ')}.`);
+    return {
+      id: 'app',
+      recipe: inferred.value,
+      component: {
+        role: 'backend',
+        rootDir: '.',
+        language: 'unknown',
+        packageManager: 'unknown',
+        framework: 'unknown',
+        dependencies: [],
+        ports: [],
+        entrypoint: null,
+      },
+    };
+  } catch {
+    // Best-effort — a failed inference just means no build path, never a crash.
+    return null;
+  }
+}
+
+/**
+ * Run the pipeline against `ctx.repoUrl`. When `ctx.workspaceDir` is already set
+ * (tests, embedders) the clone step is skipped and that directory is used as-is;
+ * otherwise the repo is cloned into a temp workspace the pipeline owns.
+ */
 export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise<RunContext> {
   const output = io.output ?? process.stdout;
   const signal = ctx.options.signal;
   let workspace: Workspace | null = null;
   let keepWorkspace = false;
 
-  const modelWarning = unroutableModelWarning(ctx.options.model);
-  if (modelWarning !== null) ctx.logger.warn(modelWarning);
-
+  // Run-scoped AI: this run's --model / --cost-cap / cancel / BYOK-key resolution
+  // apply to every AI call it makes.
   ctx.ai ??= aiFor(
     new AIRouter(
       routerConfigForRun({
@@ -188,12 +371,14 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
 
   try {
     signal?.throwIfAborted();
+    // STAGE 0/1: clone into an owned temp workspace (skipped when pre-materialized).
     if (ctx.workspaceDir === '') {
       workspace = await createWorkspace();
       ctx.logger.info(`Fetching ${ctx.repoUrl} ...`);
       ctx.workspaceDir = await cloneRepo(ctx.repoUrl, workspace, signal);
     }
 
+    // STAGE 2: static detection.
     signal?.throwIfAborted();
     const detection = await detectStack(ctx.workspaceDir);
     ctx.detection = detection;
@@ -206,13 +391,33 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
       databases: detection.databases.map((db) => db.engine).join(', ') || 'none',
       confidence: detection.confidence,
     });
+    // Surface the evidence model to the user: why this confidence, and what the
+    // richer Phase-B/C detectors saw (frameworks, monorepo tooling, CI signals).
+    if (detection.reasoning.length > 0) {
+      ctx.logger.info(`Detection reasoning: ${detection.reasoning.join('; ')}.`);
+    }
+    logInsights(detection.insights, ctx.logger);
+    // Tier-3 ladder rung: when deterministic detection can't place the repo but a key
+    // is present, ask the model how it'd build. A confident inference is promoted to an
+    // ecosystem component so the repo containerizes through the open-role synthesis path;
+    // only a repo that can't even be inferred hard-stops.
+    let inferredComponent: EcosystemComponent | null = null;
     if (!detection.isSupported) {
-      throw new UnsupportedStackError(
-        detection.warnings.map((w) => w.message).join(' ') ||
-          'No supported stack detected in this repo.'
+      if (aiKeyPresent(ctx.resolveKey)) {
+        inferredComponent = await inferEcosystemComponent(ctx);
+      }
+      if (inferredComponent === null) {
+        throw new UnsupportedStackError(
+          detection.warnings.map((w) => w.message).join(' ') ||
+            'No supported stack detected in this repo.'
+        );
+      }
+      ctx.logger.info(
+        'Proceeding with an AI-inferred build recipe (unsupported deterministically).'
       );
     }
 
+    // STAGE 3: AI fill + env inference (both degrade gracefully when keyless).
     signal?.throwIfAborted();
     let filled: Record<string, FilledTemplateVars> = {};
     let inferred: InferredEnv | null = null;
@@ -228,10 +433,17 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
     ctx.filled = filled;
     if (inferred !== null) ctx.inferredEnv = inferred;
 
+    // STAGE 4: plan + approval gate. Nothing is built or written before approval.
+    // Deterministic ecosystem components plus any AI-inferred one (unsupported repos)
+    // are placed as open 'service' nodes alongside the seed frontend/backend.
     signal?.throwIfAborted();
-    ctx.plan = buildServicePlan(detection, filled, inferred);
-    for (const note of await resolveHostPortConflicts(ctx.plan)) ctx.logger.warn(note);
-
+    const ecosystem = [
+      ...ecosystemComponentsFrom(detection),
+      ...(inferredComponent !== null ? [inferredComponent] : []),
+    ];
+    ctx.plan = buildServicePlan(detection, filled, inferred, ecosystem);
+    // An embedder's approvePlan hook (e.g. the VS Code webview) owns the decision
+    // when provided; otherwise the default reviewPlan gate runs.
     const outcome = io.approvePlan
       ? await io.approvePlan(ctx.plan)
       : await reviewPlan(ctx.plan, ctx.options, io);
@@ -247,6 +459,7 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
       return ctx;
     }
 
+    // STAGE 5: generate configs into the workspace, then build/run with self-heal.
     signal?.throwIfAborted();
     await assertDockerAvailable(signal);
     const files = await writeConfigs(ctx);
@@ -258,15 +471,19 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
       const result = await runSelfHealLoop(ctx);
       ctx.logger.debug(`Stack came up (final phase: ${result.phase}).`);
     } catch (err) {
+      // Best-effort teardown of any half-started stack before the workspace goes.
+      // An abort tears down exactly like any other failure; the down itself is not
+      // gated on the (already-aborted) signal so cleanup always runs.
       await composeDown(ctx.workspaceDir);
       throw err;
     }
 
-    keepWorkspace = true;
+    keepWorkspace = true; // the running stack lives here — don't delete it
     output.write(renderSuccess(ctx));
     logCost(ctx.cost, ctx.logger);
     return ctx;
   } finally {
+    // A clone the pipeline made is disposable unless it now hosts a running stack.
     if (workspace !== null && !keepWorkspace) await cleanupWorkspace(workspace);
   }
 }

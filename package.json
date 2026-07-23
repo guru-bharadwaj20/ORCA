@@ -76,6 +76,7 @@
     "execa": "^9.5.1",
     "handlebars": "^4.7.8",
     "simple-git": "^3.27.0",
+    "yaml": "^2.6.1",
     "zod": "^3.23.8"
   },
   "devDependencies": {
@@ -87,7 +88,6 @@
     "prettier": "^3.4.1",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.16.0",
-    "vitest": "^2.1.6",
-    "yaml": "^2.6.1"
+    "vitest": "^2.1.6"
   }
 }
