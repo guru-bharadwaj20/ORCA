@@ -36,6 +36,28 @@ venv
 `;
 
 /**
+ * Per-runtime build-output directories that must never be COPY'd into an image: they
+ * bloat the context, and a host-built artifact shadowing the in-image build can break it
+ * (e.g. a local `target/` from a different libc). Appended to the base ignore set for a
+ * synthesized ecosystem service. Runtimes not listed just get the base set.
+ */
+const RUNTIME_DOCKERIGNORE: Record<string, readonly string[]> = {
+  rust: ['target'],
+  go: ['bin', 'vendor'],
+  jvm: ['target', 'build', '.gradle'],
+  dotnet: ['bin', 'obj'],
+  php: ['vendor'],
+  ruby: ['.bundle', 'vendor/bundle'],
+};
+
+/** The `.dockerignore` for a synthesized service: the base set plus its runtime's outputs. */
+function dockerignoreFor(runtime: string): string {
+  const extra = RUNTIME_DOCKERIGNORE[runtime];
+  if (extra === undefined || extra.length === 0) return DOCKERIGNORE;
+  return `${DOCKERIGNORE}${extra.join('\n')}\n`;
+}
+
+/**
  * The migrate-then-run entrypoint for Django + Postgres (mirrors the hand-verified
  * golden sample): wait for the db socket, migrate, then hand off to the CMD.
  */
@@ -130,7 +152,11 @@ export async function writeConfigs(ctx: RunContext): Promise<GeneratedFile[]> {
     );
     if (!contextsSeen.has(node.source.context)) {
       contextsSeen.add(node.source.context);
-      await write(inContext(node.source.context, '.dockerignore'), DOCKERIGNORE, 'dockerignore');
+      await write(
+        inContext(node.source.context, '.dockerignore'),
+        dockerignoreFor(recipe.runtime),
+        'dockerignore'
+      );
     }
   }
 
