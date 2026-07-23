@@ -46,6 +46,21 @@ export function resolveRouterConfig(env: NodeJS.ProcessEnv = process.env): Route
   };
 }
 
+export function modelProviderFor(model: string): ProviderName | null {
+  if (model.startsWith('claude')) return 'anthropic';
+  if (model.startsWith('qwen')) return 'qwen';
+  return null;
+}
+
+export function unroutableModelWarning(model: string | undefined): string | null {
+  if (model === undefined || model === '' || modelProviderFor(model) !== null) return null;
+  return (
+    `Ignoring --model '${model}': ORCA routes 'claude*' to Anthropic and 'qwen*' to Qwen, ` +
+    `and will not send an unrecognised id to either API. The run continues on the ` +
+    `configured provider defaults.`
+  );
+}
+
 export function routerConfigForRun(
   overrides: { costCapUsd?: number; model?: string; signal?: AbortSignal },
   env: NodeJS.ProcessEnv = process.env
@@ -55,9 +70,8 @@ export function routerConfigForRun(
     config.costCapUsd = Math.max(0, overrides.costCapUsd);
   }
   if (overrides.model !== undefined && overrides.model !== '') {
-    if (overrides.model.startsWith('claude'))
-      config.modelOverrides = { anthropic: overrides.model };
-    else if (overrides.model.startsWith('qwen')) config.modelOverrides = { qwen: overrides.model };
+    const provider = modelProviderFor(overrides.model);
+    if (provider !== null) config.modelOverrides = { [provider]: overrides.model };
   }
   if (overrides.signal !== undefined) config.signal = overrides.signal;
   return config;

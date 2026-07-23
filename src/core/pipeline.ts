@@ -3,7 +3,12 @@ import { join } from 'node:path';
 import { ai, aiFor } from '../ai/client.js';
 import { fillTemplate } from '../ai/fillTemplate.js';
 import { inferEnv } from '../ai/inferEnv.js';
-import { AIRouter, defaultProviderFactories, routerConfigForRun } from '../ai/router.js';
+import {
+  AIRouter,
+  defaultProviderFactories,
+  routerConfigForRun,
+  unroutableModelWarning,
+} from '../ai/router.js';
 import type { FilledTemplateVars, InferredEnv } from '../ai/schema.js';
 import { assertDockerAvailable, composeDown } from '../build/docker.js';
 import { formatDiagnosisLog } from '../build/diagnosisLog.js';
@@ -165,6 +170,9 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
   const signal = ctx.options.signal;
   let workspace: Workspace | null = null;
   let keepWorkspace = false;
+
+  const modelWarning = unroutableModelWarning(ctx.options.model);
+  if (modelWarning !== null) ctx.logger.warn(modelWarning);
 
   ctx.ai ??= aiFor(
     new AIRouter(
