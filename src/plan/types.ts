@@ -13,6 +13,8 @@
  * can render it without a second modelling step.
  */
 
+import type { BuildRecipe } from '../model/recipe.js';
+
 /**
  * The kind of service a node represents. `'service'` is the open, role-agnostic kind
  * for ecosystem/inferred components (a Go worker, a Rust CLI, a JVM app) that don't fit
@@ -23,12 +25,15 @@ export type ServiceKind = 'frontend' | 'backend' | 'database' | 'cache' | 'servi
 
 /**
  * How a service's image is obtained: built from a Dockerfile or pulled from a registry.
- * A build source may carry a `recipeId`: when present, the generate stage synthesizes the
+ * A build source may carry a `recipe`: when present, the generate stage synthesizes the
  * Dockerfile from that `BuildRecipe` (ecosystem/inferred stacks) instead of rendering a
- * seed-stack template. Absent `recipeId` = the seed-stack template path (unchanged).
+ * seed-stack template. The recipe travels inline (not by id lookup) so AI-inferred
+ * `ai-*` recipes — which never live in the shipped registry — build the same way. The
+ * companion `recipeId` is the recipe's id, kept for display/audit. Absent `recipe` = the
+ * seed-stack template path (unchanged).
  */
 export type ServiceSource =
-  | { type: 'build'; context: string; dockerfile: string; recipeId?: string }
+  | { type: 'build'; context: string; dockerfile: string; recipeId?: string; recipe?: BuildRecipe }
   | { type: 'image'; image: string };
 
 /** A published port mapping (host:container). */
