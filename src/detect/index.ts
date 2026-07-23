@@ -18,6 +18,7 @@ import { defaultRecipeRegistry } from '../model/recipes/index.js';
 import { DEFAULT_WALK_IGNORE, readFileIfExists } from '../utils/fs.js';
 import { OrcaError } from '../utils/errors.js';
 import { analyzeCi } from './ci.js';
+import { analyzeDockerfiles, runtimeFromBaseImage } from './dockerfile.js';
 import { defaultDetectorRegistry } from './detectors/index.js';
 import { detectEntrypoint } from './entrypoint.js';
 import { detectBackendFramework, detectFrontendFramework } from './framework.js';
@@ -88,6 +89,25 @@ async function hasManifest(dir: string): Promise<boolean> {
   return false;
 }
 
+async function hasDockerfile(dir: string): Promise<boolean> {
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return false;
+  }
+  for (const entry of entries) {
+    if (entry.isFile() && /^(?:dockerfile(?:\..+)?|Dockerfile(?:\..+)?)$/.test(entry.name)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function hasCandidateSignal(dir: string): Promise<boolean> {
+  return (await hasManifest(dir)) || (await hasDockerfile(dir));
+}
+
 /**
  * The repo root plus every first-level subdirectory that declares a manifest, plus any
  * `workspaceDirs` (already expanded from monorepo globs) that declare one. Nested
@@ -106,19 +126,19 @@ async function findCandidateRoots(
   }
 
   const roots: string[] = [];
-  if (await hasManifest(repoPath)) roots.push('.');
+  if (await hasCandidateSignal(repoPath)) roots.push('.');
 
   const subdirs = entries
     .filter((e) => e.isDirectory() && !DEFAULT_WALK_IGNORE.includes(e.name))
     .map((e) => e.name)
     .sort((a, b) => a.localeCompare(b));
   for (const name of subdirs) {
-    if (await hasManifest(join(repoPath, name))) roots.push(name);
+    if (await hasCandidateSignal(join(repoPath, name))) roots.push(name);
   }
 
   // Nested workspace packages (deeper than one level) discovered via monorepo globs.
   for (const dir of workspaceDirs) {
-    if (!roots.includes(dir) && (await hasManifest(join(repoPath, dir)))) roots.push(dir);
+    if (!roots.includes(dir) && (await hasCandidateSignal(join(repoPath, dir)))) roots.push(dir);
   }
   return roots;
 }
@@ -254,7 +274,7 @@ export async function detectStack(repoPath: string): Promise<DetectionResult> {
   // decision, because a placeable ecosystem component (Go/Rust/JVM/.NET with a matched
   // recipe) makes a repo containerizable even without a seed frontend/backend.
   const insights = await gatherInsights(repoPath, roots, monorepo);
-  const hasEcosystem = insights.ecosystemComponents.length > 0;
+  const hasEcosystem = insights.ecosystemComponents.length > 0 || insights.dockerfiles.length > 0;
 
   const isSupported = frontend !== null || backend !== null || hasEcosystem;
   if (!isSupported) {
@@ -318,6 +338,8 @@ async function filesAt(dir: string): Promise<string[]> {
     'vite.config.js',
     'global.json',
     'Directory.Build.props',
+    'Dockerfile',
+    'dockerfile',
   ];
   const present: string[] = [];
   for (const m of markers) {
@@ -343,6 +365,8 @@ async function gatherInsights(
   const taskCommands: RepoInsights['taskCommands'] = [];
   const seenTask = new Set<string>();
   const ecosystemComponents: RepoInsights['ecosystemComponents'] = [];
+  const dockerfiles: RepoInsights['dockerfiles'] = [];
+  const seenDockerfile = new Set<string>();
 
   for (const rootDir of roots) {
     const absDir = rootDir === '.' ? repoPath : join(repoPath, rootDir);
@@ -360,6 +384,15 @@ async function gatherInsights(
         command: task.command,
         kind: task.kind,
       });
+    }
+
+    const dockerfileAnalysis = await analyzeDockerfiles(absDir);
+    for (const dockerfile of dockerfileAnalysis.dockerfiles) {
+      const key = `${dockerfile.rootDir}:${dockerfile.file}`;
+      if (seenDockerfile.has(key)) continue;
+      seenDockerfile.add(key);
+      dockerfiles.push(dockerfile);
+      runtimeSet.add(runtimeFromBaseImage(dockerfile.baseImage));
     }
 
     // Runtime claims from tier-1 detectors, best (highest-confidence) first.
@@ -408,6 +441,11 @@ async function gatherInsights(
     }
   }
 
+  for (const dockerfile of dockerfiles) {
+    const runtime = runtimeFromBaseImage(dockerfile.baseImage);
+    if (runtime !== 'unknown') runtimeSet.add(runtime);
+  }
+
   const ci = await analyzeCi(repoPath);
 
   return {
@@ -416,6 +454,7 @@ async function gatherInsights(
     monorepoTools: monorepo.tools,
     ciCommands: ci.commands.map((c) => ({ command: c.command, kind: c.kind })),
     ciRuntimeVersions: ci.runtimeVersions,
+    dockerfiles,
     taskCommands,
     ecosystemComponents,
   };
@@ -465,6 +504,13 @@ function confidenceEvidence(
   if (backend?.entrypoint) {
     evidence.push({ detector: 'index', signal: 'backend entrypoint resolved', weight: 0.25 });
   }
+  if (insights.dockerfiles.length > 0) {
+    evidence.push({
+      detector: 'dockerfile',
+      signal: `Dockerfile parsed (${insights.dockerfiles.length} file(s))`,
+      weight: 0.6,
+    });
+  }
   for (const eco of insights.ecosystemComponents) {
     evidence.push({
       detector: 'recipe',
@@ -475,7 +521,11 @@ function confidenceEvidence(
   // CI corroboration only *reinforces* an already-detected stack (the maintainer's own
   // build recipe agreeing with detection); it never manufactures confidence on its own,
   // so a repo with CI but no recognized component still scores 0.
-  const hasStack = frontend !== null || backend !== null || insights.ecosystemComponents.length > 0;
+  const hasStack =
+    frontend !== null ||
+    backend !== null ||
+    insights.ecosystemComponents.length > 0 ||
+    insights.dockerfiles.length > 0;
   const ciBuildSignals = insights.ciCommands.filter(
     (c) => c.kind === 'build' || c.kind === 'start'
   );

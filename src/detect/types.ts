@@ -125,6 +125,17 @@ export interface RepoInsights {
   ciCommands: { command: string; kind: string }[];
   /** Runtime versions pinned in CI, e.g. [{ runtime: "node", version: "20" }]. */
   ciRuntimeVersions: { runtime: string; version: string }[];
+  /** Dockerfiles parsed from the repo, with their extracted build/run signals. */
+  dockerfiles: {
+    rootDir: string;
+    file: string;
+    baseImage: string;
+    exposedPorts: number[];
+    installCommands: string[];
+    buildCommands: string[];
+    startCommand: string;
+    workingDir: string;
+  }[];
   /**
    * Build/run/test tasks recovered from the repo's task runners (Makefile, Taskfile,
    * justfile, package scripts) — the maintainer's own entrypoints. Phase-3 signal.
