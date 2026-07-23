@@ -12,45 +12,15 @@
 import type { RecipeEntry } from '../recipe.js';
 
 /**
- * Ecosystem recipes beyond the seed stacks. Two shapes live here: interpreted web
- * frameworks (Python FastAPI/Flask — single-stage, dependency-matched) and compiled/
- * managed runtimes (Go/Rust/JVM/.NET — multi-stage). `{{binary}}` / `{{jar}}` /
+ * Compiled and managed-runtime ecosystems as recipes. `{{binary}}` / `{{jar}}` /
  * `{{dll}}` are placeholders the synthesizer fills from detection (crate name, the
- * built artifact path). The Python entries come first so a dependency match precedes
- * the bare-runtime file matches; each otherwise serves a distinct runtime.
+ * built artifact path). Ordered most-specific-first is unnecessary here — each
+ * matches a distinct runtime — but they follow the seed set in registration order.
+ *
+ * Python web frameworks (FastAPI/Flask) live in `./python.ts`, matched per lockfile
+ * (uv/Poetry/pip); they are deliberately NOT duplicated here.
  */
 export const ECOSYSTEM_RECIPES: readonly RecipeEntry[] = [
-  {
-    // FastAPI runs under an ASGI server; uvicorn is the canonical one and ships as a
-    // FastAPI extra. `main:app` is the near-universal module path — self-heal fixes the
-    // rare exception. Interpreted: no build step, so synthesis stays single-stage.
-    matcher: { runtime: 'python', anyDependency: ['fastapi'] },
-    recipe: {
-      id: 'python-fastapi',
-      runtime: 'python',
-      packageManager: 'pip',
-      dependencyFiles: ['requirements.txt'],
-      installCommands: ['pip install -r requirements.txt'],
-      startCommand: 'uvicorn main:app --host 0.0.0.0 --port 8000',
-      defaultPorts: [8000],
-      baseImages: { build: 'python:3.12-slim', runtime: 'python:3.12-slim' },
-    },
-  },
-  {
-    // Flask's own dev server isn't production-grade, so run under gunicorn (added when
-    // absent by self-heal). `app:app` mirrors the FastAPI module:callable convention.
-    matcher: { runtime: 'python', anyDependency: ['flask'] },
-    recipe: {
-      id: 'python-flask',
-      runtime: 'python',
-      packageManager: 'pip',
-      dependencyFiles: ['requirements.txt'],
-      installCommands: ['pip install -r requirements.txt'],
-      startCommand: 'gunicorn --bind 0.0.0.0:8000 app:app',
-      defaultPorts: [8000],
-      baseImages: { build: 'python:3.12-slim', runtime: 'python:3.12-slim' },
-    },
-  },
   {
     matcher: { runtime: 'go', anyFile: ['go.mod'] },
     recipe: {
