@@ -83,7 +83,7 @@ item someone is **actively working on** shows **that person's** colour instead.
 | Stub | Item                           | Notes                                                                                                            |
 | :--: | ------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
 |  🟢  | Flaky `hostPorts` test         | Now allocates real free ports from the OS instead of hardcoding — deterministic in CI                            |
-|  🟢  | Ecosystem example repos        | Go/Rust/JVM/.NET samples shipped with synthesizer golden tests; PHP/Ruby samples optional (Phase B3)             |
+|  🟢  | Ecosystem example repos        | Go/Rust/JVM/.NET/PHP/Ruby samples shipped, each pinned by a synthesizer golden test (Phase B3)                   |
 |  🟢  | `PackageManager` open taxonomy | Now an open string + `KNOWN_PACKAGE_MANAGERS` set, mirroring `Runtime` — a new manager is data, not an enum edit |
 |  🟢  | Per-ecosystem entrypoints      | Synthesizer now honors `recipe.entrypointScript` (COPY + chmod + ENTRYPOINT) for any recipe, seed or ecosystem   |
 |  🟢  | Plan-doc reconciliation        | `docs/universal-understanding-plan.md` now reflects Phase F persistence, 19 recipes, examples, open PkgManager   |
