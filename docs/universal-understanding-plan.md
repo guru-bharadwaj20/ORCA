@@ -304,13 +304,17 @@ _Dockerfiles generated from the recipe, not from `.hbs` templates keyed on frame
 
 _Per decision #2: design the interface, do not build execution now._
 
-- [ ] Define the `Prober` interface and its `Claim<T>` outputs (observed ports,
-      processes, logs, artifacts) so tier-4 has a home on the ladder.
-- [ ] Document the security model that a future build must satisfy: untrusted code runs
+- [x] Define the `Prober` interface and its `Claim<T>` outputs (observed ports,
+      processes, logs, artifacts) so tier-4 has a home on the ladder. — landed in
+      `src/model/prober.ts` (`Prober`, `ProbeContext`, `ProbeObservation`), mirroring the
+      `Detector` seam. No shipped prober, no runner: seam only.
+- [x] Document the security model that a future build must satisfy: untrusted code runs
       **only** inside a network-isolated, resource-capped, ephemeral container; never on
-      host; behind an explicit opt-in flag; with the same approve-before-run gate.
-- **Exit criterion:** the ladder has a tier-4 slot and a written security contract. No
-  arbitrary execution ships. Revisit build/no-build as a separate decision later.
+      host; behind an explicit opt-in flag; with the same approve-before-run gate. —
+      written as the SECURITY CONTRACT block in `prober.ts`, with two of its halves pinned
+      by code: `tier: 4` and "`enabled === false` ⇒ no claims" (`tests/model/prober.test.ts`).
+- **Exit criterion (met):** the ladder has a tier-4 slot and a written security contract.
+  No arbitrary execution ships. Revisit build/no-build as a separate decision later.
 
 ---
 
@@ -428,11 +432,20 @@ Landed on `feat/universal-understanding` (behind the full test suite):
   and never silently switches, say, a Rust service to Node. Seed-stack (template) runs pass
   no recipe context, so their heal prompt is unchanged.
 
-Remaining toward "build any repo": dynamic probing (Phase G seams), and per-ecosystem
-entrypoint scripts (e.g. a JVM/.NET migrate-then-run analogue to the Django entrypoint) —
-deferred until a recipe actually needs one, to avoid unused machinery.
+- **Dynamic-probing seam (Phase G, landed — seam only)** — the tier-4 `Prober` contract
+  (`src/model/prober.ts`) gives probing a home on the ladder: `Prober`/`ProbeContext`/
+  `ProbeObservation` mirror the `Detector` seam and emit ordinary evidence-backed
+  `Claim<ProbeObservation>`s. The security contract (isolation, opt-in, approve-before-run,
+  ephemerality, explainability) is written into the file, with two halves code-enforced
+  (`tier: 4`; a disabled context yields no claims). No prober implementation and no runner
+  ship — per decision #2 this is the interface, not execution.
 
-Test coverage across these: **215 tests** (was 115 at the start of the branch), all
+Remaining toward "build any repo": a probing *implementation* (deferred by decision #2 —
+the seam exists, execution is a separate later call), and per-ecosystem entrypoint scripts
+(e.g. a JVM/.NET migrate-then-run analogue to the Django entrypoint) — deferred until a
+recipe actually needs one, to avoid unused machinery.
+
+Test coverage across these: **218 tests** (was 115 at the start of the branch), all
 hermetic (temp-dir fixtures, injected AI facade, no network, no Docker, no VS Code).
 
 Known follow-ups surfaced during integration:
