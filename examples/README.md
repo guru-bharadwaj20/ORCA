@@ -81,3 +81,27 @@ Then check:
 > A "success" for Stage 1 means both stacks come up with `docker compose up --build` and
 > return the responses above — and that `npm test` shows the rendered templates match each
 > `.orca-golden/` file exactly.
+
+### Ecosystem samples (synthesizer path)
+
+Each ecosystem sample is verified the same way: let ORCA generate its Dockerfile, build
+it, and hit the endpoint. All return a small JSON health body.
+
+```bash
+orca run examples/<sample> --dry-run   # inspect the synthesized plan (no Docker needed)
+orca run examples/<sample>             # build + start, then curl the port below
+```
+
+| Sample              | Port   | Expected body                                         |
+| ------------------- | ------ | ----------------------------------------------------- |
+| `go-sample`         | `8080` | `{"status":"ok","service":"orca-go-sample"}`          |
+| `rust-sample`       | `8080` | `{"status":"ok","service":"orca-rust-sample"}`        |
+| `jvm-maven-sample`  | `8080` | `{"status":"ok","service":"orca-jvm-sample"}`         |
+| `jvm-gradle-sample` | `8080` | `{"status":"ok","service":"orca-gradle-sample"}`      |
+| `dotnet-sample`     | `8080` | `{"status":"ok","service":"orca-dotnet-sample"}`      |
+| `php-sample`        | `8000` | `{"status":"ok","service":"orca-php-sample"}`         |
+| `ruby-sample`       | `4567` | `{"status":"ok","service":"orca-ruby-sample"}`        |
+
+`npm test` also asserts each sample's synthesized Dockerfile matches its committed
+`.orca-golden/Dockerfile` and that the repo still detects to the expected recipe
+(`tests/examples/ecosystem-golden.test.ts`).
