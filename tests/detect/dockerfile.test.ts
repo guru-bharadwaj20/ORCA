@@ -55,4 +55,16 @@ describe('analyzeDockerfiles', () => {
       workingDir: '/usr/share/nginx/html',
     });
   });
+
+  it('recognizes a Containerfile (the OCI/Podman equivalent of a Dockerfile)', async () => {
+    const analysis = await analyzeDockerfiles(fixture('containerfile-repo'));
+
+    expect(analysis.found).toBe(true);
+    expect(dockerfileFor(analysis, '.')).toMatchObject({
+      file: 'Containerfile',
+      baseImage: 'node:20-slim',
+      exposedPorts: [3000],
+      workingDir: '/app',
+    });
+  });
 });
