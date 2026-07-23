@@ -25,6 +25,7 @@ import type { DetectedComponent, DetectionResult } from '../detect/types.js';
 import { planToComposeVars } from '../generate/composeVars.js';
 import { writeConfigs } from '../generate/writeConfigs.js';
 import { buildEnvFile } from '../orchestrate/envFiles.js';
+import { resolveHostPortConflicts } from '../plan/hostPorts.js';
 import { reviewPlan, type ReviewIO, type ReviewOutcome } from '../plan/review.js';
 import { buildServicePlan, refinedComponentVars } from '../plan/servicePlan.js';
 import type { ServicePlan } from '../plan/types.js';
@@ -229,6 +230,8 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
 
     signal?.throwIfAborted();
     ctx.plan = buildServicePlan(detection, filled, inferred);
+    for (const note of await resolveHostPortConflicts(ctx.plan)) ctx.logger.warn(note);
+
     const outcome = io.approvePlan
       ? await io.approvePlan(ctx.plan)
       : await reviewPlan(ctx.plan, ctx.options, io);
