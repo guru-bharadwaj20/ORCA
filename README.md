@@ -146,6 +146,9 @@ extensions. The repo is an npm-workspaces monorepo: the root package is the publ
 `orca-agent-cli`, and `vscode-extension/` consumes it through its subpath exports
 (`orca-agent-cli`, `/plan`, `/config`, `/ai`).
 
+New here? [`CONTRIBUTING.md`](CONTRIBUTING.md) has the setup, the ground rules, and an
+at-a-glance **roadmap** of what's done and what's free to pick up.
+
 The bundled samples are real and runnable — see [`examples/README.md`](examples/README.md):
 
 ```bash
