@@ -80,14 +80,15 @@ item someone is **actively working on** shows **that person's** colour instead.
 
 ### Remaining work — free to pick up
 
-| Stub | Item                           | Notes                                                                                                            |
-| :--: | ------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-|  🟢  | Flaky `hostPorts` test         | Now allocates real free ports from the OS instead of hardcoding — deterministic in CI                            |
-|  🟢  | Ecosystem example repos        | Go/Rust/JVM/.NET/PHP/Ruby samples shipped, each pinned by a synthesizer golden test (Phase B3)                   |
-|  🟢  | `PackageManager` open taxonomy | Now an open string + `KNOWN_PACKAGE_MANAGERS` set, mirroring `Runtime` — a new manager is data, not an enum edit |
-|  🟢  | Per-ecosystem entrypoints      | Synthesizer now honors `recipe.entrypointScript` (COPY + chmod + ENTRYPOINT) for any recipe, seed or ecosystem   |
-|  🟢  | Plan-doc reconciliation        | `docs/universal-understanding-plan.md` now reflects Phase F persistence, 19 recipes, examples, open PkgManager   |
-|  🔴  | Probing implementation         | Phase G execution behind the existing seam — deferred by design decision #2                                      |
+| Stub | Item                             | Notes                                                                                                                                                                                                                          |
+| :--: | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+|  🟢  | Flaky `hostPorts` test           | Now allocates real free ports from the OS instead of hardcoding — deterministic in CI                                                                                                                                          |
+|  🟢  | Ecosystem example repos          | Go/Rust/JVM/.NET/PHP/Ruby samples shipped, each pinned by a synthesizer golden test (Phase B3)                                                                                                                                 |
+|  🟢  | `PackageManager` open taxonomy   | Now an open string + `KNOWN_PACKAGE_MANAGERS` set, mirroring `Runtime` — a new manager is data, not an enum edit                                                                                                               |
+|  🟢  | Per-ecosystem entrypoints        | Synthesizer now honors `recipe.entrypointScript` (COPY + chmod + ENTRYPOINT) for any recipe, seed or ecosystem                                                                                                                 |
+|  🟢  | Plan-doc reconciliation          | `docs/universal-understanding-plan.md` now reflects Phase F persistence, 19 recipes, examples, open PkgManager                                                                                                                 |
+|  🔴  | Route Node frameworks to recipes | `node-next`/`nest`/`angular`/`vite` recipes exist but are unreachable: a Next.js repo detects as seed `react`, never routing to `node-next`. Needs the seed/ecosystem boundary to defer to a framework recipe when one matches |
+|  🔴  | Probing implementation           | Phase G execution behind the existing seam — deferred by design decision #2                                                                                                                                                    |
 
 **When you start on a red item, change its stub to your colour; when you finish, make it
 green.**
