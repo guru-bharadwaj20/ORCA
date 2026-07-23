@@ -20,8 +20,9 @@ function volumeString(mount: VolumeMount): string {
 function toServiceSpec(node: ServiceNode): ServiceSpec {
   const spec: ServiceSpec = {
     name: node.id,
-    // The render contract has no 'cache' kind; a cache renders like a database.
-    kind: node.kind === 'cache' ? 'database' : node.kind,
+    // The render contract only has frontend/backend/database. A cache renders like a
+    // database; a generic ecosystem 'service' renders like a backend app service.
+    kind: node.kind === 'cache' ? 'database' : node.kind === 'service' ? 'backend' : node.kind,
     ports: node.ports.map((p) => `${p.host}:${p.container}`),
     environment: node.environment,
     // Long form: startup conditions (service_healthy etc.) gate on healthchecks.
