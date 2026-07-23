@@ -80,14 +80,14 @@ item someone is **actively working on** shows **that person's** colour instead.
 
 ### Remaining work — free to pick up
 
-| Stub | Item                           | Notes                                                                                                                                |
-| :--: | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-|  ⚪  | Flaky `hostPorts` test         | Binds real OS ports, so it fails randomly on busy CI runners — make it deterministic                                                 |
-|  ⚪  | Ecosystem example repos        | `examples/go-sample` + `examples/rust-sample` land with synthesizer golden tests; JVM/.NET/PHP/Ruby samples still to come (Phase B3) |
-|  ⚪  | `PackageManager` open taxonomy | Widened with `uv`, but still a closed enum — Phase B1 called for an open string + known-set                                          |
-|  ⚪  | Per-ecosystem entrypoints      | e.g. a JVM/.NET migrate-then-run analogue to the Django entrypoint — deferred until a recipe needs one                               |
-|  ⚪  | Plan-doc reconciliation        | `docs/universal-understanding-plan.md` status table lags the code (Phase F persistence, 19 recipes)                                  |
-|  🔴  | Probing implementation         | Phase G execution behind the existing seam — deferred by design decision #2                                                          |
+| Stub | Item                           | Notes                                                                                                   |
+| :--: | ------------------------------ | ------------------------------------------------------------------------------------------------------- |
+|  🟢  | Flaky `hostPorts` test         | Now allocates real free ports from the OS instead of hardcoding — deterministic in CI                   |
+|  ⚪  | Ecosystem example repos        | Go/Rust/JVM/.NET samples land with synthesizer golden tests; PHP/Ruby samples still optional (Phase B3) |
+|  ⚪  | `PackageManager` open taxonomy | Widened with `uv`, but still a closed enum — Phase B1 called for an open string + known-set             |
+|  ⚪  | Per-ecosystem entrypoints      | e.g. a JVM/.NET migrate-then-run analogue to the Django entrypoint — deferred until a recipe needs one  |
+|  ⚪  | Plan-doc reconciliation        | `docs/universal-understanding-plan.md` status table lags the code (Phase F persistence, 19 recipes)     |
+|  🔴  | Probing implementation         | Phase G execution behind the existing seam — deferred by design decision #2                             |
 
 **When you start on a red item, change its stub to your colour; when you finish, make it
 green.**

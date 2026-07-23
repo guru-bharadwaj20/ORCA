@@ -53,4 +53,20 @@ describe('ecosystem example goldens', () => {
     );
     expect(normalize(rendered)).toBe(normalize(goldenDockerfile('rust-sample')));
   });
+
+  it('jvm-maven-sample synthesizes its committed Dockerfile', () => {
+    const rendered = synthesizeFor(
+      { runtime: 'jvm', dependencies: [], files: ['pom.xml'] },
+      { artifactName: 'orca-jvm-sample.jar' }
+    );
+    expect(normalize(rendered)).toBe(normalize(goldenDockerfile('jvm-maven-sample')));
+  });
+
+  it('dotnet-sample synthesizes its committed Dockerfile', () => {
+    const rendered = synthesizeFor(
+      { runtime: 'dotnet', dependencies: [], files: ['global.json'] },
+      { artifactName: 'orca-dotnet-sample.dll' }
+    );
+    expect(normalize(rendered)).toBe(normalize(goldenDockerfile('dotnet-sample')));
+  });
 });
