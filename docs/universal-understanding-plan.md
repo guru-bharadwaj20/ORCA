@@ -293,12 +293,12 @@ _Dockerfiles generated from the recipe, not from `.hbs` templates keyed on frame
 
 ### Phase F — Recipe-aware self-healing (brief's Phase 8)
 
-- [ ] Extend the existing `selfHeal.ts` loop to be recipe-aware: failures feed back as
+- [x] Extend the existing `selfHeal.ts` loop to be recipe-aware: failures feed back as
       recipe corrections (wrong install cmd, missing system package, wrong port),
       and successful fixes are recorded as **learned recipe overrides** keyed by repo
       signature, so the next run starts from the healed recipe.
-- **Exit criterion:** a build that fails on a missing `libpq-dev` self-corrects and the
-  correction persists for that repo shape.
+- **Exit criterion (met):** a build that fails on a missing `libpq-dev` self-corrects and
+  the correction persists for that repo shape (`healStore.ts` + `repoSignature.ts`).
 
 ### Phase G — Dynamic probing (brief's Phase 6) — SEAMS ONLY, then STOP
 
@@ -359,8 +359,6 @@ behavior, but it converts "add a framework = edit closed enums + a switch" into 
 framework = add a detector + a recipe," which is the unlock for every later phase.
 
 I can start Phase A on request — it's a well-bounded, test-guarded refactor.
-
-```
 
 ---
 
@@ -425,12 +423,16 @@ Landed on `feat/universal-understanding` (behind the full test suite):
   health-gated `depends_on` a seed backend would (`connectionEnv` + `dbDeps` applied in
   `buildServicePlan`). No database → the service stays unwired (empty env, no deps).
 
-- **Recipe-aware self-healing (Phase F, landed)** — the self-heal loop already heals any
-  ORCA-generated file, so a synthesized ecosystem/inferred Dockerfile is in scope for free.
-  On top of that, `buildHealPrompt` now receives each synthesized service's recipe context
-  (runtime + intended install/build/start commands) so a fix stays faithful to the runtime
-  and never silently switches, say, a Rust service to Node. Seed-stack (template) runs pass
-  no recipe context, so their heal prompt is unchanged.
+- **Recipe-aware self-healing (Phase F, landed — full)** — the self-heal loop already heals
+  any ORCA-generated file, so a synthesized ecosystem/inferred Dockerfile is in scope for
+  free. On top of that, `buildHealPrompt` now receives each synthesized service's recipe
+  context (runtime + intended install/build/start commands) so a fix stays faithful to the
+  runtime and never silently switches, say, a Rust service to Node. Seed-stack (template)
+  runs pass no recipe context, so their heal prompt is unchanged. **Persistence closed the
+  exit criterion:** `healStore.ts` writes each successful fix as a learned override keyed by
+  repo signature (`repoSignature.ts`) under `~/.orca`, and the pipeline replays it on the
+  next run (lookup → apply → evict-on-failure → save-on-success), so a missing-`libpq-dev`
+  correction survives across runs for that repo shape.
 
 - **Dynamic-probing seam (Phase G, landed — seam only)** — the tier-4 `Prober` contract
   (`src/model/prober.ts`) gives probing a home on the ladder: `Prober`/`ProbeContext`/
@@ -440,12 +442,19 @@ Landed on `feat/universal-understanding` (behind the full test suite):
   (`tier: 4`; a disabled context yields no claims). No prober implementation and no runner
   ship — per decision #2 this is the interface, not execution.
 
-Remaining toward "build any repo": a probing *implementation* (deferred by decision #2 —
+Since then, the deterministic surface widened further: **19 recipes** across Node
+(react/express/next/nest/angular/vite), Python (django/fastapi/flask × uv/poetry/pip),
+PHP (composer/laravel), Ruby (bundler/rails/sinatra), Go, Rust, JVM (maven/gradle) and
+.NET; existing-Dockerfile detection; the `PackageManager` taxonomy opened to a string +
+known-set (mirroring `Runtime`); and runnable **ecosystem example repos** under
+`examples/` (go/rust/jvm/dotnet) pinned by synthesizer golden tests.
+
+Remaining toward "build any repo": a probing _implementation_ (deferred by decision #2 —
 the seam exists, execution is a separate later call), and per-ecosystem entrypoint scripts
 (e.g. a JVM/.NET migrate-then-run analogue to the Django entrypoint) — deferred until a
 recipe actually needs one, to avoid unused machinery.
 
-Test coverage across these: **218 tests** (was 115 at the start of the branch), all
+Test coverage across these: **333 tests** (was 115 at the start of the branch), all
 hermetic (temp-dir fixtures, injected AI facade, no network, no Docker, no VS Code).
 
 Known follow-ups surfaced during integration:
@@ -456,4 +465,8 @@ Known follow-ups surfaced during integration:
 - **Ecosystem components are containerized (resolved, Phase E).** Go/Rust/JVM/.NET and
   AI-inferred stacks flow through the generic multi-stage synthesizer end-to-end
   (detection → plan → generate/preview → self-heal). See the landed entries above.
-```
+- **Ecosystem example repos (resolved, Phase B3).** `examples/{go,rust,jvm-maven,dotnet}-sample`
+  are runnable and pinned by `tests/examples/ecosystem-golden.test.ts`, which asserts each
+  synthesized Dockerfile byte-for-byte.
+- **`PackageManager` opened (resolved).** Now a known-set + open string in
+  `templates/types.ts`, mirroring `Runtime`; detection layers `'unknown'` on top.

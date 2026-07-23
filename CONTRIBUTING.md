@@ -86,7 +86,7 @@ item someone is **actively working on** shows **that person's** colour instead.
 |  🟢  | Ecosystem example repos        | Go/Rust/JVM/.NET samples shipped with synthesizer golden tests; PHP/Ruby samples optional (Phase B3)             |
 |  🟢  | `PackageManager` open taxonomy | Now an open string + `KNOWN_PACKAGE_MANAGERS` set, mirroring `Runtime` — a new manager is data, not an enum edit |
 |  ⚪  | Per-ecosystem entrypoints      | e.g. a JVM/.NET migrate-then-run analogue to the Django entrypoint — deferred until a recipe needs one           |
-|  ⚪  | Plan-doc reconciliation        | `docs/universal-understanding-plan.md` status table lags the code (Phase F persistence, 19 recipes)              |
+|  🟢  | Plan-doc reconciliation        | `docs/universal-understanding-plan.md` now reflects Phase F persistence, 19 recipes, examples, open PkgManager   |
 |  🔴  | Probing implementation         | Phase G execution behind the existing seam — deferred by design decision #2                                      |
 
 **When you start on a red item, change its stub to your colour; when you finish, make it
