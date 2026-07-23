@@ -155,7 +155,9 @@ function ecosystemComponentsFrom(detection: DetectionResult): EcosystemComponent
           runtime,
           dependencyFiles: [dockerfile.file],
           installCommands: dockerfile.installCommands,
-          ...(dockerfile.buildCommands.length > 0 ? { buildCommands: dockerfile.buildCommands } : {}),
+          ...(dockerfile.buildCommands.length > 0
+            ? { buildCommands: dockerfile.buildCommands }
+            : {}),
           startCommand: dockerfile.startCommand,
           defaultPorts: dockerfile.exposedPorts,
           baseImages: { build: dockerfile.baseImage, runtime: dockerfile.baseImage },
