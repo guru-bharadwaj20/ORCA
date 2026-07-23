@@ -278,10 +278,20 @@ export function buildServicePlan(
 
   // Ecosystem/inferred components (Go/Rust/JVM/.NET) become generic 'service' nodes
   // that build from a synthesized Dockerfile. Ids are de-duplicated against nodes
-  // already placed (databases, seed components).
+  // already placed (databases, seed components). Any detected database is a repo-wide
+  // dependency, so each ecosystem service gets the same health-gated `depends_on` and
+  // connection env a seed backend would — that's the ecosystem DB wiring.
+  const dbEnv = connectionEnv(dbNodes, detection.databases);
+  const dbDeps: ServiceDependency[] = dbNodes.map((db) => ({
+    serviceId: db.id,
+    condition: db.healthcheck ? 'service_healthy' : 'service_started',
+  }));
   for (const eco of ecosystem) {
     if (nodes.some((n) => n.id === eco.id)) continue;
-    nodes.push(ecosystemServiceNode(eco.id, eco.component, eco.recipe));
+    const node = ecosystemServiceNode(eco.id, eco.component, eco.recipe);
+    Object.assign(node.environment, dbEnv);
+    node.dependsOn = [...node.dependsOn, ...dbDeps];
+    nodes.push(node);
   }
 
   // AI-inferred app env rides in a .env file attached to the app service (the

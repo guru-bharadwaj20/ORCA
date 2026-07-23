@@ -4,8 +4,9 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { ecosystemServiceNode } from '../../src/plan/servicePlan.js';
-import type { DetectedComponent } from '../../src/detect/types.js';
+import { buildServicePlan, ecosystemServiceNode } from '../../src/plan/servicePlan.js';
+import type { EcosystemComponent } from '../../src/plan/servicePlan.js';
+import type { DetectedComponent, DetectionResult } from '../../src/detect/types.js';
 import type { BuildRecipe } from '../../src/model/recipe.js';
 
 const component = (rootDir: string): DetectedComponent => ({
@@ -48,5 +49,57 @@ describe('ecosystemServiceNode', () => {
     const node = ecosystemServiceNode('app', component('.'), portless);
     expect((node.source as { context: string }).context).toBe('.');
     expect(node.ports).toEqual([]);
+  });
+});
+
+/** Minimal detection with one Postgres dependency and no seed frontend/backend. */
+const detectionWithPostgres = (): DetectionResult => ({
+  repoPath: '/tmp/eco',
+  languages: ['go'],
+  packageManagers: ['unknown'],
+  frontend: null,
+  backend: null,
+  databases: [{ engine: 'postgres', defaultPort: 5432, detectedFrom: 'lib/pq' }],
+  isSupported: true,
+  confidence: 0.6,
+  reasoning: [],
+  insights: {
+    frameworks: [],
+    runtimes: ['go'],
+    monorepoTools: [],
+    ciCommands: [],
+    ciRuntimeVersions: [],
+    taskCommands: [],
+    ecosystemComponents: [],
+  },
+  warnings: [],
+});
+
+describe('buildServicePlan — ecosystem DB wiring', () => {
+  it('wires a detected database into an ecosystem service (env + health-gated depends_on)', () => {
+    const eco: EcosystemComponent[] = [{ id: 'app', recipe, component: component('.') }];
+    const plan = buildServicePlan(detectionWithPostgres(), {}, null, eco);
+
+    const svc = plan.services.find((s) => s.kind === 'service');
+    expect(svc).toBeDefined();
+    // Gets the same Postgres connection env a seed backend would.
+    expect(svc?.environment).toMatchObject({
+      POSTGRES_HOST: 'db',
+      POSTGRES_PORT: '5432',
+      POSTGRES_DB: 'orca',
+    });
+    // Waits for the db to be healthy before starting.
+    expect(svc?.dependsOn).toContainEqual({ serviceId: 'db', condition: 'service_healthy' });
+  });
+
+  it('leaves an ecosystem service unwired when there is no database', () => {
+    const detection = detectionWithPostgres();
+    detection.databases = [];
+    const eco: EcosystemComponent[] = [{ id: 'app', recipe, component: component('.') }];
+    const plan = buildServicePlan(detection, {}, null, eco);
+
+    const svc = plan.services.find((s) => s.kind === 'service');
+    expect(svc?.environment).toEqual({});
+    expect(svc?.dependsOn).toEqual([]);
   });
 });
