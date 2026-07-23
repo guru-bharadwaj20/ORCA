@@ -14,6 +14,17 @@ exactly.
 | [`mern-sample/`](./mern-sample/) | Node/React (Vite) + Node/Express | MongoDB | `cd examples/mern-sample && docker compose up --build` | client `:5173` renders "hello from the ORCA express server" + a Mongo-backed visit count; API `:5000/api/hello` returns JSON |
 | [`django-postgres-sample/`](./django-postgres-sample/) | Python/Django | Postgres | `cd examples/django-postgres-sample && docker compose up --build` | `:8000/` returns `{"message":"hello from the ORCA django app","widgets":0}` after auto-migrate |
 
+### Ecosystem samples (synthesizer path)
+
+Beyond the seed stacks, these tiny repos exercise the **generic Dockerfile synthesizer**
+(Go/Rust/JVM/.NET recipes, not Handlebars templates). Each ships a `.orca-golden/Dockerfile`
+that is the exact synthesizer output, pinned by `tests/examples/ecosystem-golden.test.ts`.
+
+| Sample | Stack | Recipe | Expected working state |
+| --- | --- | --- | --- |
+| [`go-sample/`](./go-sample/) | Go (`net/http`) | `go-mod` | `:8080/` returns `{"status":"ok","service":"orca-go-sample"}` |
+| [`rust-sample/`](./rust-sample/) | Rust (std TCP) | `rust-cargo` | `:8080/` returns `{"status":"ok","service":"orca-rust-sample"}` |
+
 Each sample's own `README.md` documents its layout and the gotchas it handles.
 
 ## About `.orca-golden/`

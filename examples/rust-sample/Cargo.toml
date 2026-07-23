@@ -1,0 +1,8 @@
+[package]
+name = "orca-rust-sample"
+version = "0.1.0"
+edition = "2021"
+
+# No dependencies: a std-only TCP listener keeps `cargo build --release` hermetic and
+# fast, and the binary name (`orca-rust-sample`) is what ORCA fills into `{{binary}}`.
+[dependencies]
