@@ -340,6 +340,12 @@ async function filesAt(dir: string): Promise<string[]> {
     'build.gradle',
     'build.gradle.kts',
     'manage.py',
+    // Python lockfiles/manifests: the FastAPI/Flask recipes select a uv/Poetry/pip
+    // variant by which of these is present, so they must reach the matcher's `files`.
+    'requirements.txt',
+    'pyproject.toml',
+    'uv.lock',
+    'poetry.lock',
     'vite.config.ts',
     'vite.config.js',
     'global.json',
