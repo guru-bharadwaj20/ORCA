@@ -297,15 +297,21 @@ async function inferenceInputFor(repoDir: string): Promise<InferenceInput> {
 }
 
 /**
- * Best-effort diagnostic: run tier-3 AI inference on an unsupported repo and log the
- * graded understanding (runtime + how it'd build, with the model's reasoning). Never
- * throws — a failed inference just means no extra diagnostic before the hard stop.
+ * Tier-3 (AI) rung of the inference ladder for a deterministically-unsupported repo:
+ * run build inference, log the graded understanding (runtime + how it'd build, with the
+ * model's reasoning), and — when it yields a recipe — return it as an `EcosystemComponent`
+ * so the repo builds through the same open-role synthesis path as a matched ecosystem
+ * recipe. The inferred `ai-*` recipe rides inline on the plan node; it is never in the
+ * shipped registry, so carrying it (not looking it up) is what makes this build.
+ *
+ * Never throws — a failed inference just returns null, and the caller hard-stops as
+ * before. The component root is the repo root (`.`), which is where inference reasons.
  */
-async function logInferredUnderstanding(ctx: RunContext): Promise<void> {
+async function inferEcosystemComponent(ctx: RunContext): Promise<EcosystemComponent | null> {
   try {
     const input = await inferenceInputFor(ctx.workspaceDir);
     const inferred = await inferBuild(input, ctx.cost, ctx.ai ?? ai);
-    if (inferred === null) return;
+    if (inferred === null) return null;
     const pct = Math.round(inferred.confidence * 100);
     ctx.logger.info(
       `AI understanding (${pct}% confident): ${inferred.value.runtime} — ` +
@@ -313,8 +319,23 @@ async function logInferredUnderstanding(ctx: RunContext): Promise<void> {
         `run \`${inferred.value.startCommand}\`.`
     );
     ctx.logger.info(`AI reasoning: ${reasoning(inferred).join('; ')}.`);
+    return {
+      id: 'app',
+      recipe: inferred.value,
+      component: {
+        role: 'backend',
+        rootDir: '.',
+        language: 'unknown',
+        packageManager: 'unknown',
+        framework: 'unknown',
+        dependencies: [],
+        ports: [],
+        entrypoint: null,
+      },
+    };
   } catch {
-    // Diagnostic only — never let it affect the run's outcome.
+    // Best-effort — a failed inference just means no build path, never a crash.
+    return null;
   }
 }
 
@@ -370,17 +391,23 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
       ctx.logger.info(`Detection reasoning: ${detection.reasoning.join('; ')}.`);
     }
     logInsights(detection.insights, ctx.logger);
+    // Tier-3 ladder rung: when deterministic detection can't place the repo but a key
+    // is present, ask the model how it'd build. A confident inference is promoted to an
+    // ecosystem component so the repo containerizes through the open-role synthesis path;
+    // only a repo that can't even be inferred hard-stops.
+    let inferredComponent: EcosystemComponent | null = null;
     if (!detection.isSupported) {
-      // Tier-3 ladder rung: when deterministic detection can't place the repo but a
-      // key is present, ask the model for a graded understanding and log it before the
-      // hard stop — "here's what I think this is and how it'd build" beats a bare
-      // rejection. The build path for inferred stacks is Phase E; this is diagnostic.
       if (aiKeyPresent(ctx.resolveKey)) {
-        await logInferredUnderstanding(ctx);
+        inferredComponent = await inferEcosystemComponent(ctx);
       }
-      throw new UnsupportedStackError(
-        detection.warnings.map((w) => w.message).join(' ') ||
-          'No supported stack detected in this repo.'
+      if (inferredComponent === null) {
+        throw new UnsupportedStackError(
+          detection.warnings.map((w) => w.message).join(' ') ||
+            'No supported stack detected in this repo.'
+        );
+      }
+      ctx.logger.info(
+        'Proceeding with an AI-inferred build recipe (unsupported deterministically).'
       );
     }
 
@@ -401,8 +428,14 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
     if (inferred !== null) ctx.inferredEnv = inferred;
 
     // STAGE 4: plan + approval gate. Nothing is built or written before approval.
+    // Deterministic ecosystem components plus any AI-inferred one (unsupported repos)
+    // are placed as open 'service' nodes alongside the seed frontend/backend.
     signal?.throwIfAborted();
-    ctx.plan = buildServicePlan(detection, filled, inferred, ecosystemComponentsFrom(detection));
+    const ecosystem = [
+      ...ecosystemComponentsFrom(detection),
+      ...(inferredComponent !== null ? [inferredComponent] : []),
+    ];
+    ctx.plan = buildServicePlan(detection, filled, inferred, ecosystem);
     // An embedder's approvePlan hook (e.g. the VS Code webview) owns the decision
     // when provided; otherwise the default reviewPlan gate runs.
     const outcome = io.approvePlan

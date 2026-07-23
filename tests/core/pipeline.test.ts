@@ -210,8 +210,11 @@ describe('runPipeline (walking skeleton)', () => {
     expect(out).toContain('cargo build --release');
   });
 
-  it('logs a graded AI understanding before rejecting an unsupported repo (with a key)', async () => {
-    const repoDir = fixture('unknown-repo'); // no manifest → genuinely unsupported
+  it('builds a deterministically-unsupported repo via an AI-inferred recipe (with a key)', async () => {
+    // No manifest → deterministic detection can't place it, but tier-3 inference yields
+    // a recipe, so the repo now containerizes through the open-role synthesis path
+    // instead of hard-stopping. The inferred `ai-*` recipe rides inline on the node.
+    const repoDir = fixture('unknown-repo');
     const { logger, lines } = collectLogger();
     const ctx = createRunContext({
       repoUrl: repoDir,
@@ -220,7 +223,11 @@ describe('runPipeline (walking skeleton)', () => {
       options: { ...DEFAULT_RUN_OPTIONS, dryRun: true, autoApprove: true },
       resolveKey: (name) => (name === 'ANTHROPIC_API_KEY' ? 'sk-ant-test' : undefined),
     });
-    // Inject a fake AI facade so the tier-3 diagnostic runs without the network.
+    const output = new PassThrough();
+    let printed = '';
+    output.on('data', (chunk: Buffer) => (printed += chunk.toString()));
+    // Inject a fake AI facade so tier-3 inference runs without the network. Empty base
+    // images (as inferBuild returns) must be filled by the synthesizer.
     ctx.ai = {
       complete: () =>
         Promise.resolve({
@@ -233,9 +240,16 @@ describe('runPipeline (walking skeleton)', () => {
         }),
     };
 
-    await expect(runPipeline(ctx, {})).rejects.toMatchObject({ code: 'UNSUPPORTED_STACK' });
+    await runPipeline(ctx, { output });
+
+    // The inferred stack proceeds to a plan with an open 'service' node.
+    const svc = ctx.plan?.services.find((s) => s.kind === 'service');
+    expect(svc?.source).toMatchObject({ type: 'build', recipeId: 'ai-rust' });
     expect(lines.some((l) => l.includes('AI understanding') && l.includes('rust'))).toBe(true);
-    expect(lines.some((l) => l.includes('AI reasoning') && l.includes('Cargo.toml'))).toBe(true);
+    expect(lines.some((l) => l.includes('AI-inferred build recipe'))).toBe(true);
+    // The preview synthesizes its multi-stage Dockerfile, blank base images filled in.
+    expect(printed).toContain('cargo build --release');
+    expect(printed).toContain('FROM rust:1 AS builder');
   });
 
   it('lets an injected approvePlan hook replace the terminal gate entirely', async () => {
