@@ -30,13 +30,36 @@ const planOf = (...services: ServiceNode[]): ServicePlan => ({
 
 const open: Server[] = [];
 
-async function occupy(port: number): Promise<void> {
+/**
+ * Bind an ephemeral port (`:0`), read the number the OS assigned, then release it. The
+ * OS won't immediately re-hand that number out, so it's a port that is *currently free*
+ * without hardcoding a specific value that a busy CI runner might already hold. Returns
+ * that number for use as a "known-free" port in assertions.
+ */
+function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const probe = createServer();
+    probe.once('error', reject);
+    probe.listen({ port: 0, host: '0.0.0.0' }, () => {
+      const addr = probe.address();
+      const port = typeof addr === 'object' && addr !== null ? addr.port : 0;
+      probe.close(() => resolve(port));
+    });
+  });
+}
+
+/** Occupy a real, currently-free port and return it — so the "in use" cases are exact. */
+async function occupy(): Promise<number> {
   const server = createServer();
   open.push(server);
-  await new Promise<void>((resolve, reject) => {
+  const port = await new Promise<number>((resolve, reject) => {
     server.once('error', reject);
-    server.listen({ port, host: '0.0.0.0' }, resolve);
+    server.listen({ port: 0, host: '0.0.0.0' }, () => {
+      const addr = server.address();
+      resolve(typeof addr === 'object' && addr !== null ? addr.port : 0);
+    });
   });
+  return port;
 }
 
 afterEach(async () => {
@@ -70,29 +93,35 @@ describe('assignUniqueHostPorts', () => {
 
 describe('hostPortAvailable', () => {
   it('reports a bound port as unavailable and a free one as available', async () => {
-    await occupy(48231);
+    const busy = await occupy();
+    const free = await freePort();
 
-    await expect(hostPortAvailable(48231)).resolves.toBe(false);
-    await expect(hostPortAvailable(48232)).resolves.toBe(true);
+    await expect(hostPortAvailable(busy)).resolves.toBe(false);
+    await expect(hostPortAvailable(free)).resolves.toBe(true);
   });
 });
 
 describe('resolveHostPortConflicts', () => {
   it('moves a service off a port another process on the machine already holds', async () => {
-    await occupy(48240);
-    const plan = planOf(node('backend', 48240));
+    const busy = await occupy();
+    const plan = planOf(node('backend', busy));
 
     const notes = await resolveHostPortConflicts(plan);
 
-    expect(plan.services[0]?.ports[0]?.host).not.toBe(48240);
-    expect(plan.services[0]?.ports[0]?.container).toBe(48240);
+    expect(plan.services[0]?.ports[0]?.host).not.toBe(busy);
+    expect(plan.services[0]?.ports[0]?.container).toBe(busy);
     expect(notes[0]).toMatch(/already in use on this machine/);
   });
 
   it('leaves an unconflicted plan exactly as it was', async () => {
-    const plan = planOf(node('backend', 48250), node('frontend', 48251));
+    // Two servers bound at once guarantees distinct numbers; releasing them makes both
+    // free for the assertion (the OS holds them out of rotation briefly after close).
+    const held = [await occupy(), await occupy()];
+    const [a, b] = held;
+    await Promise.all(open.splice(0).map((s) => new Promise((r) => s.close(r))));
+    const plan = planOf(node('backend', a as number), node('frontend', b as number));
 
     await expect(resolveHostPortConflicts(plan)).resolves.toEqual([]);
-    expect(plan.services.map((s) => s.ports[0]?.host)).toEqual([48250, 48251]);
+    expect(plan.services.map((s) => s.ports[0]?.host)).toEqual([a, b]);
   });
 });
