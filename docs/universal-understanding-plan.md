@@ -397,10 +397,18 @@ Landed on `feat/universal-understanding` (behind the full test suite):
   flows through here. Verified end-to-end producing idiomatic Rust and Go (distroless)
   images.
 
-Remaining to reach "build any repo": route synthesized recipes through the existing
-`writeConfigs` + compose + build path (today only the seed-stack Dockerfile templates are
-wired into generate). The synthesizer and recipes exist; connecting them to `writeConfigs`
-for ecosystem/inferred stacks is the next integration step.
+- **Open-role containerization (landed)** — ecosystem components now flow end-to-end:
+  detection surfaces them (`insights.ecosystemComponents`: root + matched recipe id),
+  `buildServicePlan` places them as open `'service'` nodes (`ServiceKind` widened; the
+  build source carries a `recipeId`), and both `writeConfigs` and the dry-run preview
+  synthesize their multi-stage Dockerfiles via the `dockerfileFor` recipe branch. A repo
+  with a matched ecosystem recipe is now `isSupported`, so e.g. a Rust or Go repo
+  containerizes without a seed frontend/backend. Verified end-to-end through `runPipeline`
+  on the Rust fixture (dry-run preview shows the synthesized cargo multi-stage image).
+
+Remaining toward "build any repo": ecosystem DB/service wiring (env + depends_on for
+non-seed components), and routing AI-inferred (`ai-*`) recipes — not in the shipped
+registry — through the same synthesis path.
 
 Test coverage across these: **199 tests** (was 115 at the start of the branch), all
 hermetic (temp-dir fixtures, injected AI facade, no network, no Docker, no VS Code).

@@ -52,9 +52,9 @@ export type { DetectionResult } from './types.js';
 
 /**
  * Any of these marks a directory as a component root worth inspecting. The seed-stack
- * manifests come first (their presence drives the supported containerize path); the
- * ecosystem manifests (Phase B) widen candidate discovery so Go/Rust/JVM/.NET
- * components surface in `insights` even though the seed path doesn't build them yet.
+ * manifests come first; the ecosystem manifests (Go/Rust/JVM/.NET) widen candidate
+ * discovery so those components surface, match a `BuildRecipe`, and containerize via
+ * the open-role 'service' path.
  */
 const MANIFEST_FILES = [
   'package.json',
