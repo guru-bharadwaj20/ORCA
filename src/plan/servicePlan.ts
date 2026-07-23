@@ -193,11 +193,20 @@ export function refinedComponentVars(
   return fill === undefined ? defaults : refineDockerfileVars(defaults, fill);
 }
 
+/** An ecosystem/inferred component to place as a generic `'service'` node. */
+export interface EcosystemComponent {
+  /** Stable node id + compose key, e.g. "api" or the workspace dir basename. */
+  id: string;
+  component: DetectedComponent;
+  recipe: BuildRecipe;
+}
+
 /** Assemble ServiceNodes for frontend/backend/databases and wire dependency edges. */
 export function buildServicePlan(
   detection: DetectionResult,
   filled: Record<string, FilledTemplateVars>,
-  inferred: InferredEnv | null = null
+  inferred: InferredEnv | null = null,
+  ecosystem: readonly EcosystemComponent[] = []
 ): ServicePlan {
   const dbNodes = databaseNodes(detection.databases);
   const nodes: ServiceNode[] = [...dbNodes];
@@ -262,6 +271,14 @@ export function buildServicePlan(
         backendNode !== null ? [{ serviceId: backendNode.id, condition: 'service_started' }] : [],
       volumes: componentVolumes(detection.frontend, vars),
     });
+  }
+
+  // Ecosystem/inferred components (Go/Rust/JVM/.NET) become generic 'service' nodes
+  // that build from a synthesized Dockerfile. Ids are de-duplicated against nodes
+  // already placed (databases, seed components).
+  for (const eco of ecosystem) {
+    if (nodes.some((n) => n.id === eco.id)) continue;
+    nodes.push(ecosystemServiceNode(eco.id, eco.component, eco.recipe));
   }
 
   // AI-inferred app env rides in a .env file attached to the app service (the
