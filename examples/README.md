@@ -25,6 +25,7 @@ that is the exact synthesizer output, pinned by `tests/examples/ecosystem-golden
 | [`go-sample/`](./go-sample/) | Go (`net/http`) | `go-mod` | `:8080/` returns `{"status":"ok","service":"orca-go-sample"}` |
 | [`rust-sample/`](./rust-sample/) | Rust (std TCP) | `rust-cargo` | `:8080/` returns `{"status":"ok","service":"orca-rust-sample"}` |
 | [`jvm-maven-sample/`](./jvm-maven-sample/) | Java (JDK HTTP server) | `jvm-maven` | `:8080/` returns `{"status":"ok","service":"orca-jvm-sample"}` |
+| [`jvm-gradle-sample/`](./jvm-gradle-sample/) | Java (Gradle) | `jvm-gradle` | `:8080/` returns `{"status":"ok","service":"orca-gradle-sample"}` |
 | [`dotnet-sample/`](./dotnet-sample/) | .NET (`HttpListener`) | `dotnet-sdk` | `:8080/` returns `{"status":"ok","service":"orca-dotnet-sample"}` |
 | [`php-sample/`](./php-sample/) | PHP (built-in server) | `php-composer` | `:8000/` returns `{"status":"ok","service":"orca-php-sample"}` |
 | [`ruby-sample/`](./ruby-sample/) | Ruby (Sinatra) | `ruby-sinatra` | `:4567/` returns `{"status":"ok","service":"orca-ruby-sample"}` |

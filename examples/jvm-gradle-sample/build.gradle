@@ -1,0 +1,18 @@
+// Minimal Gradle build producing a runnable ("boot") jar. The application plugin's
+// `bootJar`-style fat jar is what ORCA's jvm-gradle recipe runs; the JDK's built-in HTTP
+// server keeps the build hermetic (no external dependencies to resolve).
+plugins {
+    id 'application'
+}
+
+application {
+    mainClass = 'com.orca.sample.App'
+}
+
+// Produce build/libs/orca-gradle-sample.jar — the artifact ORCA fills into {{jar}}.
+jar {
+    archiveBaseName = 'orca-gradle-sample'
+    manifest {
+        attributes 'Main-Class': 'com.orca.sample.App'
+    }
+}
