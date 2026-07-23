@@ -15,6 +15,8 @@ export {
   rustDetector,
   jvmDetector,
   dotnetDetector,
+  phpDetector,
+  rubyDetector,
 } from './runtime.js';
 
 /** A registry populated with every shipped detector, in priority order. */

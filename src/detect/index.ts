@@ -28,6 +28,8 @@ import {
   readDotnetDependencies,
   readGoDependencies,
   readJvmDependencies,
+  readPhpDependencies,
+  readRubyDependencies,
   readRustDependencies,
 } from './manifestExt.js';
 import { detectMonorepo, type MonorepoInfo } from './monorepo.js';
@@ -66,6 +68,8 @@ const MANIFEST_FILES = [
   'pom.xml',
   'build.gradle',
   'build.gradle.kts',
+  'composer.json',
+  'Gemfile',
 ];
 
 /** Conventional directory names that disambiguate multiple candidates per role. */
@@ -287,14 +291,16 @@ export async function detectStack(repoPath: string): Promise<DetectionResult> {
 
 /** Read every direct dependency across all ecosystems at one component root. */
 async function allEcosystemDependencies(dir: string): Promise<string[]> {
-  const [common, go, rust, jvm, dotnet] = await Promise.all([
+  const [common, go, rust, jvm, dotnet, php, ruby] = await Promise.all([
     readAllDependencies(dir),
     readGoDependencies(dir),
     readRustDependencies(dir),
     readJvmDependencies(dir),
     readDotnetDependencies(dir),
+    readPhpDependencies(dir),
+    readRubyDependencies(dir),
   ]);
-  return [...new Set([...common, ...go, ...rust, ...jvm, ...dotnet])];
+  return [...new Set([...common, ...go, ...rust, ...jvm, ...dotnet, ...php, ...ruby])];
 }
 
 /** True when any of the named files exists at `dir`. */
@@ -318,6 +324,8 @@ async function filesAt(dir: string): Promise<string[]> {
     'vite.config.js',
     'global.json',
     'Directory.Build.props',
+    'composer.json',
+    'Gemfile',
   ];
   const present: string[] = [];
   for (const m of markers) {

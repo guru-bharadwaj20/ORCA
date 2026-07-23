@@ -1,4 +1,4 @@
-export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'pip' | 'poetry';
+export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'pip' | 'poetry' | 'uv';
 
 export type ServiceKind = 'frontend' | 'backend' | 'database';
 
