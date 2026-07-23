@@ -294,11 +294,15 @@ export function buildServicePlan(
     nodes.push(node);
   }
 
-  // AI-inferred app env rides in a .env file attached to the app service (the
-  // backend when there is one). Vars the plan already injects inline are filtered
-  // out, so an empty selection means no .env and no env_file reference at all.
+  // AI-inferred app env rides in a .env file attached to the app service: the backend
+  // when there is one, else the frontend, else the first ecosystem 'service' node (a
+  // pure Go/Rust/inferred repo has no seed component). Vars the plan already injects
+  // inline are filtered out, so an empty selection means no .env and no env_file at all.
   if (inferred !== null) {
-    const appNode = backendNode ?? nodes.find((n) => n.id === 'frontend');
+    const appNode =
+      backendNode ??
+      nodes.find((n) => n.id === 'frontend') ??
+      nodes.find((n) => n.kind === 'service');
     if (appNode !== undefined && selectEnvVars(inferred, { services: nodes }).length > 0) {
       appNode.envFile = '.env';
     }
