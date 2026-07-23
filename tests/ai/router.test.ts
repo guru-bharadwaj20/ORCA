@@ -189,6 +189,12 @@ describe('AI provider router', () => {
     expect(defaults.maxPrimaryAttempts).toBe(2);
   });
 
+  it('treats a zero cost cap as "spend nothing" rather than discarding it', () => {
+    expect(routerConfigForRun({ costCapUsd: 0 }, {}).costCapUsd).toBe(0);
+    expect(routerConfigForRun({ costCapUsd: -3 }, {}).costCapUsd).toBe(0);
+    expect(routerConfigForRun({}, {}).costCapUsd).toBe(1);
+  });
+
   it('builds a run-scoped config: cost cap applied, model routed to its provider family', () => {
     const claude = routerConfigForRun({ costCapUsd: 0.4, model: 'claude-sonnet-5' }, {});
     expect(claude.costCapUsd).toBe(0.4);

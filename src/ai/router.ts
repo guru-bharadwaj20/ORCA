@@ -51,8 +51,8 @@ export function routerConfigForRun(
   env: NodeJS.ProcessEnv = process.env
 ): RouterConfig {
   const config = resolveRouterConfig(env);
-  if (overrides.costCapUsd !== undefined && overrides.costCapUsd > 0) {
-    config.costCapUsd = overrides.costCapUsd;
+  if (overrides.costCapUsd !== undefined && Number.isFinite(overrides.costCapUsd)) {
+    config.costCapUsd = Math.max(0, overrides.costCapUsd);
   }
   if (overrides.model !== undefined && overrides.model !== '') {
     if (overrides.model.startsWith('claude'))
