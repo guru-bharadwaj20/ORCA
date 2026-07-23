@@ -116,3 +116,41 @@ export async function readDotnetDependencies(dir: string): Promise<string[]> {
   }
   return [...new Set(deps)];
 }
+
+/**
+ * PHP dependencies from `composer.json`'s `require` / `require-dev` objects. Returns the
+ * Composer package names (`vendor/package`, e.g. `laravel/framework`), dropping the
+ * `php` platform requirement. A malformed manifest yields no dependencies rather than
+ * throwing — detection stays best-effort.
+ */
+export async function readPhpDependencies(dir: string): Promise<string[]> {
+  const raw = await readFileIfExists(join(dir, 'composer.json'));
+  if (raw === null) return [];
+  try {
+    const json = JSON.parse(raw) as {
+      require?: Record<string, string>;
+      'require-dev'?: Record<string, string>;
+    };
+    const names = [...Object.keys(json.require ?? {}), ...Object.keys(json['require-dev'] ?? {})];
+    // `php` and `ext-*` are platform requirements, not packages.
+    return [...new Set(names.filter((n) => n !== 'php' && !n.startsWith('ext-')))];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Ruby dependencies from a `Gemfile`'s `gem 'name'` declarations. A light line scan
+ * (the Gemfile is Ruby, not data, so it is not evaluated): the first quoted argument of
+ * each `gem` call is the gem name. Enough for the signature table and recipe matchers,
+ * which only need names like `rails` / `sinatra`.
+ */
+export async function readRubyDependencies(dir: string): Promise<string[]> {
+  const raw = await readFileIfExists(join(dir, 'Gemfile'));
+  if (raw === null) return [];
+  const deps: string[] = [];
+  for (const m of raw.matchAll(/^\s*gem\s+['"]([^'"]+)['"]/gm)) {
+    if (m[1]) deps.push(m[1]);
+  }
+  return [...new Set(deps)];
+}
