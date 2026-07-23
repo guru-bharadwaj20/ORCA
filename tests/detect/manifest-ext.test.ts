@@ -97,6 +97,17 @@ describe('readJvmDependencies', () => {
     expect(deps).toContain('spring-boot-starter-web');
     expect(deps).toContain('org.springframework.boot');
   });
+
+  it('extracts coordinates from the Kotlin DSL (build.gradle.kts)', async () => {
+    // The modern Gradle default: double-quoted coordinates in a Kotlin build script.
+    await writeFile(
+      join(dir, 'build.gradle.kts'),
+      'dependencies {\n  implementation("org.springframework.boot:spring-boot-starter-web:3.2.0")\n}'
+    );
+    const deps = await readJvmDependencies(dir);
+    expect(deps).toContain('spring-boot-starter-web');
+    expect(deps).toContain('org.springframework.boot');
+  });
 });
 
 describe('readDotnetDependencies', () => {
