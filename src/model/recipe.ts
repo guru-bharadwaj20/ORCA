@@ -59,6 +59,13 @@ export interface RecipeMatcher {
   anyDependency?: string[];
   /** Any of these files present at the component root triggers a match. */
   anyFile?: string[];
+  /**
+   * Any file at the root ending with one of these suffixes triggers a match — for
+   * manifests whose *name* is arbitrary but whose *extension* is the signal (e.g. .NET's
+   * `<Project>.csproj` / `<Solution>.sln`). Keeps the matcher declarative: it's data, not
+   * a glob engine.
+   */
+  anySuffix?: string[];
 }
 
 /** A recipe plus the matcher that selects it. */
@@ -159,6 +166,9 @@ function matches(m: RecipeMatcher, facts: MatchFacts): boolean {
     return false;
   }
   if (m.anyFile && !m.anyFile.some((f) => facts.files.includes(f))) {
+    return false;
+  }
+  if (m.anySuffix && !m.anySuffix.some((s) => facts.files.some((f) => f.endsWith(s)))) {
     return false;
   }
   return true;

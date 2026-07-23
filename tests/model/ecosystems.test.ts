@@ -44,10 +44,16 @@ describe('ecosystem recipes via defaultRecipeRegistry', () => {
     );
   });
 
-  it('resolves .NET to a publish-based recipe', () => {
-    const recipe = registry.match(facts({ runtime: 'dotnet', files: ['global.json'] }));
+  it('resolves .NET by project-file extension to a publish-based recipe', () => {
+    // The universal .NET signal is a `.csproj`/`.sln` with an arbitrary name, matched by
+    // the recipe's `anySuffix` — not a fixed filename.
+    const recipe = registry.match(facts({ runtime: 'dotnet', files: ['MyApp.csproj'] }));
     expect(recipe?.id).toBe('dotnet-sdk');
     expect(recipe?.buildCommands?.[0]).toContain('dotnet publish');
+  });
+
+  it('still resolves .NET when a solution file is the signal', () => {
+    expect(registry.match(facts({ runtime: 'dotnet', files: ['App.sln'] }))?.id).toBe('dotnet-sdk');
   });
 
   // Python web frameworks (FastAPI/Flask, in uv/Poetry/pip flavours) are matched per

@@ -90,7 +90,18 @@ async function hasManifest(dir: string): Promise<boolean> {
   for (const manifest of MANIFEST_FILES) {
     if ((await readFileIfExists(join(dir, manifest))) !== null) return true;
   }
-  return false;
+  return hasDotnetProject(dir);
+}
+
+/** .NET project/solution files have arbitrary names, so a candidate root is found by extension. */
+async function hasDotnetProject(dir: string): Promise<boolean> {
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return false;
+  }
+  return entries.some((e) => e.isFile() && (e.name.endsWith('.csproj') || e.name.endsWith('.sln')));
 }
 
 async function hasDockerfile(dir: string): Promise<boolean> {
@@ -356,6 +367,17 @@ async function filesAt(dir: string): Promise<string[]> {
   const present: string[] = [];
   for (const m of markers) {
     if ((await readFileIfExists(join(dir, m))) !== null) present.push(m);
+  }
+  // .NET project/solution files have arbitrary names, so surface them by extension —
+  // the dotnet recipe matches on the `.csproj`/`.sln` suffix, not a fixed filename.
+  try {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      if (entry.isFile() && (entry.name.endsWith('.csproj') || entry.name.endsWith('.sln'))) {
+        present.push(entry.name);
+      }
+    }
+  } catch {
+    // dir unreadable — the markers above already returned what we could see.
   }
   return present;
 }
