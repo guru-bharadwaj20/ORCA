@@ -406,11 +406,26 @@ Landed on `feat/universal-understanding` (behind the full test suite):
   containerizes without a seed frontend/backend. Verified end-to-end through `runPipeline`
   on the Rust fixture (dry-run preview shows the synthesized cargo multi-stage image).
 
-Remaining toward "build any repo": ecosystem DB/service wiring (env + depends_on for
-non-seed components), and routing AI-inferred (`ai-*`) recipes — not in the shipped
-registry — through the same synthesis path.
+- **Inline recipes + AI-inferred build path (landed)** — the plan node now carries its
+  `BuildRecipe` inline on the build source (not by id lookup), so AI-inferred `ai-*`
+  recipes — which never live in the shipped registry — synthesize identically to shipped
+  ones. `runPipeline` promotes a tier-3 inference on a deterministically-unsupported repo
+  into an open `'service'` node instead of hard-stopping: a repo with no matched recipe
+  but a confident AI understanding now containerizes. The synthesizer fills blank base
+  images (the shape `inferBuild` returns) from a per-runtime default table, so an inferred
+  recipe never emits a bare `FROM`. Verified end-to-end through `runPipeline` (unknown
+  fixture + injected AI facade → synthesized cargo image in the preview).
 
-Test coverage across these: **199 tests** (was 115 at the start of the branch), all
+- **Ecosystem DB/service wiring (landed)** — a detected database is a repo-wide
+  dependency, so each ecosystem `'service'` node now receives the same connection env and
+  health-gated `depends_on` a seed backend would (`connectionEnv` + `dbDeps` applied in
+  `buildServicePlan`). No database → the service stays unwired (empty env, no deps).
+
+Remaining toward "build any repo": dynamic probing (Phase G seams), recipe-aware
+self-healing for ecosystem/inferred stacks (Phase F), and per-ecosystem entrypoint
+scripts (e.g. a JVM/.NET migrate-then-run analogue to the Django entrypoint).
+
+Test coverage across these: **210 tests** (was 115 at the start of the branch), all
 hermetic (temp-dir fixtures, injected AI facade, no network, no Docker, no VS Code).
 
 Known follow-ups surfaced during integration:
