@@ -84,4 +84,47 @@ describe('matchFrameworks', () => {
         ?.id
     ).toBe('aspnet');
   });
+
+  it('matches the other Go frameworks by module path, including versioned suffixes', () => {
+    expect(
+      matchFrameworks(facts({ runtime: 'go', dependencies: ['github.com/labstack/echo/v4'] }))[0]
+        ?.id
+    ).toBe('echo');
+    expect(
+      matchFrameworks(facts({ runtime: 'go', dependencies: ['github.com/gofiber/fiber/v2'] }))[0]
+        ?.id
+    ).toBe('fiber');
+  });
+
+  it('does not false-match a Go package that merely contains a framework name', () => {
+    // `echo` must match the labstack module path, not any package with "echo" in it.
+    expect(
+      matchFrameworks(facts({ runtime: 'go', dependencies: ['github.com/acme/echoproxy'] }))
+    ).toEqual([]);
+  });
+
+  it('resolves the Ruby frameworks by gem name', () => {
+    expect(matchFrameworks(facts({ runtime: 'ruby', dependencies: ['rails'] }))[0]?.id).toBe(
+      'rails'
+    );
+    expect(matchFrameworks(facts({ runtime: 'ruby', dependencies: ['sinatra'] }))[0]?.id).toBe(
+      'sinatra'
+    );
+  });
+
+  it('resolves the PHP frameworks by composer package', () => {
+    expect(
+      matchFrameworks(facts({ runtime: 'php', dependencies: ['laravel/framework'] }))[0]?.id
+    ).toBe('laravel');
+    expect(
+      matchFrameworks(facts({ runtime: 'php', dependencies: ['symfony/framework-bundle'] }))[0]?.id
+    ).toBe('symfony');
+  });
+
+  it('resolves the remaining Node meta-frameworks (nuxt, sveltekit)', () => {
+    expect(matchFrameworks(facts({ runtime: 'node', dependencies: ['nuxt'] }))[0]?.id).toBe('nuxt');
+    expect(
+      matchFrameworks(facts({ runtime: 'node', dependencies: ['@sveltejs/kit'] }))[0]?.id
+    ).toBe('sveltekit');
+  });
 });
