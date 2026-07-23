@@ -14,6 +14,8 @@
  * human-readable entry in `warnings`.
  */
 
+import type { PackageManager as BasePackageManager } from '../templates/types.js';
+
 /**
  * Programming languages ORCA can reason about. The first three drive the seed stacks
  * end-to-end; the rest (Phase B) are recognized at the detection layer — surfaced in
@@ -33,8 +35,12 @@ export type Language =
   | 'ruby'
   | 'unknown';
 
-/** Package managers ORCA can detect and drive. */
-export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'pip' | 'poetry' | 'uv' | 'unknown';
+/**
+ * Package managers ORCA can detect and drive. The open base taxonomy lives in
+ * `templates/types.ts` (known members + extensible string); detection adds `'unknown'`
+ * for a root whose manager couldn't be determined.
+ */
+export type PackageManager = BasePackageManager | 'unknown';
 
 /** Supported frontend frameworks. */
 export type FrontendFramework = 'react' | 'unknown';

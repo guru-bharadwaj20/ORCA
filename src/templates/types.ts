@@ -1,4 +1,13 @@
-export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'pip' | 'poetry' | 'uv';
+/**
+ * Open package-manager taxonomy. Known members are typed for autocomplete and
+ * exhaustiveness at the call sites that care; the `(string & {})` keeps it extensible,
+ * so a new ecosystem's manager (e.g. `cargo`, `go`, `composer`, `bundler`) is data, not
+ * an enum edit — the same open shape as `Runtime`.
+ */
+export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'pip' | 'poetry' | 'uv' | (string & {});
+
+/** The package managers ORCA has explicit, hand-tuned handling for. */
+export const KNOWN_PACKAGE_MANAGERS = ['npm', 'yarn', 'pnpm', 'pip', 'poetry', 'uv'] as const;
 
 export type ServiceKind = 'frontend' | 'backend' | 'database';
 
