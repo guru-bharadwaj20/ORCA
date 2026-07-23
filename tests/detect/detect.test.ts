@@ -189,4 +189,10 @@ describe('detect stage', () => {
     await expect(detectPackageManager(fixture('django-postgres-repo'))).resolves.toBe('pip');
     await expect(detectPackageManager(fixture('unsupported-repo'))).resolves.toBe('unknown');
   });
+
+  it('classifies a Pipenv (Pipfile) repo as Python', async () => {
+    // A Pipfile with no .py files still identifies the project as Python — Pipenv is a
+    // common manifest the language detector must recognize alongside requirements/pyproject.
+    await expect(detectLanguages(fixture('pipfile-repo'))).resolves.toEqual(['python']);
+  });
 });
