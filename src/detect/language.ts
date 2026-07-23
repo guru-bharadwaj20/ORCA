@@ -29,6 +29,8 @@ const MANIFEST_LANGUAGE: Record<string, Exclude<Language, 'unknown'>> = {
   'pyproject.toml': 'python',
   'manage.py': 'python',
   'setup.py': 'python',
+  'setup.cfg': 'python',
+  Pipfile: 'python',
   'go.mod': 'go',
   'Cargo.toml': 'rust',
   'pom.xml': 'java',
