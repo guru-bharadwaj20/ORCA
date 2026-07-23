@@ -135,6 +135,26 @@ export const FRAMEWORK_SIGNATURES: readonly FrameworkSignature[] = [
     anyDependency: ['Microsoft.AspNetCore.Components'],
     weight: 0.85,
   },
+
+  // --- PHP ---
+  {
+    id: 'laravel',
+    runtime: 'php',
+    role: 'backend',
+    anyDependency: ['laravel/framework'],
+    weight: 0.9,
+  },
+  {
+    id: 'symfony',
+    runtime: 'php',
+    role: 'backend',
+    anyDependency: ['symfony/framework-bundle'],
+    weight: 0.85,
+  },
+
+  // --- Ruby ---
+  { id: 'rails', runtime: 'ruby', role: 'backend', anyDependency: ['rails'], weight: 0.9 },
+  { id: 'sinatra', runtime: 'ruby', role: 'backend', anyDependency: ['sinatra'], weight: 0.85 },
 ];
 
 /** Facts a caller supplies to `matchFrameworks` (from manifest + file listing). */

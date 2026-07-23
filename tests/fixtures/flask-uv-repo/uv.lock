@@ -1,0 +1,3 @@
+# Fixture stub. Only this file's PRESENCE matters — it is what selects the
+# `python-flask-uv` recipe variant over the Poetry and pip ones. Real content is
+# irrelevant to detection, so it is not reproduced here.

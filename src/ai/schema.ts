@@ -41,6 +41,7 @@ const COMMAND_BINARIES = new Set([
   'pip',
   'pip3',
   'poetry',
+  'uv',
   'gunicorn',
   'uvicorn',
   'daphne',
@@ -135,7 +136,7 @@ export const FilledTemplateVarsSchema = z.object({
         message: 'must be an absolute path without ".." segments',
       })
       .optional(),
-    packageManager: z.enum(['npm', 'yarn', 'pnpm', 'pip', 'poetry']).optional(),
+    packageManager: z.enum(['npm', 'yarn', 'pnpm', 'pip', 'poetry', 'uv']).optional(),
     dependencyFiles: z.preprocess(splitWords, z.array(relativePath)).optional(),
     installCommand: shellCommand.optional(),
     buildCommand: shellCommand.optional(),

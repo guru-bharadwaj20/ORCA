@@ -86,10 +86,28 @@ export const dotnetDetector = manifestRuntimeDetector({
   weight: 0.8,
 });
 
+/** PHP: `composer.json` is the ecosystem's manifest. */
+export const phpDetector = manifestRuntimeDetector({
+  id: 'manifest:php',
+  runtime: 'php',
+  files: ['composer.json'],
+  weight: 0.85,
+});
+
+/** Ruby: a `Gemfile` (optionally reinforced by its lockfile). */
+export const rubyDetector = manifestRuntimeDetector({
+  id: 'manifest:ruby',
+  runtime: 'ruby',
+  files: ['Gemfile', 'Gemfile.lock'],
+  weight: 0.85,
+});
+
 /** Every Phase-B tier-1 runtime detector, in priority order. */
 export const RUNTIME_DETECTORS: readonly Detector[] = [
   goDetector,
   rustDetector,
   jvmDetector,
   dotnetDetector,
+  phpDetector,
+  rubyDetector,
 ];

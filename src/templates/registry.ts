@@ -33,6 +33,7 @@ function dependencyFilesFor(pm: PackageManager): string[] {
     case 'pip':
       return ['requirements.txt'];
     case 'poetry':
+    case 'uv':
       return ['pyproject.toml'];
   }
 }
@@ -49,6 +50,8 @@ function installCommandFor(pm: PackageManager): string {
       return 'pip install -r requirements.txt';
     case 'poetry':
       return 'poetry install';
+    case 'uv':
+      return 'uv sync --frozen';
   }
 }
 
