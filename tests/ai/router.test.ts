@@ -13,6 +13,7 @@ import {
   AIRouter,
   defaultProviderFactories,
   resolveRouterConfig,
+  unroutableModelWarning,
   routerConfigForRun,
   type RouterConfig,
 } from '../../src/ai/router.js';
@@ -187,6 +188,14 @@ describe('AI provider router', () => {
     expect(defaults.primary).toBe('qwen');
     expect(defaults.fallback).toBe('anthropic');
     expect(defaults.maxPrimaryAttempts).toBe(2);
+  });
+
+  it('warns about a model id it cannot route, and stays quiet about ones it can', () => {
+    expect(unroutableModelWarning('gpt-4')).toMatch(/Ignoring --model 'gpt-4'/);
+    expect(unroutableModelWarning('claude-sonnet-5')).toBeNull();
+    expect(unroutableModelWarning('qwen3-coder-plus')).toBeNull();
+    expect(unroutableModelWarning('')).toBeNull();
+    expect(unroutableModelWarning(undefined)).toBeNull();
   });
 
   it('treats a zero cost cap as "spend nothing" rather than discarding it', () => {
