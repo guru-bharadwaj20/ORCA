@@ -2,23 +2,85 @@ import { z } from 'zod';
 
 import { OrcaError } from '../utils/errors.js';
 
-const stringList = z.preprocess(
-  (value) => (typeof value === 'string' ? value.split(/\s+/).filter(Boolean) : value),
-  z.array(z.string())
-);
+const splitWords = (value: unknown): unknown =>
+  typeof value === 'string' ? value.split(/\s+/).filter(Boolean) : value;
+
+const SHELL_METACHARACTERS = /[;&|`$(){}[\]<>\\\n\r'"]/;
+
+const COMMAND_BINARIES = new Set([
+  'npm',
+  'npx',
+  'yarn',
+  'pnpm',
+  'node',
+  'python',
+  'python3',
+  'pip',
+  'pip3',
+  'poetry',
+  'gunicorn',
+  'uvicorn',
+  'daphne',
+  'vite',
+  'serve',
+]);
+
+const BASE_IMAGE = /^(node|python):[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const SYSTEM_PACKAGE = /^[a-z0-9][a-z0-9.+-]*$/;
+const RELATIVE_PATH = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/;
+const ABSOLUTE_PATH = /^\/[A-Za-z0-9._-]*(?:\/[A-Za-z0-9._-]+)*$/;
+
+function hasTraversal(path: string): boolean {
+  return path.split('/').includes('..');
+}
+
+const shellCommand = z
+  .string()
+  .min(1)
+  .refine((value) => !SHELL_METACHARACTERS.test(value), {
+    message:
+      'must not contain shell metacharacters (; & | ` $ ( ) { } [ ] < > \\ quotes or newlines)',
+  })
+  .refine((value) => COMMAND_BINARIES.has(value.trim().split(/\s+/)[0] ?? ''), {
+    message: `must start with a supported binary (${[...COMMAND_BINARIES].join(', ')})`,
+  });
+
+const relativePath = z
+  .string()
+  .min(1)
+  .refine((value) => RELATIVE_PATH.test(value) && !hasTraversal(value), {
+    message: 'must be a relative path inside the build context, without ".." segments',
+  });
 
 export const FilledTemplateVarsSchema = z.object({
   variables: z.object({
-    baseImage: z.string().min(1).optional(),
-    workdir: z.string().min(1).optional(),
+    baseImage: z
+      .string()
+      .min(1)
+      .regex(BASE_IMAGE, {
+        message: 'must be an official node:* or python:* image tag',
+      })
+      .optional(),
+    workdir: z
+      .string()
+      .min(1)
+      .refine((value) => ABSOLUTE_PATH.test(value) && !hasTraversal(value), {
+        message: 'must be an absolute path without ".." segments',
+      })
+      .optional(),
     packageManager: z.enum(['npm', 'yarn', 'pnpm', 'pip', 'poetry']).optional(),
-    dependencyFiles: stringList.optional(),
-    installCommand: z.string().min(1).optional(),
-    buildCommand: z.string().min(1).optional(),
-    startCommand: z.string().min(1).optional(),
+    dependencyFiles: z.preprocess(splitWords, z.array(relativePath)).optional(),
+    installCommand: shellCommand.optional(),
+    buildCommand: shellCommand.optional(),
+    startCommand: shellCommand.optional(),
     port: z.coerce.number().int().min(1).max(65535).optional(),
-    systemPackages: stringList.optional(),
-    entrypointScript: z.string().min(1).optional(),
+    systemPackages: z
+      .preprocess(
+        splitWords,
+        z.array(z.string().regex(SYSTEM_PACKAGE, { message: 'must be a plain apt package name' }))
+      )
+      .optional(),
+    entrypointScript: relativePath.optional(),
   }),
   notes: z.array(z.string()).default([]),
 });

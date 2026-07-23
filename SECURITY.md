@@ -29,6 +29,13 @@ volumes) is shown and approved. Non-interactive sessions **reject** by default;
 
 - Every model response is schema-validated (zod) before use; invalid output is
   retried/escalated, never executed.
+- The target repo's README is fed to the model as evidence, so it is **untrusted input
+  to a prompt**. Values that end up inside a Dockerfile are therefore constrained by
+  schema, not by the prompt: build/start commands must be a single invocation of a
+  known binary (npm, pip, python, …) with no shell metacharacters, chaining, pipes,
+  substitution or redirects; base images must be official `node:*` / `python:*` tags;
+  and file paths must stay inside the build context. A response that violates any of
+  these is discarded and the run falls back to ORCA's deterministic template defaults.
 - Self-heal patches are restricted by a **code-enforced allowlist**: a patch may only
   touch files ORCA itself generated (Dockerfiles, docker-compose.yml, .dockerignore,
   .env, entrypoint script). Paths are canonicalized against the workspace root —
