@@ -76,4 +76,53 @@ describe('ecosystem generate integration', () => {
     const compose = await readFile(join(repo, 'docker-compose.yml'), 'utf8');
     expect(compose).toContain('api:');
   });
+
+  it('writes a synthesized Dockerfile for an AI-inferred (ai-*) recipe with blank base images', async () => {
+    // The inferred-recipe shape inferBuild returns: id `ai-*`, empty baseImages. It is
+    // NOT in the shipped registry, so this proves the inline-recipe path (not id lookup)
+    // and the synthesizer's base-image fallback both work through writeConfigs.
+    await writeFile(join(repo, 'main.rs'), 'fn main() {}\n');
+
+    const detection = await detectStack(repo);
+    const eco: EcosystemComponent[] = [
+      {
+        id: 'app',
+        recipe: {
+          id: 'ai-rust',
+          runtime: 'rust',
+          dependencyFiles: [],
+          installCommands: ['cargo fetch'],
+          buildCommands: ['cargo build --release'],
+          startCommand: './target/release/app',
+          defaultPorts: [8080],
+          baseImages: { build: '', runtime: '' },
+        },
+        component: {
+          role: 'backend',
+          rootDir: '.',
+          language: 'rust',
+          packageManager: 'unknown',
+          framework: 'unknown',
+          dependencies: [],
+          ports: [],
+          entrypoint: null,
+        },
+      },
+    ];
+
+    const ctx = createRunContext({ repoUrl: 'x', workspaceDir: repo, logger: silent });
+    ctx.detection = detection;
+    ctx.filled = {};
+    ctx.plan = buildServicePlan(detection, {}, null, eco);
+
+    const files = await writeConfigs(ctx);
+    expect(files.some((f) => f.path === 'Dockerfile')).toBe(true);
+    expect(files.some((f) => f.path === '.dockerignore')).toBe(true);
+
+    const body = await readFile(join(repo, 'Dockerfile'), 'utf8');
+    expect(body).toContain('recipe ai-rust');
+    expect(body).toContain('cargo build --release');
+    expect(body).toContain('FROM rust:1 AS builder'); // blank base image filled in
+    expect(body).not.toContain('FROM  AS builder');
+  });
 });
