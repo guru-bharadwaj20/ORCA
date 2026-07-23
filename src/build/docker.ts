@@ -1,6 +1,6 @@
 import { execa } from 'execa';
 
-import { DEFAULT_SETTINGS } from '../config/settings.js';
+import { loadSettings } from '../config/settings.js';
 import { MissingDependencyError } from '../utils/errors.js';
 
 export interface DockerCommandResult {
@@ -20,7 +20,7 @@ async function runDocker(
     ...(projectDir !== undefined ? { cwd: projectDir } : {}),
     ...(signal !== undefined ? { cancelSignal: signal } : {}),
     reject: false,
-    timeout: DEFAULT_SETTINGS.dockerTimeoutMs,
+    timeout: loadSettings().dockerTimeoutMs,
     env: { BUILDKIT_PROGRESS: 'plain' },
     extendEnv: true,
   });

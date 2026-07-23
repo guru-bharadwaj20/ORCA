@@ -45,6 +45,10 @@ export const ENV_KEYS = {
   maxPrimaryAttempts: 'ORCA_MAX_PRIMARY_ATTEMPTS',
   costCap: 'ORCA_COST_CAP_USD',
   maxHealAttempts: 'ORCA_MAX_HEAL_ATTEMPTS',
+  minConfidence: 'ORCA_MIN_CONFIDENCE',
+  dockerTimeoutMs: 'ORCA_DOCKER_TIMEOUT_MS',
+  llmTimeoutMs: 'ORCA_LLM_TIMEOUT_MS',
+  maxOutputTokens: 'ORCA_MAX_OUTPUT_TOKENS',
 } as const;
 
 function asProvider(value: string | undefined): ProviderName | undefined {
@@ -61,6 +65,11 @@ function asNonNegativeNumber(value: string | undefined): number | undefined {
   return value !== undefined && value !== '' && Number.isFinite(parsed) && parsed >= 0
     ? parsed
     : undefined;
+}
+
+function asFraction(value: string | undefined): number | undefined {
+  const parsed = asNonNegativeNumber(value);
+  return parsed !== undefined && parsed <= 1 ? parsed : undefined;
 }
 
 export function loadSettings(env: NodeJS.ProcessEnv = process.env): Settings {
@@ -80,5 +89,11 @@ export function loadSettings(env: NodeJS.ProcessEnv = process.env): Settings {
     costCapUsd: asNonNegativeNumber(env[ENV_KEYS.costCap]) ?? DEFAULT_SETTINGS.costCapUsd,
     maxHealAttempts:
       asPositiveInt(env[ENV_KEYS.maxHealAttempts]) ?? DEFAULT_SETTINGS.maxHealAttempts,
+    minConfidence: asFraction(env[ENV_KEYS.minConfidence]) ?? DEFAULT_SETTINGS.minConfidence,
+    dockerTimeoutMs:
+      asPositiveInt(env[ENV_KEYS.dockerTimeoutMs]) ?? DEFAULT_SETTINGS.dockerTimeoutMs,
+    llmTimeoutMs: asPositiveInt(env[ENV_KEYS.llmTimeoutMs]) ?? DEFAULT_SETTINGS.llmTimeoutMs,
+    maxOutputTokens:
+      asPositiveInt(env[ENV_KEYS.maxOutputTokens]) ?? DEFAULT_SETTINGS.maxOutputTokens,
   });
 }
