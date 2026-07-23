@@ -122,4 +122,54 @@ describe('synthesizeDockerfile', () => {
     expect(df).not.toContain('EXPOSE');
     expect(df).toContain('AS builder');
   });
+
+  it('wires an entrypoint script into an interpreted image when the recipe declares one', () => {
+    const df = synthesizeDockerfile({
+      id: 'py-migrate',
+      runtime: 'python',
+      dependencyFiles: ['requirements.txt'],
+      installCommands: ['pip install -r requirements.txt'],
+      startCommand: 'python app.py',
+      defaultPorts: [8000],
+      baseImages: { build: 'python:3.12-slim', runtime: 'python:3.12-slim' },
+      entrypointScript: 'entrypoint.sh',
+    });
+    expect(df).toContain('COPY entrypoint.sh /usr/local/bin/entrypoint.sh');
+    expect(df).toContain('RUN chmod +x /usr/local/bin/entrypoint.sh');
+    expect(df).toContain('ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]');
+    // CMD becomes the args the entrypoint execs.
+    expect(df).toContain('CMD python app.py');
+  });
+
+  it('wires an entrypoint into the runtime stage of a compiled image', () => {
+    const df = synthesizeDockerfile({
+      id: 'jvm-migrate',
+      runtime: 'jvm',
+      dependencyFiles: ['pom.xml'],
+      installCommands: ['mvn -B dependency:go-offline'],
+      buildCommands: ['mvn -B package -DskipTests'],
+      startCommand: 'java -jar app.jar',
+      defaultPorts: [8080],
+      baseImages: { build: 'maven:3.9-eclipse-temurin-21', runtime: 'eclipse-temurin:21-jre' },
+      entrypointScript: 'entrypoint.sh',
+    });
+    // The entrypoint lands after the runtime FROM, not the builder stage.
+    const runtimeIdx = df.indexOf('FROM eclipse-temurin:21-jre');
+    expect(df.indexOf('ENTRYPOINT')).toBeGreaterThan(runtimeIdx);
+    expect(df).toContain('ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]');
+  });
+
+  it('emits no ENTRYPOINT when the recipe declares none (unchanged default)', () => {
+    const df = synthesizeDockerfile({
+      id: 'plain',
+      runtime: 'python',
+      dependencyFiles: ['requirements.txt'],
+      installCommands: ['pip install -r requirements.txt'],
+      startCommand: 'python app.py',
+      defaultPorts: [8000],
+      baseImages: { build: 'python:3.12-slim', runtime: 'python:3.12-slim' },
+    });
+    expect(df).not.toContain('ENTRYPOINT');
+    expect(df).toContain('CMD python app.py');
+  });
 });
