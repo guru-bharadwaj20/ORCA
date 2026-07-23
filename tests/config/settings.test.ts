@@ -47,6 +47,30 @@ describe('loadSettings', () => {
     expect(settings.maxHealAttempts).toBe(DEFAULT_SETTINGS.maxHealAttempts);
   });
 
+  it('exposes the tuning knobs that previously had no env key', () => {
+    const settings = loadSettings({
+      ORCA_MIN_CONFIDENCE: '0.8',
+      ORCA_DOCKER_TIMEOUT_MS: '120000',
+      ORCA_LLM_TIMEOUT_MS: '30000',
+      ORCA_MAX_OUTPUT_TOKENS: '8192',
+    });
+
+    expect(settings.minConfidence).toBe(0.8);
+    expect(settings.dockerTimeoutMs).toBe(120000);
+    expect(settings.llmTimeoutMs).toBe(30000);
+    expect(settings.maxOutputTokens).toBe(8192);
+  });
+
+  it('rejects an out-of-range confidence rather than disabling the escalation gate', () => {
+    expect(loadSettings({ ORCA_MIN_CONFIDENCE: '5' }).minConfidence).toBe(
+      DEFAULT_SETTINGS.minConfidence
+    );
+    expect(loadSettings({ ORCA_MIN_CONFIDENCE: 'high' }).minConfidence).toBe(
+      DEFAULT_SETTINGS.minConfidence
+    );
+    expect(loadSettings({ ORCA_MIN_CONFIDENCE: '0' }).minConfidence).toBe(0);
+  });
+
   it('honours a zero cost cap instead of falling back to the default', () => {
     expect(loadSettings({ ORCA_COST_CAP_USD: '0' }).costCapUsd).toBe(0);
     expect(loadSettings({ ORCA_COST_CAP_USD: '' }).costCapUsd).toBe(DEFAULT_SETTINGS.costCapUsd);
