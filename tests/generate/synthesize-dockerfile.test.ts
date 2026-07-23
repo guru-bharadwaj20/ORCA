@@ -93,6 +93,34 @@ describe('synthesizeDockerfile', () => {
     expect(df).toContain('FROM gcr.io/distroless/base-debian12');
   });
 
+  it('fills blank base images for the newer scripting runtimes (php/ruby)', () => {
+    // Guards the php/ruby entries in the per-runtime fallback table: an AI-inferred
+    // scripting recipe must still get a concrete image, never a bare `FROM`.
+    const php = synthesizeDockerfile({
+      id: 'ai-php',
+      runtime: 'php',
+      dependencyFiles: [],
+      installCommands: ['composer install'],
+      startCommand: 'php -S 0.0.0.0:8000 -t public',
+      defaultPorts: [8000],
+      baseImages: { build: '', runtime: '' },
+    });
+    expect(php).not.toContain('FROM  ');
+    expect(php).toContain('FROM php:');
+
+    const ruby = synthesizeDockerfile({
+      id: 'ai-ruby',
+      runtime: 'ruby',
+      dependencyFiles: [],
+      installCommands: ['bundle install'],
+      startCommand: 'bundle exec ruby app.rb',
+      defaultPorts: [4567],
+      baseImages: { build: '', runtime: '' },
+    });
+    expect(ruby).not.toContain('FROM  ');
+    expect(ruby).toContain('FROM ruby:');
+  });
+
   it('falls back to a generic base image for an unknown runtime', () => {
     const inferred: BuildRecipe = {
       id: 'ai-haskell',
