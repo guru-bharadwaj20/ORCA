@@ -45,5 +45,8 @@ jobs:
       - name: Smoke test the compiled CLI
         run: node ./dist/cli/index.js run examples/mern-sample --dry-run --auto-approve
 
+      - name: Smoke test a repo with no database
+        run: node ./dist/cli/index.js run tests/fixtures/react-express-nodb-repo --dry-run --auto-approve
+
       - name: Package the VS Code extension
         run: npm run package -w orca-vscode
