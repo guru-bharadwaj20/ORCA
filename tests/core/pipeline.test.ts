@@ -196,6 +196,27 @@ describe('runPipeline (walking skeleton)', () => {
     expect(out).toContain('cargo build --release');
   });
 
+  it('containerizes a repo that only ships a Dockerfile, end-to-end', async () => {
+    // No manifest, no seed framework — just an existing Dockerfile. Detection recovers a
+    // recipe from it, and the repo containerizes as an open 'service' through the same
+    // synthesis path (proving the Dockerfile-detection feature works through the pipeline,
+    // not just the detector).
+    const { ctx, result, printed } = startRun(
+      fixture('dockerfile-node-repo'),
+      { dryRun: true, autoApprove: true },
+      null
+    );
+    await result;
+
+    const svc = ctx.plan?.services.find((s) => s.kind === 'service');
+    expect(svc).toBeDefined();
+    expect(svc?.source).toMatchObject({ type: 'build' });
+    // The preview carries a Dockerfile whose commands came from the repo's own Dockerfile.
+    const out = printed();
+    expect(out).toContain('npm run build');
+    expect(out).toContain('npm start');
+  });
+
   it('builds a deterministically-unsupported repo via an AI-inferred recipe (with a key)', async () => {
     // No manifest → deterministic detection can't place it, but tier-3 inference yields
     // a recipe, so the repo now containerizes through the open-role synthesis path
