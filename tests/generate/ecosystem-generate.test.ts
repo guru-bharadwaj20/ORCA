@@ -75,6 +75,11 @@ describe('ecosystem generate integration', () => {
     // The compose file references the service.
     const compose = await readFile(join(repo, 'docker-compose.yml'), 'utf8');
     expect(compose).toContain('api:');
+    // The .dockerignore carries the Go build outputs on top of the base set.
+    const dockerignore = await readFile(join(repo, 'api/.dockerignore'), 'utf8');
+    expect(dockerignore).toContain('node_modules'); // base set
+    expect(dockerignore).toContain('vendor'); // go-specific
+    expect(dockerignore).toContain('bin'); // go-specific
   });
 
   it('writes a synthesized Dockerfile for an AI-inferred (ai-*) recipe with blank base images', async () => {
