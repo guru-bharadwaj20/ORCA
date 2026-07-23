@@ -52,7 +52,7 @@ item someone is **actively working on** shows **that person's** colour instead.
 | 🟠   | In progress — Diya        |
 | 🟣   | In progress — Guru        |
 | 🔵   | In progress — Harsha      |
-| ⚪   | In progress — Vivian (me) |
+| ⚪   | In progress — Vivian |
 
 ### Universal Repository Understanding — phases
 
