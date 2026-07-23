@@ -102,4 +102,19 @@ describe('buildServicePlan — ecosystem DB wiring', () => {
     expect(svc?.environment).toEqual({});
     expect(svc?.dependsOn).toEqual([]);
   });
+
+  it('attaches an inferred .env to the ecosystem service when there is no seed component', () => {
+    const detection = detectionWithPostgres();
+    detection.databases = []; // pure ecosystem repo, no seed frontend/backend
+    const eco: EcosystemComponent[] = [{ id: 'app', recipe, component: component('.') }];
+    const plan = buildServicePlan(
+      detection,
+      {},
+      { variables: [{ key: 'API_TOKEN', value: 'x', required: true, reason: 'auth' }] },
+      eco
+    );
+
+    const svc = plan.services.find((s) => s.kind === 'service');
+    expect(svc?.envFile).toBe('.env');
+  });
 });
