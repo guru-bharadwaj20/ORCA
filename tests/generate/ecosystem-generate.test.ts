@@ -130,4 +130,94 @@ describe('ecosystem generate integration', () => {
     expect(body).toContain('FROM rust:1 AS builder'); // blank base image filled in
     expect(body).not.toContain('FROM  AS builder');
   });
+
+  it('writes a passthrough entrypoint script when a recipe declares one', async () => {
+    // The synthesizer emits `COPY <entrypointScript>` + ENTRYPOINT; writeConfigs must
+    // supply the script so the COPY resolves and the build does not fail.
+    await writeFile(join(repo, 'go.mod'), 'module example.com/svc\n\ngo 1.23\n');
+
+    const detection = await detectStack(repo);
+    const eco: EcosystemComponent[] = [
+      {
+        id: 'app',
+        recipe: {
+          id: 'svc-with-entry',
+          runtime: 'go',
+          dependencyFiles: ['go.mod'],
+          installCommands: ['go mod download'],
+          buildCommands: ['go build -o /app/server ./...'],
+          startCommand: '/app/server',
+          defaultPorts: [8080],
+          baseImages: { build: 'golang:1.23', runtime: 'gcr.io/distroless/base-debian12' },
+          entrypointScript: 'entrypoint.sh',
+        },
+        component: {
+          role: 'backend',
+          rootDir: '.',
+          language: 'go',
+          packageManager: 'unknown',
+          framework: 'unknown',
+          dependencies: [],
+          ports: [],
+          entrypoint: null,
+        },
+      },
+    ];
+
+    const ctx = createRunContext({ repoUrl: 'x', workspaceDir: repo, logger: silent });
+    ctx.detection = detection;
+    ctx.filled = {};
+    ctx.plan = buildServicePlan(detection, {}, null, eco);
+
+    const files = await writeConfigs(ctx);
+    expect(files.some((f) => f.path === 'entrypoint.sh' && f.kind === 'entrypoint')).toBe(true);
+    const body = await readFile(join(repo, 'Dockerfile'), 'utf8');
+    expect(body).toContain('COPY entrypoint.sh /usr/local/bin/entrypoint.sh');
+    expect(body).toContain('ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]');
+    const script = await readFile(join(repo, 'entrypoint.sh'), 'utf8');
+    expect(script).toContain('exec "$@"');
+  });
+
+  it('does not overwrite a repo-provided entrypoint script', async () => {
+    await writeFile(join(repo, 'go.mod'), 'module example.com/svc\n\ngo 1.23\n');
+    await writeFile(join(repo, 'entrypoint.sh'), '#!/bin/sh\necho "mine"\nexec "$@"\n');
+
+    const detection = await detectStack(repo);
+    const eco: EcosystemComponent[] = [
+      {
+        id: 'app',
+        recipe: {
+          id: 'svc-keep-entry',
+          runtime: 'go',
+          dependencyFiles: ['go.mod'],
+          installCommands: ['go mod download'],
+          buildCommands: ['go build -o /app/server ./...'],
+          startCommand: '/app/server',
+          defaultPorts: [8080],
+          baseImages: { build: 'golang:1.23', runtime: 'gcr.io/distroless/base-debian12' },
+          entrypointScript: 'entrypoint.sh',
+        },
+        component: {
+          role: 'backend',
+          rootDir: '.',
+          language: 'go',
+          packageManager: 'unknown',
+          framework: 'unknown',
+          dependencies: [],
+          ports: [],
+          entrypoint: null,
+        },
+      },
+    ];
+
+    const ctx = createRunContext({ repoUrl: 'x', workspaceDir: repo, logger: silent });
+    ctx.detection = detection;
+    ctx.filled = {};
+    ctx.plan = buildServicePlan(detection, {}, null, eco);
+
+    await writeConfigs(ctx);
+    // The repo's own script is app source — kept verbatim, never replaced.
+    const script = await readFile(join(repo, 'entrypoint.sh'), 'utf8');
+    expect(script).toContain('echo "mine"');
+  });
 });
