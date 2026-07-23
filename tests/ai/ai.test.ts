@@ -8,7 +8,6 @@ vi.mock('@anthropic-ai/sdk', () => ({
   },
 }));
 
-import { complete } from '../../src/ai/client.js';
 import { fillTemplate } from '../../src/ai/fillTemplate.js';
 import { inferEnv } from '../../src/ai/inferEnv.js';
 import { validateAgainst, InferredEnvSchema } from '../../src/ai/schema.js';
@@ -112,10 +111,11 @@ describe('ai stage (mocked LLM)', () => {
     expect(createMock).not.toHaveBeenCalled();
   });
 
-  it('throws a clear error when the API key is missing', async () => {
+  it('throws a clear error when no provider has a key', async () => {
     delete process.env['ANTHROPIC_API_KEY'];
+    delete process.env['QWEN_API_KEY'];
 
-    await expect(complete({ system: 's', user: 'u' }, freshLedger())).rejects.toMatchObject({
+    await expect(fillTemplate(detection, template, '', freshLedger())).rejects.toMatchObject({
       code: 'MISSING_API_KEY',
     });
     expect(createMock).not.toHaveBeenCalled();
