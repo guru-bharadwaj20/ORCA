@@ -37,3 +37,9 @@ export class PlanRejectedError extends OrcaError {
     super(message, 'PLAN_REJECTED');
   }
 }
+
+export function isAbortError(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const candidate = err as { name?: unknown; code?: unknown };
+  return candidate.name === 'AbortError' || candidate.code === 'ABORT_ERR';
+}

@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url';
 
 import { Command } from 'commander';
 
-import { OrcaError } from '../utils/errors.js';
+import { isAbortError, OrcaError } from '../utils/errors.js';
 import { registerRunCommand } from './commands/run.js';
 import { runInteractiveMenu } from './menu.js';
 import { packageVersion } from './version.js';
@@ -21,8 +21,8 @@ export function buildCli(): Command {
   return program;
 }
 
-export async function main(argv: string[]): Promise<void> {
-  const program = buildCli();
+export async function main(argv: string[], cli: Command = buildCli()): Promise<void> {
+  const program = cli;
 
   if (argv.slice(2).length === 0) {
     if (process.stdout.isTTY ?? false) {
@@ -41,7 +41,22 @@ export async function main(argv: string[]): Promise<void> {
       process.exitCode = err.code === 'PLAN_REJECTED' ? 2 : 1;
       return;
     }
-    throw err;
+    if (isAbortError(err)) {
+      process.stderr.write('error [CANCELLED]: run cancelled.\n');
+      process.exitCode = 1;
+      return;
+    }
+
+    const message = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`error [UNEXPECTED]: ${message}\n`);
+    if (err instanceof Error && err.stack !== undefined) {
+      process.stderr.write(`\n${err.stack}\n`);
+    }
+    process.stderr.write(
+      '\nThis is a bug in ORCA. Please report it at ' +
+        'https://github.com/VivianSobers/ORCA/issues with the trace above.\n'
+    );
+    process.exitCode = 1;
   }
 }
 
