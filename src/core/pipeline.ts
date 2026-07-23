@@ -356,6 +356,11 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
   let workspace: Workspace | null = null;
   let keepWorkspace = false;
 
+  // An id routed to no provider is dropped rather than sent to the wrong API, so say
+  // so — otherwise --model looks like it took effect.
+  const modelWarning = unroutableModelWarning(ctx.options.model);
+  if (modelWarning !== null) ctx.logger.warn(modelWarning);
+
   // Run-scoped AI: this run's --model / --cost-cap / cancel / BYOK-key resolution
   // apply to every AI call it makes.
   ctx.ai ??= aiFor(
@@ -442,6 +447,10 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
       ...(inferredComponent !== null ? [inferredComponent] : []),
     ];
     ctx.plan = buildServicePlan(detection, filled, inferred, ecosystem);
+    // Settle host-port collisions before review, so the ports shown at the gate are
+    // the ports that actually get published.
+    for (const note of await resolveHostPortConflicts(ctx.plan)) ctx.logger.warn(note);
+
     // An embedder's approvePlan hook (e.g. the VS Code webview) owns the decision
     // when provided; otherwise the default reviewPlan gate runs.
     const outcome = io.approvePlan

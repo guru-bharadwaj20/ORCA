@@ -287,7 +287,7 @@ export function buildServicePlan(
   // already placed (databases, seed components). Any detected database is a repo-wide
   // dependency, so each ecosystem service gets the same health-gated `depends_on` and
   // connection env a seed backend would — that's the ecosystem DB wiring.
-  const dbEnv = connectionEnv(dbNodes, detection.databases);
+  const dbEnv = connectionEnv(byEngine, detection.databases);
   const dbDeps: ServiceDependency[] = dbNodes.map((db) => ({
     serviceId: db.id,
     condition: db.healthcheck ? 'service_healthy' : 'service_started',
