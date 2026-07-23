@@ -19,6 +19,8 @@ import { refinedComponentVars } from '../plan/servicePlan.js';
 import { renderCompose } from '../templates/render.js';
 import { OrcaError } from '../utils/errors.js';
 import { readFileIfExists } from '../utils/fs.js';
+import { ALL_RECIPES } from '../model/recipes/index.js';
+import type { BuildRecipe } from '../model/recipe.js';
 import { planToComposeVars } from './composeVars.js';
 import { dockerfileFor } from './dockerfileFor.js';
 
@@ -63,6 +65,11 @@ exec "$@"
 /** Repo-relative path (forward slashes) for a file inside a compose build context. */
 function inContext(context: string, name: string): string {
   return context === '.' ? name : `${context.replace(/^\.\//, '')}/${name}`;
+}
+
+/** Resolve a shipped `BuildRecipe` by id (AI-inferred `ai-*` recipes aren't in the set). */
+function recipeById(id: string): BuildRecipe | undefined {
+  return ALL_RECIPES.find((e) => e.recipe.id === id)?.recipe;
 }
 
 /**
@@ -112,6 +119,24 @@ export async function writeConfigs(ctx: RunContext): Promise<GeneratedFile[]> {
         await write(relPath, DJANGO_ENTRYPOINT, 'entrypoint');
         await chmod(join(ctx.workspaceDir, relPath), 0o755);
       }
+    }
+  }
+
+  // Ecosystem/inferred 'service' nodes: synthesize a Dockerfile from the recipe the
+  // plan tagged onto the build source (source.recipeId). One .dockerignore per context.
+  for (const node of plan.services) {
+    if (node.kind !== 'service' || node.source.type !== 'build' || !node.source.recipeId) continue;
+    const recipe = recipeById(node.source.recipeId);
+    if (recipe === undefined) continue;
+
+    await write(
+      inContext(node.source.context, node.source.dockerfile),
+      dockerfileFor({ kind: 'recipe', recipe }),
+      'dockerfile'
+    );
+    if (!contextsSeen.has(node.source.context)) {
+      contextsSeen.add(node.source.context);
+      await write(inContext(node.source.context, '.dockerignore'), DOCKERIGNORE, 'dockerignore');
     }
   }
 
