@@ -45,6 +45,14 @@ describe('recoverTasks', () => {
     expect(byName(tasks, '.PHONY')).toBeUndefined();
   });
 
+  it('recognizes a GNUmakefile (GNU make searches it first)', async () => {
+    await writeFile(join(dir, 'GNUmakefile'), 'test:\n\tgo test ./...\n');
+    expect(byName(await recoverTasks(dir), 'test')).toMatchObject({
+      source: 'makefile',
+      kind: 'test',
+    });
+  });
+
   it('parses a Taskfile tasks map', async () => {
     await writeFile(
       join(dir, 'Taskfile.yml'),

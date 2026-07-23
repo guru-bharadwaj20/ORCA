@@ -111,7 +111,10 @@ function parseTaskfile(text: string): RecoveredTask[] {
 export async function recoverTasks(dir: string): Promise<RecoveredTask[]> {
   const tasks: RecoveredTask[] = [];
 
+  // GNU make's own search order: GNUmakefile, then makefile, then Makefile. `GNUmakefile`
+  // is used by projects that are deliberately GNU-make-only, so check it first.
   const makefile =
+    (await readFileIfExists(join(dir, 'GNUmakefile'))) ??
     (await readFileIfExists(join(dir, 'Makefile'))) ??
     (await readFileIfExists(join(dir, 'makefile')));
   if (makefile !== null) tasks.push(...parseMakefile(makefile));
