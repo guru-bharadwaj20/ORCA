@@ -114,4 +114,29 @@ describe('main', () => {
     expect(stderr).toContain('error [PLAN_REJECTED]');
     expect(stderr).toContain('non-interactive session');
   });
+
+  it('reports an unexpected error as a bug instead of letting it escape', async () => {
+    const boom = new TypeError('exploded inside a stage');
+    const program = buildCli();
+    vi.spyOn(program, 'parseAsync').mockRejectedValue(boom);
+
+    await expect(main(['node', 'orca', 'run', mernFixture], program)).resolves.toBeUndefined();
+
+    expect(process.exitCode).toBe(1);
+    expect(stderr).toContain('error [UNEXPECTED]: exploded inside a stage');
+    expect(stderr).toContain('This is a bug in ORCA');
+    expect(stderr).toContain('TypeError');
+  });
+
+  it('reports a cancelled run as cancellation, not as a crash', async () => {
+    const aborted = Object.assign(new Error('The operation was aborted'), { name: 'AbortError' });
+    const program = buildCli();
+    vi.spyOn(program, 'parseAsync').mockRejectedValue(aborted);
+
+    await main(['node', 'orca', 'run', mernFixture], program);
+
+    expect(process.exitCode).toBe(1);
+    expect(stderr).toContain('error [CANCELLED]');
+    expect(stderr).not.toContain('This is a bug in ORCA');
+  });
 });
