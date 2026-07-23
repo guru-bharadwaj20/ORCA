@@ -83,6 +83,27 @@ function resolveStart(startCommand: string, artifactName?: string): string {
 }
 
 /**
+ * When a recipe declares an `entrypointScript` (e.g. a migrate-then-run wrapper), the
+ * runtime stage copies it, makes it executable, and runs it as the `ENTRYPOINT`; the
+ * start command becomes the `CMD` the script `exec "$@"`s. Returns the extra lines to
+ * splice in before the final `CMD`, or `[]` when there's no entrypoint. Mirrors how the
+ * Django seed template wires its `entrypoint.sh`, but for any synthesized recipe.
+ */
+function entrypointBlock(recipe: BuildRecipe): string[] {
+  const script = recipe.entrypointScript;
+  if (script === undefined || script === '') return [];
+  return [`COPY ${script} /usr/local/bin/${script}`, `RUN chmod +x /usr/local/bin/${script}`, ''];
+}
+
+/** The final `ENTRYPOINT`/`CMD` pair for a recipe: an ENTRYPOINT wrapper when it has one. */
+function launchLines(recipe: BuildRecipe, exposeLine: string, start: string): string {
+  if (recipe.entrypointScript !== undefined && recipe.entrypointScript !== '') {
+    return `${exposeLine}ENTRYPOINT ["/usr/local/bin/${recipe.entrypointScript}"]\nCMD ${start}`;
+  }
+  return `${exposeLine}CMD ${start}`;
+}
+
+/**
  * Synthesize a multi-stage Dockerfile from a recipe. When the recipe has no build
  * commands (interpreted runtimes), a single-stage image is emitted instead — a builder
  * stage would add no value. `EXPOSE` uses the recipe's first default port when present.
@@ -111,7 +132,8 @@ export function synthesizeDockerfile(recipe: BuildRecipe, options: SynthesisOpti
       '',
       'COPY . .',
       '',
-      exposeLine + `CMD ${start}`,
+      ...entrypointBlock(recipe),
+      launchLines(recipe, exposeLine, start),
       '',
     ]
       .filter((l) => l !== '')
@@ -135,7 +157,8 @@ export function synthesizeDockerfile(recipe: BuildRecipe, options: SynthesisOpti
     `WORKDIR ${workdir}`,
     `COPY --from=builder ${workdir} ${workdir}`,
     '',
-    exposeLine + `CMD ${start}`,
+    ...entrypointBlock(recipe),
+    launchLines(recipe, exposeLine, start),
     '',
   ]
     .filter((l) => l !== '')
