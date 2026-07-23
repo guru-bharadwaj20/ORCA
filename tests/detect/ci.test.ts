@@ -108,6 +108,27 @@ describe('analyzeCi', () => {
     expect(analysis.runtimeVersions).toContainEqual({ runtime: 'go', version: '1.23' });
   });
 
+  it('recovers java and dotnet versions from their setup actions', async () => {
+    await writeWorkflow(
+      'jvm-dotnet.yml',
+      [
+        'jobs:',
+        '  build:',
+        '    steps:',
+        '      - uses: actions/setup-java@v4',
+        '        with:',
+        "          java-version: '21'",
+        '      - uses: actions/setup-dotnet@v4',
+        '        with:',
+        "          dotnet-version: '8.0'",
+      ].join('\n')
+    );
+
+    const analysis = await analyzeCi(repo);
+    expect(analysis.runtimeVersions).toContainEqual({ runtime: 'java', version: '21' });
+    expect(analysis.runtimeVersions).toContainEqual({ runtime: 'dotnet', version: '8.0' });
+  });
+
   it('skips malformed workflow YAML without throwing', async () => {
     await writeWorkflow('broken.yml', 'jobs: [this is: not valid yaml: {{{');
     await expect(analyzeCi(repo)).resolves.toMatchObject({ found: true });
