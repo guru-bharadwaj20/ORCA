@@ -56,6 +56,7 @@ const detection: DetectionResult = {
     ciCommands: [],
     ciRuntimeVersions: [],
     taskCommands: [],
+    ecosystemComponents: [],
   },
   warnings: [],
 };
