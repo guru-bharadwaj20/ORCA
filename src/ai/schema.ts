@@ -55,6 +55,8 @@ const shellCommand = z
     message: `must start with a supported binary (${[...COMMAND_BINARIES].join(', ')})`,
   });
 
+const stringList = z.preprocess(splitWords, z.array(z.string().min(1)));
+
 const relativePath = z
   .string()
   .min(1)
