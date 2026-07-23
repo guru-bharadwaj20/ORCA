@@ -69,4 +69,18 @@ describe('ecosystem example goldens', () => {
     );
     expect(normalize(rendered)).toBe(normalize(goldenDockerfile('dotnet-sample')));
   });
+
+  it('php-sample synthesizes its committed Dockerfile', () => {
+    const rendered = synthesizeFor({ runtime: 'php', dependencies: [], files: ['composer.json'] });
+    expect(normalize(rendered)).toBe(normalize(goldenDockerfile('php-sample')));
+  });
+
+  it('ruby-sample synthesizes its committed Dockerfile', () => {
+    const rendered = synthesizeFor({
+      runtime: 'ruby',
+      dependencies: ['sinatra'],
+      files: ['Gemfile'],
+    });
+    expect(normalize(rendered)).toBe(normalize(goldenDockerfile('ruby-sample')));
+  });
 });

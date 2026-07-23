@@ -1,0 +1,6 @@
+source "https://rubygems.org"
+
+# Sinatra is the framework signal ORCA's ruby-sinatra recipe matches on; a lightweight
+# web app that starts with `bundle exec ruby app.rb`.
+gem "sinatra", "~> 4.0"
+gem "puma"

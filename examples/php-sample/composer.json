@@ -1,0 +1,8 @@
+{
+  "name": "orca/php-sample",
+  "description": "Minimal PHP app served by the built-in server over public/",
+  "type": "project",
+  "require": {
+    "php": ">=8.1"
+  }
+}

@@ -26,6 +26,8 @@ that is the exact synthesizer output, pinned by `tests/examples/ecosystem-golden
 | [`rust-sample/`](./rust-sample/) | Rust (std TCP) | `rust-cargo` | `:8080/` returns `{"status":"ok","service":"orca-rust-sample"}` |
 | [`jvm-maven-sample/`](./jvm-maven-sample/) | Java (JDK HTTP server) | `jvm-maven` | `:8080/` returns `{"status":"ok","service":"orca-jvm-sample"}` |
 | [`dotnet-sample/`](./dotnet-sample/) | .NET (`HttpListener`) | `dotnet-sdk` | `:8080/` returns `{"status":"ok","service":"orca-dotnet-sample"}` |
+| [`php-sample/`](./php-sample/) | PHP (built-in server) | `php-composer` | `:8000/` returns `{"status":"ok","service":"orca-php-sample"}` |
+| [`ruby-sample/`](./ruby-sample/) | Ruby (Sinatra) | `ruby-sinatra` | `:4567/` returns `{"status":"ok","service":"orca-ruby-sample"}` |
 
 Each sample's own `README.md` documents its layout and the gotchas it handles.
 
