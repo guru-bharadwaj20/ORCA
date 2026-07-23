@@ -19,7 +19,6 @@ function toServiceSpec(node: ServiceNode): ServiceSpec {
   else spec.build = { context: node.source.context, dockerfile: node.source.dockerfile };
   if (node.envFile !== undefined) spec.envFile = node.envFile;
   if (node.healthcheck !== undefined) spec.healthcheck = node.healthcheck;
-  if (node.command !== undefined) spec.command = node.command;
 
   return spec;
 }

@@ -39,7 +39,6 @@ export interface ServiceNode {
   volumes: VolumeMount[];
   envFile?: string;
   healthcheck?: Healthcheck;
-  command?: string;
 }
 
 export interface ServicePlan {
