@@ -1,5 +1,3 @@
-// ESLint flat config (ESLint 9+). Lints TypeScript sources with typescript-eslint
-// and defers all formatting concerns to Prettier via eslint-config-prettier.
 import tseslint from 'typescript-eslint';
 import prettier from 'eslint-config-prettier';
 
@@ -12,7 +10,6 @@ export default tseslint.config(
       'coverage/**',
       'tests/fixtures/**',
       'vscode-extension/media/**',
-      // Headless CJS test harness (must use require to stub the vscode module).
       'vscode-extension/test/**',
     ],
   },
@@ -28,8 +25,6 @@ export default tseslint.config(
         'warn',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
       ],
-      // Stubs intentionally throw / return placeholders; keep the bar low until
-      // stages are implemented.
       '@typescript-eslint/no-empty-function': 'off',
     },
   },

@@ -1,29 +1,17 @@
-/**
- * Prompt builder for the "fill template variables" task.
- *
- * STAGE: 3 (ai) — REAL code.
- * Inputs: detection facts + the template's required variables + README text.
- * Outputs: a { system, user } prompt pair for the client.
- */
-
 import type { DetectionResult } from '../../detect/types.js';
 
-/** A system+user prompt pair. */
 export interface PromptPair {
   system: string;
   user: string;
 }
 
-/** Hard limit on README text included in a prompt, to bound token spend. */
 const MAX_README_CHARS = 6000;
 
-/** Truncate long grounding text with an explicit marker so the model knows it's cut. */
 export function truncate(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;
   return `${text.slice(0, maxChars)}\n[...truncated by ORCA...]`;
 }
 
-/** The slice of a DetectionResult worth showing the model (keeps prompts small). */
 export function detectionSummary(detection: DetectionResult): string {
   const component = (c: DetectionResult['frontend']) =>
     c === null
@@ -65,7 +53,6 @@ Rules:
 - Use well-known official base images only (node:*-slim, python:*-slim).
 - Dev servers must bind 0.0.0.0 so Docker can publish the port.`;
 
-/** Compose the fill-template prompt with strict, schema-shaped output. */
 export function buildFillPrompt(detection: DetectionResult, readme: string): PromptPair {
   const user = [
     '## Detection facts',

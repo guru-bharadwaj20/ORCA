@@ -1,11 +1,3 @@
-/**
- * STAGE 1 verification — the golden snapshot loop.
- *
- * Renders the known-good render-contexts through the real Handlebars templates and
- * asserts the output EQUALS the concrete files committed under each sample's
- * `.orca-golden/` folder. If these pass, the templates reproduce the hand-written,
- * runnable configs exactly (templatization is lossless). Nothing is mocked.
- */
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,7 +14,6 @@ import {
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-/** Normalize line endings + trailing whitespace only, so the compare is content-exact. */
 function normalize(text: string): string {
   return (
     text

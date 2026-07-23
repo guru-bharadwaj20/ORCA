@@ -1,8 +1,3 @@
-/**
- * Generate the extension's marketplace icon (media/icon.png) with zero dependencies:
- * a brand-pink tile with three stacked white "container" bars (the service stack).
- * A deliberate placeholder — replace media/icon.png with real artwork before publish.
- */
 import { deflateSync } from 'node:zlib';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -21,14 +16,12 @@ function set(x, y, [r, g, b]) {
   px[i + 3] = 0xff;
 }
 
-/** Fill a rounded rectangle (corners clipped to a quarter-circle of `radius`). */
 function roundRect(x0, y0, w, h, radius, color) {
   for (let y = y0; y < y0 + h; y++) {
     for (let x = x0; x < x0 + w; x++) {
       const dx = Math.min(x - x0, x0 + w - 1 - x);
       const dy = Math.min(y - y0, y0 + h - 1 - y);
       if (dx < radius && dy < radius) {
-        // Inside a corner region: clip to the quarter-circle around the corner center.
         const ccx = x - x0 < radius ? x0 + radius : x0 + w - 1 - radius;
         const ccy = y - y0 < radius ? y0 + radius : y0 + h - 1 - radius;
         if ((x - ccx) ** 2 + (y - ccy) ** 2 > radius * radius) continue;
@@ -38,7 +31,6 @@ function roundRect(x0, y0, w, h, radius, color) {
   }
 }
 
-// Background + three stacked bars.
 roundRect(0, 0, SIZE, SIZE, 48, PINK);
 const barX = 44;
 const barW = SIZE - 88;
@@ -47,10 +39,9 @@ for (let i = 0; i < 3; i++) {
   roundRect(barX, 70 + i * 52, barW, barH, 10, WHITE);
 }
 
-// --- encode PNG (truecolor+alpha, one filter byte per scanline) ---
 const raw = Buffer.alloc(SIZE * (SIZE * 4 + 1));
 for (let y = 0; y < SIZE; y++) {
-  raw[y * (SIZE * 4 + 1)] = 0; // filter: none
+  raw[y * (SIZE * 4 + 1)] = 0;
   px.copy(raw, y * (SIZE * 4 + 1) + 1, y * SIZE * 4, (y + 1) * SIZE * 4);
 }
 
@@ -79,8 +70,8 @@ function chunk(type, data) {
 const ihdr = Buffer.alloc(13);
 ihdr.writeUInt32BE(SIZE, 0);
 ihdr.writeUInt32BE(SIZE, 4);
-ihdr[8] = 8; // bit depth
-ihdr[9] = 6; // color type: RGBA
+ihdr[8] = 8;
+ihdr[9] = 6;
 const png = Buffer.concat([
   Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
   chunk('IHDR', ihdr),

@@ -1,8 +1,3 @@
-/**
- * STAGE 2 tests — static detection against fake repo trees in tests/fixtures.
- * Each fixture is the smallest tree that makes the assertions meaningful; nothing
- * is mocked — the detectors read the real fixture files.
- */
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
@@ -27,7 +22,6 @@ describe('detect stage', () => {
     expect(result.frontend?.language).toBe('javascript');
     expect(result.frontend?.packageManager).toBe('yarn');
     expect(result.frontend?.dependencies).toContain('react');
-    // Explicit vite dev-server port found in code, not a guessed default.
     expect(result.frontend?.ports).toEqual([{ port: 5173, protocol: 'tcp', source: 'code' }]);
     expect(result.frontend?.entrypoint).toEqual({
       role: 'frontend',
@@ -82,7 +76,6 @@ describe('detect stage', () => {
     expect(result.backend?.dependencies).toEqual(
       expect.arrayContaining(['django', 'psycopg2-binary'])
     );
-    // Nothing explicit in the tree — falls back to runserver's default port.
     expect(result.backend?.ports).toEqual([{ port: 8000, protocol: 'tcp', source: 'default' }]);
     expect(result.backend?.entrypoint).toEqual({
       role: 'backend',

@@ -27,8 +27,6 @@ jobs:
       - name: Build core (tsc + template packaging)
         run: npm run build
 
-      # Build any workspace member that has a build (the vscode-extension); skipped
-      # cleanly while it is still a scaffold with no build script.
       - name: Build workspaces
         run: npm run build --workspaces --if-present
 
@@ -38,20 +36,14 @@ jobs:
       - name: Format check
         run: npm run format:check
 
-      # Hermetic by design: no API keys, no docker — AI providers are mocked and the
-      # keyless path is first-class, so the full suite runs anywhere.
       - name: Test core
         run: npm test
 
-      # Runs each workspace's tests — for the extension, a headless smoke that drives
-      # "ORCA: Preview Repo" against examples/mern-sample with a stubbed vscode API.
       - name: Test workspaces
         run: npm run test --workspaces --if-present
 
-      # Prove the packaged CLI actually runs end-to-end (dry run needs no docker/keys).
       - name: Smoke test the compiled CLI
         run: node ./dist/cli/index.js run examples/mern-sample --dry-run --auto-approve
 
-      # Prove the extension packages into a valid .vsix (runs vsce package).
       - name: Package the VS Code extension
         run: npm run package -w orca-vscode

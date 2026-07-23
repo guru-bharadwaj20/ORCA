@@ -1,15 +1,5 @@
-/**
- * The ORCA splash banner: the ASCII wordmark + tagline shown atop the interactive
- * menu. Pure string building — no I/O, no side effects.
- *
- * STAGE: 7 (cli) — REAL code (presentation only).
- * Inputs: an optional version string.
- * Outputs: a ready-to-print, coloured banner block.
- */
-
 import { theme } from './theme.js';
 
-/** The ORCA wordmark (figlet "ANSI Shadow"). */
 const WORDMARK = [
   ' ██████╗ ██████╗  ██████╗ █████╗ ',
   '██╔═══██╗██╔══██╗██╔════╝██╔══██╗',
@@ -19,10 +9,6 @@ const WORDMARK = [
   ' ╚═════╝ ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝',
 ];
 
-/**
- * Build the coloured banner: pink wordmark, version + tagline beneath it in soft
- * neutrals. The caller prints it on the already-black screen panel.
- */
 export function renderBanner(version: string): string {
   const art = WORDMARK.map((line) => `  ${theme.pink(line)}`).join('\n');
   return [

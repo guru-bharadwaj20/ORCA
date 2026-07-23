@@ -1,8 +1,3 @@
-/**
- * Walking-skeleton tests — the full pipeline (clone -> detect -> keyless fill ->
- * plan -> gate -> dry-run preview) driven end-to-end on the bundled fixtures,
- * with scripted IO and zero API keys (hermetic: the keyless path never dials out).
- */
 import { existsSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { dirname } from 'node:path';
@@ -18,8 +13,6 @@ import {
 } from '../../src/core/context.js';
 import { runPipeline } from '../../src/core/pipeline.js';
 
-// Docker is mocked at the single shell-out boundary; everything else (clone,
-// detection, plan, gate, writeConfigs, self-heal loop) runs for real.
 const docker = vi.hoisted(() => ({
   assertDockerAvailable: vi.fn(),
   composeBuild: vi.fn(),
@@ -34,7 +27,6 @@ const dockerOk = { exitCode: 0, stdout: '', stderr: '' };
 const fixture = (name: string): string =>
   fileURLToPath(new URL(`../fixtures/${name}`, import.meta.url));
 
-/** A logger that records lines instead of printing them. */
 function collectLogger(): { logger: Logger; lines: string[] } {
   const lines: string[] = [];
   const record = (level: string) => (message: string) => {
@@ -51,7 +43,6 @@ function collectLogger(): { logger: Logger; lines: string[] } {
   };
 }
 
-/** Start a pipeline run on a fixture with scripted stdin and captured output. */
 function startRun(repo: string, over: Partial<RunOptions>, answer: string | null) {
   const input = new PassThrough();
   const output = new PassThrough();
@@ -76,8 +67,6 @@ const savedEnv = {
 };
 
 beforeEach(() => {
-  // Hermeticity: with no keys the pipeline must take the template-defaults path
-  // and never touch the network.
   delete process.env['QWEN_API_KEY'];
   delete process.env['ANTHROPIC_API_KEY'];
 
@@ -103,16 +92,14 @@ describe('runPipeline (walking skeleton)', () => {
     );
     await result;
 
-    // Cloned into a temp workspace, not run in place — and cleaned up afterwards.
     expect(ctx.workspaceDir).not.toBe(fixture('mern-repo'));
     expect(ctx.workspaceDir).not.toBe('');
     expect(existsSync(ctx.workspaceDir)).toBe(false);
 
     expect(ctx.detection?.backend?.framework).toBe('express');
-    // Named after the clone *source*, not the temp checkout directory.
     expect(ctx.plan?.projectName).toBe('orca-mern-repo');
     expect(ctx.plan?.services.map((s) => s.id)).toEqual(['db', 'backend', 'frontend']);
-    expect(ctx.plan?.source).toBe('template'); // keyless -> registry defaults
+    expect(ctx.plan?.source).toBe('template');
     expect(ctx.approved).toBe(true);
     expect(lines.some((l) => l.includes('using template defaults'))).toBe(true);
     // The evidence model is surfaced to the user: reasoning trail + detected signals.
@@ -120,7 +107,7 @@ describe('runPipeline (walking skeleton)', () => {
     expect(lines.some((l) => l.includes('Detected stack signals.'))).toBe(true);
 
     const out = printed();
-    expect(out).toContain('flowchart LR'); // review gate showed the diagram
+    expect(out).toContain('flowchart LR');
     expect(out).toContain('# --- docker-compose.yml (preview) ---');
     expect(out).toContain('services:');
     expect(out).toContain('# --- ./server/Dockerfile (backend, preview) ---');
@@ -151,7 +138,6 @@ describe('runPipeline (walking skeleton)', () => {
     await result;
 
     try {
-      // Real files were generated into the (kept-alive) workspace.
       expect(existsSync(ctx.workspaceDir)).toBe(true);
       expect(existsSync(`${ctx.workspaceDir}/docker-compose.yml`)).toBe(true);
       expect(ctx.generatedFiles.map((f) => f.kind)).toContain('dockerfile');
@@ -173,8 +159,8 @@ describe('runPipeline (walking skeleton)', () => {
     const { ctx, result } = startRun(fixture('mern-repo'), { autoApprove: true }, null);
 
     await expect(result).rejects.toMatchObject({ code: 'HEAL_EXHAUSTED' });
-    expect(docker.composeDown).toHaveBeenCalled(); // best-effort teardown
-    expect(existsSync(ctx.workspaceDir)).toBe(false); // no leaked temp dirs
+    expect(docker.composeDown).toHaveBeenCalled();
+    expect(existsSync(ctx.workspaceDir)).toBe(false);
   });
 
   it('propagates MISSING_DEPENDENCY when docker is unavailable', async () => {
@@ -276,7 +262,6 @@ describe('runPipeline (walking skeleton)', () => {
 
     expect(seenServices).toEqual(['db', 'backend', 'frontend']);
     expect(ctx.approved).toBe(true);
-    // The host owns the approval experience — no terminal gate output at all.
     expect(printed).not.toContain('Approve this plan and continue?');
     expect(printed).not.toContain('flowchart LR');
     expect(printed).toContain('Dry run complete');

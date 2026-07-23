@@ -1,26 +1,9 @@
-/**
- * Qwen provider — the primary backend, targeting Qwen3-Coder over the OpenAI-compatible
- * chat-completions protocol that every common Qwen host speaks (Alibaba DashScope,
- * vLLM, Ollama, OpenRouter). Uses Node's built-in fetch: no extra dependency.
- * BYOK: the key comes from QWEN_API_KEY; the endpoint from QWEN_BASE_URL.
- *
- * STAGE: 3 (ai) — REAL code.
- * Inputs: a prompt + completion options.
- * Outputs: a `ProviderCompletion` (text + usage + cost estimate).
- */
-
 import { ENV_KEYS, envKeyResolver, loadSettings, type KeyResolver } from '../../config/settings.js';
 import { OrcaError } from '../../utils/errors.js';
 import type { AIProvider, CompletionOptions, ProviderCompletion } from './types.js';
 
-/**
- * Rough USD per 1M tokens for the ledger. Qwen3-Coder pricing is tiered by input
- * length on DashScope; this uses the base tier so small template-fill calls are
- * estimated accurately and the cap still errs on the safe side overall.
- */
 const PRICING = { inputPerMTok: 1, outputPerMTok: 5 };
 
-/** Estimated USD cost of a single call's token usage on Qwen. */
 export function estimateQwenUsd(inputTokens: number, outputTokens: number): number {
   return (
     (inputTokens / 1_000_000) * PRICING.inputPerMTok +
@@ -28,7 +11,6 @@ export function estimateQwenUsd(inputTokens: number, outputTokens: number): numb
   );
 }
 
-/** The subset of an OpenAI-compatible chat-completions response ORCA reads. */
 interface ChatCompletionResponse {
   choices?: { message?: { content?: string | null } }[];
   usage?: { prompt_tokens?: number; completion_tokens?: number };
@@ -66,7 +48,6 @@ export class QwenProvider implements AIProvider {
         max_tokens: options.maxTokens ?? settings.maxOutputTokens,
         messages,
       }),
-      // Abort on either the per-call timeout or the run's cancellation signal.
       signal: options.signal
         ? AbortSignal.any([AbortSignal.timeout(settings.llmTimeoutMs), options.signal])
         : AbortSignal.timeout(settings.llmTimeoutMs),

@@ -57,6 +57,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/copy-templates.mjs",
     "dev": "tsc -w -p tsconfig.json",
+    "clean": "node scripts/clean.mjs",
     "start": "node ./dist/cli/index.js",
     "test": "vitest run",
     "test:watch": "vitest",

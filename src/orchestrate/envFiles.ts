@@ -1,18 +1,6 @@
-/**
- * Generates the `.env` file contents from the AI-inferred variables, deduplicated
- * against the plan: connection variables (database wiring) are injected inline by
- * docker-compose from the plan and are intentionally NOT duplicated here — inline
- * `environment` wins over `env_file` in compose, so the plan stays authoritative.
- *
- * STAGE: 6 (orchestrate, folded into generate) — REAL code.
- * Inputs: the inferred env variables + the `ServicePlan`.
- * Outputs: the textual `.env` contents to write to disk ('' when nothing is needed).
- */
-
 import type { InferredEnv } from '../ai/schema.js';
 import type { ServicePlan } from '../plan/types.js';
 
-/** The vars worth writing: valid names, not already injected inline by any service. */
 export function selectEnvVars(
   inferred: InferredEnv,
   plan: Pick<ServicePlan, 'services'>
@@ -26,7 +14,6 @@ export function selectEnvVars(
   );
 }
 
-/** Render the `.env` text: one commented, explainable line per inferred variable. */
 export function buildEnvFile(inferred: InferredEnv, plan: ServicePlan): string {
   const variables = selectEnvVars(inferred, plan);
   if (variables.length === 0) return '';
@@ -38,7 +25,6 @@ export function buildEnvFile(inferred: InferredEnv, plan: ServicePlan): string {
   ];
   for (const variable of variables) {
     lines.push('', `# ${variable.required ? '(required) ' : ''}${variable.reason}`);
-    // Quote values with spaces/#'s so the file parses the same everywhere.
     const value = /[\s#'"]/.test(variable.value)
       ? `"${variable.value.replace(/"/g, '\\"')}"`
       : variable.value;

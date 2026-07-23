@@ -34,4 +34,6 @@ ORCA targets **student / hackathon repos**, not arbitrary codebases.
 - Multi-service microservice meshes beyond frontend + backend + db (+ optional redis)
 - Kubernetes / cloud deployment (ORCA produces Docker + docker-compose only)
 
-<!-- TODO(stage-8): document detection heuristics + confidence thresholds per stack. -->
+## Planned
+
+Document detection heuristics + confidence thresholds per stack.

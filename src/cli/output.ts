@@ -1,17 +1,8 @@
-/**
- * Terminal presentation helpers: tables and colored output. Keeps chalk/cli-table3
- * usage in one place so the rest of the CLI stays presentation-free.
- *
- * STAGE: 7 (cli) — REAL code.
- * Inputs: plain data (plans, diagnosis entries).
- * Outputs: formatted strings for the caller to write.
- */
-
 import chalk from 'chalk';
 import Table from 'cli-table3';
 
-import type { ServiceNode, ServicePlan } from '../../plan/types.js';
-import type { DiagnosisEntry } from '../../core/context.js';
+import type { ServiceNode, ServicePlan } from '../plan/types.js';
+import type { DiagnosisEntry } from '../core/context.js';
 
 function describeSource(node: ServiceNode): string {
   return node.source.type === 'image'
@@ -19,7 +10,6 @@ function describeSource(node: ServiceNode): string {
     : `build ${node.source.context} (${node.source.dockerfile})`;
 }
 
-/** Render a ServicePlan as a cli-table3 service table (used by the review gate). */
 export function renderPlanTable(plan: ServicePlan): string {
   const table = new Table({ head: ['Service', 'Kind', 'Source', 'Ports', 'Depends on'] });
   for (const node of plan.services) {
@@ -34,10 +24,6 @@ export function renderPlanTable(plan: ServicePlan): string {
   return table.toString();
 }
 
-/**
- * Render the self-heal diagnosis as an attempt-by-attempt colored log (chalk
- * self-disables on non-TTY streams). '' when there were no heal attempts.
- */
 export function renderDiagnosisLog(entries: DiagnosisEntry[]): string {
   if (entries.length === 0) return '';
 

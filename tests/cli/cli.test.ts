@@ -1,8 +1,3 @@
-/**
- * CLI tests — flag mapping, program shape, and `main()` driven end-to-end on a
- * fixture with process streams spied (keyless + non-TTY, so nothing dials out
- * and nothing hangs).
- */
 import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -59,8 +54,8 @@ describe('toRunOptions', () => {
     expect(fromEnv.maxHealAttempts).toBe(7);
 
     const fromFlag = toRunOptions({ costCap: 2 }, env);
-    expect(fromFlag.costCapUsd).toBe(2); // flag > env
-    expect(fromFlag.maxHealAttempts).toBe(7); // env still applies elsewhere
+    expect(fromFlag.costCapUsd).toBe(2);
+    expect(fromFlag.maxHealAttempts).toBe(7);
   });
 
   it('maps every flag onto RunOptions', () => {
