@@ -81,30 +81,7 @@ const shellCommand = z
     message: `must start with a supported binary (${[...COMMAND_BINARIES].join(', ')})`,
   });
 
-/**
- * A command proposed by tier-3 inference. Same guarantee as `shellCommand`: it is
- * built into a Dockerfile and executed, so chaining, substitution, pipes, redirects
- * and newlines are refused outright rather than trusted to the prompt.
- */
-const inferredCommand = shellCommand;
-
-/**
- * An inferred entrypoint. Compiled ecosystems exec an artifact rather than a
- * toolchain ("./target/release/app", "/app/server"), so a plain executable path is
- * allowed alongside a known binary — still with no shell metacharacters.
- */
-const inferredStartCommand = z
-  .string()
-  .min(1)
-  .refine((value) => !SHELL_METACHARACTERS.test(value), NO_METACHARACTERS)
-  .refine((value) => COMMAND_BINARIES.has(head(value)) || EXECUTABLE_PATH.test(head(value)), {
-    message: 'must start with a supported binary or an executable path inside the image',
-  })
-  .refine((value) => !head(value).split('/').includes('..'), {
-    message: 'must not escape the image root with ".." segments',
-  });
-
-const stringList = z.preprocess(asList, z.array(inferredCommand));
+const stringList = z.preprocess(splitWords, z.array(z.string().min(1)));
 
 const relativePath = z
   .string()
