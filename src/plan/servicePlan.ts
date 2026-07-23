@@ -16,6 +16,7 @@ import type { FilledTemplateVars, InferredEnv } from '../ai/schema.js';
 import { refineDockerfileVars } from '../ai/refineVars.js';
 import { selectEnvVars } from '../orchestrate/envFiles.js';
 import type { DetectedComponent, DetectedDatabase, DetectionResult } from '../detect/types.js';
+import type { BuildRecipe } from '../model/recipe.js';
 import { describeComponent } from '../templates/registry.js';
 import type { DockerfileVars } from '../templates/types.js';
 import type { Healthcheck, ServiceDependency, ServiceNode, ServicePlan } from './types.js';
@@ -145,6 +146,36 @@ function componentVolumes(
     volumes.push({ source: '', target: `${vars.workdir}/node_modules`, kind: 'anonymous' });
   }
   return volumes;
+}
+
+/**
+ * Build a generic `'service'` node for an ecosystem/inferred component from its matched
+ * `BuildRecipe`. Role-agnostic (a Go worker, a Rust CLI, a JVM app): it builds from a
+ * synthesized Dockerfile (`source.recipeId` tells the generate stage to synthesize), and
+ * publishes the recipe's first default port when it has one. No DB wiring here — that
+ * stays with the seed-stack backend path until ecosystem DB inference exists.
+ */
+export function ecosystemServiceNode(
+  id: string,
+  component: DetectedComponent,
+  recipe: BuildRecipe
+): ServiceNode {
+  const port = recipe.defaultPorts[0];
+  return {
+    id,
+    name: id,
+    kind: 'service',
+    source: {
+      type: 'build',
+      context: contextFor(component.rootDir),
+      dockerfile: 'Dockerfile',
+      recipeId: recipe.id,
+    },
+    ports: port === undefined ? [] : [{ host: port, container: port, protocol: 'tcp' }],
+    environment: {},
+    dependsOn: [],
+    volumes: [],
+  };
 }
 
 /**

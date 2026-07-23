@@ -21,9 +21,15 @@
  */
 export type ServiceKind = 'frontend' | 'backend' | 'database' | 'cache' | 'service';
 
-/** How a service's image is obtained: built from a Dockerfile or pulled from a registry. */
+/**
+ * How a service's image is obtained: built from a Dockerfile or pulled from a registry.
+ * A build source may carry a `recipeId`: when present, the generate stage synthesizes the
+ * Dockerfile from that `BuildRecipe` (ecosystem/inferred stacks) instead of rendering a
+ * seed-stack template. Absent `recipeId` = the seed-stack template path (unchanged).
+ */
 export type ServiceSource =
-  { type: 'build'; context: string; dockerfile: string } | { type: 'image'; image: string };
+  | { type: 'build'; context: string; dockerfile: string; recipeId?: string }
+  | { type: 'image'; image: string };
 
 /** A published port mapping (host:container). */
 export interface PortBinding {
