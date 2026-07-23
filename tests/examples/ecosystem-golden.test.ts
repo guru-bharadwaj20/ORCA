@@ -63,8 +63,9 @@ describe('ecosystem example goldens', () => {
   });
 
   it('dotnet-sample synthesizes its committed Dockerfile', () => {
+    // Matched by the project-file extension — the universal .NET signal.
     const rendered = synthesizeFor(
-      { runtime: 'dotnet', dependencies: [], files: ['global.json'] },
+      { runtime: 'dotnet', dependencies: [], files: ['orca-dotnet-sample.csproj'] },
       { artifactName: 'orca-dotnet-sample.dll' }
     );
     expect(normalize(rendered)).toBe(normalize(goldenDockerfile('dotnet-sample')));

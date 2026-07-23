@@ -10,6 +10,7 @@
  * point of the Phase A model.
  */
 
+import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { claim, type Claim, type Evidence } from '../../model/claim.js';
@@ -26,15 +27,31 @@ async function anyFilePresent(dir: string, files: readonly string[]): Promise<st
   return found;
 }
 
+/** Names of files at `dir` whose name ends with one of `suffixes` (e.g. `.csproj`). */
+async function filesWithSuffix(dir: string, suffixes: readonly string[]): Promise<string[]> {
+  if (suffixes.length === 0) return [];
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  return entries
+    .filter((e) => e.isFile() && suffixes.some((s) => e.name.endsWith(s)))
+    .map((e) => e.name);
+}
+
 /**
  * Build a manifest-file runtime detector: it claims `runtime` when any of `files` is
- * present, weighting each observed file at `weight`. A dedicated builder keeps every
- * ecosystem a one-liner of data.
+ * present (exact name) or any file matches one of `suffixes` (extension, for manifests
+ * with arbitrary names like `<Project>.csproj`), weighting each observed file at
+ * `weight`. A dedicated builder keeps every ecosystem a one-liner of data.
  */
 function manifestRuntimeDetector(opts: {
   id: string;
   runtime: Runtime;
-  files: readonly string[];
+  files?: readonly string[];
+  suffixes?: readonly string[];
   weight: number;
 }): Detector {
   return {
@@ -42,7 +59,10 @@ function manifestRuntimeDetector(opts: {
     tier: 1,
     async detect(ctx: RepoContext): Promise<Claim<unknown>[]> {
       const dir = ctx.scopeDir === '.' ? ctx.repoPath : join(ctx.repoPath, ctx.scopeDir);
-      const found = await anyFilePresent(dir, opts.files);
+      const found = [
+        ...(await anyFilePresent(dir, opts.files ?? [])),
+        ...(await filesWithSuffix(dir, opts.suffixes ?? [])),
+      ];
       if (found.length === 0) return [];
       const evidence: Evidence[] = found.map((f) => ({
         detector: opts.id,
@@ -78,11 +98,12 @@ export const jvmDetector = manifestRuntimeDetector({
   weight: 0.85,
 });
 
-/** .NET: a project or solution file. */
+/** .NET: a project or solution file (arbitrary name, matched by extension), or an SDK pin. */
 export const dotnetDetector = manifestRuntimeDetector({
   id: 'manifest:dotnet',
   runtime: 'dotnet',
   files: ['Directory.Build.props', 'global.json'],
+  suffixes: ['.csproj', '.sln'],
   weight: 0.8,
 });
 

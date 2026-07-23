@@ -129,6 +129,19 @@ describe('detect stage', () => {
     ]);
   });
 
+  it('supports a bare .csproj .NET repo (matched by project-file extension)', async () => {
+    // The common .NET shape is a project file with an arbitrary name and no global.json.
+    // It must be detected by the `.csproj` extension, not a fixed manifest filename.
+    const result = await detectStack(fixture('dotnet-csproj-repo'));
+
+    expect(result.isSupported).toBe(true);
+    expect(result.insights.ecosystemComponents).toContainEqual({
+      rootDir: '.',
+      runtime: 'dotnet',
+      recipeId: 'dotnet-sdk',
+    });
+  });
+
   it('treats an existing Dockerfile as a supported deterministic signal', async () => {
     const result = await detectStack(fixture('dockerfile-node-repo'));
 

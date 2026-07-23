@@ -74,7 +74,9 @@ export const ECOSYSTEM_RECIPES: readonly RecipeEntry[] = [
     },
   },
   {
-    matcher: { runtime: 'dotnet', anyFile: ['global.json', 'Directory.Build.props'] },
+    // A project or solution file is the universal .NET signal; `global.json` is optional
+    // (SDK pinning) and only sometimes present, so match by extension.
+    matcher: { runtime: 'dotnet', anySuffix: ['.csproj', '.sln'] },
     recipe: {
       id: 'dotnet-sdk',
       runtime: 'dotnet',
