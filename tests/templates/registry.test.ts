@@ -202,7 +202,15 @@ describe('open PackageManager taxonomy', () => {
   });
 
   it('exposes the known managers as the closed hand-tuned core', () => {
-    expect([...KNOWN_PACKAGE_MANAGERS]).toEqual(['npm', 'yarn', 'pnpm', 'pip', 'poetry', 'uv']);
+    expect([...KNOWN_PACKAGE_MANAGERS]).toEqual([
+      'npm',
+      'yarn',
+      'pnpm',
+      'pip',
+      'poetry',
+      'uv',
+      'pipenv',
+    ]);
     // Every known member is, of course, assignable to the open type.
     for (const pm of KNOWN_PACKAGE_MANAGERS) {
       const assigned: PackageManager = pm;
