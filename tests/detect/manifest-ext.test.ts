@@ -13,6 +13,8 @@ import {
   readDotnetDependencies,
   readGoDependencies,
   readJvmDependencies,
+  readPhpDependencies,
+  readRubyDependencies,
   readRustDependencies,
 } from '../../src/detect/manifestExt.js';
 
@@ -110,5 +112,59 @@ describe('readDotnetDependencies', () => {
 
   it('returns [] when no csproj exists', async () => {
     expect(await readDotnetDependencies(dir)).toEqual([]);
+  });
+});
+
+describe('readPhpDependencies', () => {
+  it('reads require + require-dev and drops php/ext platform requirements', async () => {
+    await writeFile(
+      join(dir, 'composer.json'),
+      JSON.stringify({
+        require: { php: '>=8.1', 'ext-json': '*', 'laravel/framework': '^11.0' },
+        'require-dev': { 'phpunit/phpunit': '^11.0' },
+      })
+    );
+    const deps = await readPhpDependencies(dir);
+    expect(deps).toContain('laravel/framework');
+    expect(deps).toContain('phpunit/phpunit');
+    expect(deps).not.toContain('php');
+    expect(deps).not.toContain('ext-json');
+  });
+
+  it('returns [] on malformed JSON rather than throwing', async () => {
+    await writeFile(join(dir, 'composer.json'), '{ this is not json');
+    expect(await readPhpDependencies(dir)).toEqual([]);
+  });
+
+  it('returns [] when composer.json is absent', async () => {
+    expect(await readPhpDependencies(dir)).toEqual([]);
+  });
+});
+
+describe('readRubyDependencies', () => {
+  it('extracts gem names across single and double quotes, deduped', async () => {
+    await writeFile(
+      join(dir, 'Gemfile'),
+      [
+        'source "https://rubygems.org"',
+        'gem "rails", "~> 7.1"',
+        "gem 'puma'",
+        '  gem "rails"  # duplicate, indented',
+      ].join('\n')
+    );
+    const deps = await readRubyDependencies(dir);
+    expect(deps).toEqual(expect.arrayContaining(['rails', 'puma']));
+    expect(deps.filter((d) => d === 'rails')).toHaveLength(1); // deduped
+  });
+
+  it('ignores a commented-out gem line', async () => {
+    await writeFile(join(dir, 'Gemfile'), '# gem "sinatra"\ngem "rack"\n');
+    const deps = await readRubyDependencies(dir);
+    expect(deps).toContain('rack');
+    expect(deps).not.toContain('sinatra');
+  });
+
+  it('returns [] when the Gemfile is absent', async () => {
+    expect(await readRubyDependencies(dir)).toEqual([]);
   });
 });
