@@ -58,8 +58,14 @@ function contextFor(rootDir: string): string {
   return rootDir === '.' ? '.' : `./${rootDir}`;
 }
 
-function databaseNodes(databases: DetectedDatabase[]): ServiceNode[] {
+interface DatabaseNodes {
+  nodes: ServiceNode[];
+  byEngine: Map<DetectedDatabase['engine'], ServiceNode>;
+}
+
+function databaseNodes(databases: DetectedDatabase[]): DatabaseNodes {
   const nodes: ServiceNode[] = [];
+  const byEngine = new Map<DetectedDatabase['engine'], ServiceNode>();
   let primaryTaken = false;
 
   for (const db of databases) {
@@ -68,7 +74,7 @@ function databaseNodes(databases: DetectedDatabase[]): ServiceNode[] {
     const id = isCache ? 'cache' : primaryTaken ? db.engine : 'db';
     if (!isCache) primaryTaken = true;
 
-    nodes.push({
+    const node: ServiceNode = {
       id,
       name: id,
       kind: isCache ? 'cache' : 'database',
@@ -84,20 +90,21 @@ function databaseNodes(databases: DetectedDatabase[]): ServiceNode[] {
           ? []
           : [{ source: `${id}-data`, target: spec.dataDir, kind: 'named' }],
       healthcheck: spec.healthcheck,
-    });
+    };
+    nodes.push(node);
+    byEngine.set(db.engine, node);
   }
-  return nodes;
+  return { nodes, byEngine };
 }
 
 function connectionEnv(
-  dbNodes: ServiceNode[],
+  byEngine: Map<DetectedDatabase['engine'], ServiceNode>,
   databases: DetectedDatabase[]
 ): Record<string, string> {
   const env: Record<string, string> = {};
   for (const db of databases) {
-    const isCache = db.engine === 'redis';
-    const node = dbNodes.find((n) => (isCache ? n.kind === 'cache' : n.kind === 'database'));
-    if (!node) continue;
+    const node = byEngine.get(db.engine);
+    if (node === undefined) continue;
     if (db.engine === 'postgres') {
       Object.assign(env, {
         POSTGRES_DB: DB_NAME,
@@ -143,7 +150,7 @@ export function buildServicePlan(
   filled: Record<string, FilledTemplateVars>,
   inferred: InferredEnv | null = null
 ): ServicePlan {
-  const dbNodes = databaseNodes(detection.databases);
+  const { nodes: dbNodes, byEngine } = databaseNodes(detection.databases);
   const nodes: ServiceNode[] = [...dbNodes];
 
   const sharedRoot =
@@ -176,7 +183,7 @@ export function buildServicePlan(
         ...(detection.backend.language === 'python'
           ? { DJANGO_DEBUG: '1' }
           : { NODE_ENV: 'development', PORT: String(backendVars.port) }),
-        ...connectionEnv(dbNodes, detection.databases),
+        ...connectionEnv(byEngine, detection.databases),
       },
       dependsOn: dbDeps,
       volumes: componentVolumes(detection.backend, backendVars),

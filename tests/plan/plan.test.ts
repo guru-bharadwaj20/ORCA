@@ -4,6 +4,7 @@ import { parse as parseYaml } from 'yaml';
 
 import { FilledTemplateVarsSchema, validateAgainst } from '../../src/ai/schema.js';
 import { detectStack } from '../../src/detect/index.js';
+import type { DetectionResult } from '../../src/detect/types.js';
 import { planToComposeVars } from '../../src/generate/composeVars.js';
 import { renderDiagram } from '../../src/plan/diagram.js';
 import { buildServicePlan } from '../../src/plan/servicePlan.js';
@@ -90,6 +91,41 @@ describe('buildServicePlan', () => {
     expect(backend?.environment['PORT']).toBe('4000');
     const frontend = plan.services.find((s) => s.id === 'frontend');
     expect(frontend?.environment['VITE_API_URL']).toBe('http://localhost:4000');
+  });
+
+  it('points each connection string at its own engine when several databases exist', () => {
+    const detection: DetectionResult = {
+      repoPath: '/tmp/multi-db-repo',
+      languages: ['javascript'],
+      packageManagers: ['npm'],
+      frontend: null,
+      backend: {
+        role: 'backend',
+        rootDir: '.',
+        language: 'javascript',
+        packageManager: 'npm',
+        framework: 'express',
+        dependencies: ['express', 'pg', 'mongodb', 'redis'],
+        ports: [{ port: 3000, protocol: 'tcp', source: 'default' }],
+        entrypoint: null,
+      },
+      databases: [
+        { engine: 'postgres', defaultPort: 5432, detectedFrom: 'package.json' },
+        { engine: 'mongodb', defaultPort: 27017, detectedFrom: 'package.json' },
+        { engine: 'redis', defaultPort: 6379, detectedFrom: 'package.json' },
+      ],
+      isSupported: true,
+      confidence: 0.9,
+      warnings: [],
+    };
+
+    const plan = buildServicePlan(detection, {});
+    expect(plan.services.map((s) => s.id)).toEqual(['db', 'mongodb', 'cache', 'backend']);
+
+    const env = plan.services.find((s) => s.id === 'backend')?.environment ?? {};
+    expect(env['POSTGRES_HOST']).toBe('db');
+    expect(env['MONGO_URL']).toBe('mongodb://mongodb:27017/orca');
+    expect(env['REDIS_URL']).toBe('redis://cache:6379');
   });
 });
 
