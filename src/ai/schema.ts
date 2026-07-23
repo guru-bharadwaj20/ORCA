@@ -15,6 +15,13 @@ import { OrcaError } from '../utils/errors.js';
 const splitWords = (value: unknown): unknown =>
   typeof value === 'string' ? value.split(/\s+/).filter(Boolean) : value;
 
+/**
+ * A whitespace-splitting list of plain strings. Used by the tier-3 inference schema,
+ * whose command lists are reviewed as part of the graded plan rather than constrained
+ * to the seed-stack binary allowlist below (see `shellCommand`).
+ */
+const stringList = z.preprocess(splitWords, z.array(z.string()));
+
 const SHELL_METACHARACTERS = /[;&|`$(){}[\]<>\\\n\r'"]/;
 
 const COMMAND_BINARIES = new Set([
