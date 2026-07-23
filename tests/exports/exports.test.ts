@@ -1,9 +1,3 @@
-/**
- * Import-smoke test for the library surface (Phase 1, gap 1). Verifies the four
- * public barrels export the symbols an embedder (the VS Code extension) needs, and
- * that package.json's `exports` map advertises each subpath. Hermetic: imports the
- * source barrels through the same specifiers the package publishes.
- */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 

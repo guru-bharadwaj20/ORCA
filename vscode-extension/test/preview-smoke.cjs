@@ -1,12 +1,3 @@
-/**
- * Headless smoke test for CI (Phase 7). Loads the real bundled extension with a stubbed
- * `vscode` API, runs "ORCA: Preview Repo (Dry Run)" against examples/mern-sample,
- * auto-approves the plan webview, and asserts the dry-run preview lands in the output
- * channel. Hermetic — no Docker, no API keys, no VS Code download.
- *
- * Run from the repo root or the extension dir: `node vscode-extension/test/preview-smoke.cjs`
- * (requires `npm run build` for core + `npm run build -w orca-vscode` first).
- */
 const path = require('node:path');
 const Module = require('node:module');
 

@@ -1,8 +1,3 @@
-/**
- * STAGE 3 tests — provider router: Qwen primary, Claude fallback. Qwen's HTTP
- * transport is stubbed at the global-fetch boundary and the Anthropic SDK at the
- * module boundary, so retry/fallback/validation/cost logic all runs for real.
- */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
@@ -38,7 +33,6 @@ const config: RouterConfig = {
   costCapUsd: 1.0,
 };
 
-/** Queue one OpenAI-compatible Qwen HTTP reply. */
 function qwenReplies(
   content: string,
   usage = { prompt_tokens: 800, completion_tokens: 200 }
@@ -51,7 +45,6 @@ function qwenReplies(
   });
 }
 
-/** Queue one Anthropic SDK reply. */
 function claudeReplies(text: string, usage = { input_tokens: 1200, output_tokens: 250 }): void {
   createMock.mockResolvedValueOnce({ content: [{ type: 'text', text }], usage });
 }
@@ -78,7 +71,6 @@ describe('AI provider router', () => {
     expect(result).toEqual({ answer: '42' });
     expect(createMock).not.toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    // The request is a real OpenAI-compatible call: auth header + model + both roles.
     const [url, init] = fetchMock.mock.calls[0] ?? [];
     expect(String(url)).toContain('/chat/completions');
     expect(init.headers.authorization).toBe('Bearer sk-qwen-test-key');
@@ -88,7 +80,6 @@ describe('AI provider router', () => {
       { role: 'system', content: 'test system' },
       { role: 'user', content: 'test user' },
     ]);
-    // Qwen usage lands on the totals and on the per-provider slice, at Qwen pricing.
     expect(ledger.inputTokens).toBe(800);
     expect(ledger.outputTokens).toBe(200);
     expect(ledger.byProvider?.['qwen']?.estimatedUsd).toBeCloseTo(
@@ -99,7 +90,7 @@ describe('AI provider router', () => {
   });
 
   it('retries Qwen once on invalid JSON, then succeeds without fallback', async () => {
-    qwenReplies('I think the answer is 42.'); // not JSON → retry
+    qwenReplies('I think the answer is 42.');
     qwenReplies(JSON.stringify({ answer: '42' }));
 
     const result = await new AIRouter(config).completeValidated(prompt, schema, freshLedger());
@@ -110,8 +101,8 @@ describe('AI provider router', () => {
   });
 
   it('falls back to Claude after Qwen exhausts its attempts, accounting costs per provider', async () => {
-    qwenReplies('not json'); // attempt 1
-    qwenReplies(JSON.stringify({ wrong: 'shape' })); // attempt 2 — fails schema
+    qwenReplies('not json');
+    qwenReplies(JSON.stringify({ wrong: 'shape' }));
     claudeReplies(JSON.stringify({ answer: 'from claude' }));
     const ledger = freshLedger();
 
@@ -120,10 +111,9 @@ describe('AI provider router', () => {
     expect(result).toEqual({ answer: 'from claude' });
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(createMock).toHaveBeenCalledTimes(1);
-    // Both providers' spend is tracked independently and sums to the total.
     const qwen = ledger.byProvider?.['qwen'];
     const anthropic = ledger.byProvider?.['anthropic'];
-    expect(qwen?.inputTokens).toBe(1600); // two attempts × 800
+    expect(qwen?.inputTokens).toBe(1600);
     expect(anthropic?.inputTokens).toBe(1200);
     expect(anthropic?.estimatedUsd).toBeCloseTo((1200 / 1e6) * 5 + (250 / 1e6) * 25, 8);
     expect(ledger.inputTokens).toBe(2800);
@@ -140,7 +130,7 @@ describe('AI provider router', () => {
     const result = await new AIRouter(config).completeValidated(prompt, schema, freshLedger());
 
     expect(result).toEqual({ answer: 'from claude' });
-    expect(fetchMock).not.toHaveBeenCalled(); // config error → no retry, straight to fallback
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(createMock).toHaveBeenCalledTimes(1);
   });
 
@@ -168,7 +158,7 @@ describe('AI provider router', () => {
     await expect(router.completeValidated(prompt, schema, freshLedger())).rejects.toMatchObject({
       code: 'AI_PROVIDER_HTTP',
     });
-    expect(fetchMock).toHaveBeenCalledTimes(2); // both primary attempts were made
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(createMock).not.toHaveBeenCalled();
   });
 
@@ -207,7 +197,6 @@ describe('AI provider router', () => {
     const qwen = routerConfigForRun({ model: 'qwen3-coder-flash' }, {});
     expect(qwen.modelOverrides).toEqual({ qwen: 'qwen3-coder-flash' });
 
-    // Unknown model families are ignored so a typo can't hit the wrong API.
     expect(routerConfigForRun({ model: 'gpt-fantastic' }, {}).modelOverrides).toBeUndefined();
   });
 

@@ -1,12 +1,3 @@
-/**
- * Phase 1 embeddability tests: the seams the VS Code extension relies on, all driven
- * through the real pipeline with docker mocked at its single shell-out boundary and
- * zero network/API keys.
- *
- *  - approvePlan hook replaces the default reviewPlan gate (Task 1)
- *  - AbortSignal cancels a run and tears down cleanly (Task 4)
- *  - resolveKey drives the AI branch without touching process.env (Task 3)
- */
 import { existsSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
@@ -52,7 +43,6 @@ function collectLogger(): { logger: Logger; lines: string[] } {
   };
 }
 
-/** Build a context + start a run with injectable IO, options, resolver, and AI facade. */
 function startRun(opts: {
   repo?: string;
   over?: Partial<RunOptions>;
@@ -104,7 +94,7 @@ describe('approvePlan hook (Task 1)', () => {
         Promise.resolve({ approved: true, plan })
     );
     const { ctx, result, printed } = startRun({
-      over: { dryRun: true }, // no autoApprove, no stdin — the hook decides
+      over: { dryRun: true },
       io: { approvePlan },
     });
     await result;
@@ -116,7 +106,6 @@ describe('approvePlan hook (Task 1)', () => {
       'frontend',
     ]);
     expect(ctx.approved).toBe(true);
-    // The default gate's prompt never ran — the hook replaced it.
     expect(printed()).not.toContain('Approve this plan and continue?');
     expect(printed()).toContain('Dry run complete');
   });
@@ -131,7 +120,7 @@ describe('approvePlan hook (Task 1)', () => {
       message: expect.stringContaining('approval panel disposed'),
     });
     expect(ctx.approved).toBe(false);
-    expect(existsSync(ctx.workspaceDir)).toBe(false); // cleaned up
+    expect(existsSync(ctx.workspaceDir)).toBe(false);
   });
 });
 
@@ -149,7 +138,6 @@ describe('AbortSignal (Task 4)', () => {
 
   it('a cancel mid-build tears the stack down and removes the workspace', async () => {
     const controller = new AbortController();
-    // Simulate the user hitting cancel while the first build is running.
     docker.composeBuild.mockImplementation(() => {
       controller.abort();
       return Promise.resolve({ exitCode: 1, stdout: '', stderr: 'cancelled mid-build' });
@@ -159,16 +147,13 @@ describe('AbortSignal (Task 4)', () => {
     });
 
     await expect(result).rejects.toMatchObject({ name: 'AbortError' });
-    expect(docker.composeDown).toHaveBeenCalled(); // best-effort teardown on abort
-    expect(existsSync(ctx.workspaceDir)).toBe(false); // no leaked temp dir
+    expect(docker.composeDown).toHaveBeenCalled();
+    expect(existsSync(ctx.workspaceDir)).toBe(false);
   });
 });
 
 describe('resolveKey credentials seam (Task 3)', () => {
   it('drives the AI branch from the injected resolver, not process.env', async () => {
-    // process.env has no keys (beforeEach), yet the injected resolver reports one,
-    // so the pipeline must enter the AI-refine branch. The injected facade throws
-    // (no network in tests), exercising the graceful degrade-to-defaults path.
     const resolveKey: KeyResolver = (name) => (name === 'QWEN_API_KEY' ? 'sk-test' : undefined);
     const throwingAi: AIFacade = { complete: () => Promise.reject(new Error('offline in test')) };
     const { ctx, result, lines } = startRun({
@@ -178,9 +163,8 @@ describe('resolveKey credentials seam (Task 3)', () => {
     });
     await result;
 
-    // Entered the AI branch (fill attempted + degraded), not the keyless branch.
     expect(lines.some((l) => l.includes('falling back to template defaults'))).toBe(true);
     expect(lines.some((l) => l.includes('No AI API key found'))).toBe(false);
-    expect(ctx.plan?.source).toBe('template'); // degraded cleanly to defaults
+    expect(ctx.plan?.source).toBe('template');
   });
 });

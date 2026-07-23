@@ -1,15 +1,9 @@
-# Handlebars templates: prettier's parser cannot handle the {{...}} blocks these use,
-# and reformatting them would change the rendered (whitespace-sensitive) output.
 *.hbs
 
-# Sample apps and detection fixtures deliberately mimic messy student repos, and the
-# in-place configs mirror the byte-exact .orca-golden snapshot targets — never reformat.
 examples/
 tests/fixtures/
 
-# Build output and coverage.
 dist/
 coverage/
 
-# Generated: Mermaid's standalone build copied into the extension at build time.
 vscode-extension/media/

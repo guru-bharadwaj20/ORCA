@@ -1,22 +1,6 @@
-/**
- * The typed boundary between AI output and the template contract: merges validated
- * `FilledTemplateVars` onto the registry's deterministic `DockerfileVars` defaults.
- * Downstream stages (plan, generate) consume the result and never touch raw AI output.
- *
- * STAGE: 3 (ai) — REAL code.
- * Inputs: the registry defaults for a component + the AI's validated refinements.
- * Outputs: a complete, render-ready `DockerfileVars`.
- */
-
 import type { DockerfileVars } from '../templates/types.js';
 import type { FilledTemplateVars } from './schema.js';
 
-/**
- * Field-by-field merge: an AI-supplied value overrides the default; anything the AI
- * omitted keeps the deterministic fallback. An empty `dependencyFiles` cannot override
- * the default (a Dockerfile with nothing to COPY before install would always break);
- * an empty `systemPackages` is meaningful ("none needed") and is kept.
- */
 export function refineDockerfileVars(
   defaults: DockerfileVars,
   filled: FilledTemplateVars

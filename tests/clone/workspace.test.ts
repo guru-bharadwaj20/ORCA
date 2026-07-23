@@ -1,7 +1,3 @@
-/**
- * STAGE 0/1 tests — workspace lifecycle against real temp directories. The git-URL
- * path is exercised with a nonexistent local path (git fails fast, no network).
- */
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -30,7 +26,6 @@ describe('clone workspace', () => {
     }
 
     expect(existsSync(workspace.dir)).toBe(false);
-    // Idempotent: cleaning an already-removed workspace is not an error.
     await cleanupWorkspace(workspace);
   });
 

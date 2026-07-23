@@ -1,11 +1,3 @@
-/**
- * Prompt builder for the "infer environment variables" task.
- *
- * STAGE: 3 (ai) — REAL code.
- * Inputs: detection facts + README/source hints.
- * Outputs: a { system, user } prompt pair for the client.
- */
-
 import type { DetectionResult } from '../../detect/types.js';
 import { detectionSummary, truncate, type PromptPair } from './fill.js';
 
@@ -23,7 +15,6 @@ Rules:
 - Secrets (API keys, JWT secrets) get obvious placeholder values like "change-me"; mark them required only if the app fails to boot without them.
 - "required": true means the app cannot start without it; false means optional tuning.`;
 
-/** Compose the infer-env prompt with strict, schema-shaped output. */
 export function buildInferEnvPrompt(detection: DetectionResult, readme: string): PromptPair {
   const user = [
     '## Detection facts',

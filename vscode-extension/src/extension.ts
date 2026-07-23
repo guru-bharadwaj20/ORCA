@@ -1,16 +1,3 @@
-/**
- * ORCA VS Code extension.
- *
- * "ORCA: Preview Repo (Dry Run)" runs the pipeline in dry-run mode; "ORCA: Run Repo"
- * runs it for real (build + self-heal). Both pick a folder, build a RunContext (with
- * `orca.*` settings + SecretStorage keys applied), pause at a native plan-approval
- * webview, and stream logs + output into the ORCA output channel. The full run also
- * shows per-phase progress with a cancel button (wired to the pipeline's AbortSignal)
- * and, on success, a notification with service URLs.
- *
- * All the real work lives in `orca-agent-cli`; this file is only editor glue.
- */
-
 import { Writable } from 'node:stream';
 
 import type { Logger, RunContext } from 'orca-agent-cli';
@@ -25,14 +12,10 @@ import {
   setApiKey,
 } from './settings.js';
 
-// `orca-agent-cli` is ESM (and reads its `.hbs` templates relative to its own on-disk
-// location), so it is kept external and loaded at runtime via dynamic import rather
-// than bundled into this CommonJS extension.
 type OrcaCli = typeof import('orca-agent-cli');
 const loadOrca = (): Promise<OrcaCli> => import('orca-agent-cli');
 const loadOrcaAi = (): Promise<typeof import('orca-agent-cli/ai')> => import('orca-agent-cli/ai');
 
-/** Command ids, kept in sync with `contributes.commands` in package.json. */
 const PREVIEW_COMMAND = 'orca.previewRepo';
 const RUN_COMMAND = 'orca.runRepo';
 const SET_API_KEY_COMMAND = 'orca.setApiKey';
@@ -47,12 +30,6 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 }
 
-/**
- * Build a RunContext with all settings + secrets applied: RunOptions from explicitly-set
- * `orca.*` settings, keys resolved from SecretStorage, and a run-scoped AI facade whose
- * router honors the UI provider/model/cost settings (layered over env, so UI > env >
- * default). Shared by the preview command and (Phase 6) the full-run command.
- */
 async function makeRunContext(
   context: vscode.ExtensionContext,
   params: { repoUrl: string; dryRun: boolean; logger: Logger; signal?: AbortSignal }
@@ -62,7 +39,6 @@ async function makeRunContext(
   const options = {
     dryRun: params.dryRun,
     ...readConfiguredOptions(),
-    // The signal drives cancellation through clone/detect/docker/self-heal.
     ...(params.signal !== undefined ? { signal: params.signal } : {}),
   };
 
@@ -74,9 +50,6 @@ async function makeRunContext(
     resolveKey,
   });
 
-  // Pre-build the run-scoped AI facade so UI provider/model/cost settings win. Provider
-  // choices ride in on a synthetic env layered over process.env; model/cost/signal are
-  // passed as explicit overrides.
   const env = { ...process.env, ...configuredProviderEnv() };
   const routerConfig = ai.routerConfigForRun(
     {
@@ -90,17 +63,14 @@ async function makeRunContext(
   return ctx;
 }
 
-export function deactivate(): void {
-  /* nothing to tear down: the output channel is disposed via context.subscriptions */
-}
+export function deactivate(): void {}
 
-/** Drive one dry-run preview of the chosen repo folder into the output channel. */
 async function previewRepo(
   context: vscode.ExtensionContext,
   channel: vscode.OutputChannel
 ): Promise<void> {
   const folder = await pickFolder();
-  if (folder === undefined) return; // user cancelled
+  if (folder === undefined) return;
 
   channel.clear();
   channel.show(true);
@@ -115,9 +85,6 @@ async function previewRepo(
       dryRun: true,
       logger: outputChannelLogger(channel),
     });
-    // The real approval gate: pause at the plan and show the diagram/table webview.
-    // The pipeline writes the plan summary + config preview to `io.output`, so point
-    // that at the channel to show exactly what a real run would build.
     await runPipeline(ctx, {
       output: outputChannelWritable(channel),
       approvePlan: (plan) => approvePlanViaWebview(context, plan),
@@ -137,16 +104,12 @@ async function previewRepo(
   }
 }
 
-/**
- * The full run: build + start the stack with the explainable self-heal loop, shown as
- * per-phase progress with a cancel button. On success, offer the service URLs.
- */
 async function runRepo(
   context: vscode.ExtensionContext,
   channel: vscode.OutputChannel
 ): Promise<void> {
   const folder = await pickFolder();
-  if (folder === undefined) return; // user cancelled
+  if (folder === undefined) return;
 
   channel.clear();
   channel.show(true);
@@ -171,7 +134,6 @@ async function runRepo(
           logger: outputChannelLogger(channel, (message) => progress.report({ message })),
           signal: controller.signal,
         });
-        // Render each self-heal attempt to the channel as the pipeline appends it.
         observeDiagnosis(runCtx, (linetext) => channel.appendLine(linetext));
         await runPipeline(runCtx, {
           output: outputChannelWritable(channel),
@@ -198,7 +160,6 @@ async function runRepo(
   }
 }
 
-/** Success notification: service URLs with Open-in-browser / Stop-stack actions. */
 async function notifyStackUp(ctx: RunContext, channel: vscode.OutputChannel): Promise<void> {
   const urls = serviceUrls(ctx.plan);
   const OPEN = 'Open in browser';
@@ -235,11 +196,6 @@ async function notifyStackUp(ctx: RunContext, channel: vscode.OutputChannel): Pr
   }
 }
 
-/**
- * Choose the folder to preview: the workspace folder when there is exactly one, a
- * quick-pick when there are several, or an open dialog when no workspace is open.
- * Returns undefined when the user cancels.
- */
 async function pickFolder(): Promise<string | undefined> {
   const folders = vscode.workspace.workspaceFolders;
   if (folders !== undefined && folders.length === 1) {
@@ -261,11 +217,6 @@ async function pickFolder(): Promise<string | undefined> {
   return picked?.[0]?.fsPath;
 }
 
-/**
- * Adapt ORCA's structured Logger onto the output channel. When `report` is given
- * (the full run), info/warn messages also drive the progress notification, so its
- * label tracks the current phase.
- */
 function outputChannelLogger(
   channel: vscode.OutputChannel,
   report?: (message: string) => void
@@ -281,7 +232,6 @@ function outputChannelLogger(
   return { debug: line('debug'), info: line('info'), warn: line('warn'), error: line('error') };
 }
 
-/** A Writable that appends the pipeline's stdout-style output to the channel. */
 function outputChannelWritable(channel: vscode.OutputChannel): Writable {
   return new Writable({
     write(chunk: Buffer | string, _encoding, callback): void {

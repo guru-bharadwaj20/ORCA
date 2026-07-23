@@ -1,9 +1,6 @@
-/**
- * STAGE 7 tests — CLI presentation helpers (pure string rendering).
- */
 import { describe, expect, it } from 'vitest';
 
-import { renderDiagnosisLog, renderPlanTable } from '../../src/cli/output/index.js';
+import { renderDiagnosisLog, renderPlanTable } from '../../src/cli/output.js';
 import type { DiagnosisEntry } from '../../src/core/context.js';
 import type { ServicePlan } from '../../src/plan/types.js';
 

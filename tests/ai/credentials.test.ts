@@ -1,8 +1,3 @@
-/**
- * Phase 1 seams at the AI boundary: providers resolve BYOK keys through an injectable
- * KeyResolver (not process.env directly), and the router forwards the run's cancel
- * signal to whichever provider it calls. Hermetic — no network, no real keys.
- */
 import { afterEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
@@ -32,7 +27,6 @@ afterEach(() => {
 
 describe('providers resolve keys through the injected resolver', () => {
   it('QwenProvider reads the resolver, ignoring process.env', async () => {
-    // Env HAS a key, but the injected resolver returns none: the resolver wins.
     process.env['QWEN_API_KEY'] = 'sk-env-should-be-ignored';
     const provider = new QwenProvider(() => undefined);
     await expect(provider.complete('hi')).rejects.toMatchObject({ code: 'MISSING_API_KEY' });
@@ -41,7 +35,6 @@ describe('providers resolve keys through the injected resolver', () => {
   it('createAnthropicClient reads the resolver, ignoring process.env', () => {
     process.env['ANTHROPIC_API_KEY'] = 'sk-env-should-be-ignored';
     expect(() => createAnthropicClient(() => undefined)).toThrow(/MISSING_API_KEY|not set/);
-    // A resolver that supplies a key constructs a client without dialing out.
     const client = createAnthropicClient((name) =>
       name === 'ANTHROPIC_API_KEY' ? 'sk-ok' : undefined
     );
