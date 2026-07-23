@@ -43,6 +43,7 @@ import {
 } from '../clone/workspace.js';
 import { ENV_KEYS, type KeyResolver } from '../config/settings.js';
 import { inferBuild, type InferenceInput } from '../detect/aiInference.js';
+import { runtimeFromBaseImage } from '../detect/dockerfile.js';
 import { detectStack } from '../detect/index.js';
 import type { DetectedComponent, DetectionResult } from '../detect/types.js';
 import { reasoning } from '../model/claim.js';
@@ -84,6 +85,27 @@ function componentFor(detection: DetectionResult, role: ComponentRole): Detected
   return role === 'backend' ? detection.backend : detection.frontend;
 }
 
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^[-_]+|[-_]+$/g, '');
+}
+
+/** True when at least one configured provider has a key — AI refinement is possible. */
+function aiKeyPresent(resolveKey: KeyResolver): boolean {
+  return Boolean(resolveKey(ENV_KEYS.qwenApiKey) || resolveKey(ENV_KEYS.apiKey));
+}
+
+/** The repo README text used to ground the AI fill ('' when there is none). */
+async function readReadme(repoDir: string): Promise<string> {
+  for (const name of ['README.md', 'readme.md', 'README']) {
+    const text = await readFileIfExists(join(repoDir, name));
+    if (text !== null) return text;
+  }
+  return '';
+}
+
 /**
  * Resolve the detected ecosystem components (Go/Rust/JVM/.NET) into the
  * `EcosystemComponent[]` the plan places as open `'service'` nodes. Each id is the
@@ -111,21 +133,40 @@ function ecosystemComponentsFrom(detection: DetectionResult): EcosystemComponent
       },
     });
   }
-  return result;
-}
-
-/** True when at least one configured provider has a key — AI refinement is possible. */
-function aiKeyPresent(resolveKey: KeyResolver): boolean {
-  return Boolean(resolveKey(ENV_KEYS.qwenApiKey) || resolveKey(ENV_KEYS.apiKey));
-}
-
-/** The repo README text used to ground the AI fill ('' when there is none). */
-async function readReadme(repoDir: string): Promise<string> {
-  for (const name of ['README.md', 'readme.md', 'README']) {
-    const text = await readFileIfExists(join(repoDir, name));
-    if (text !== null) return text;
+  if (detection.frontend === null && detection.backend === null) {
+    for (const dockerfile of detection.insights.dockerfiles) {
+      const id =
+        slugify(
+          dockerfile.rootDir === '.' ? dockerfile.file : `${dockerfile.rootDir}-${dockerfile.file}`
+        ) || 'app';
+      const runtime = runtimeFromBaseImage(dockerfile.baseImage);
+      result.push({
+        id,
+        recipe: {
+          id: `dockerfile-${id}`,
+          runtime,
+          dependencyFiles: [dockerfile.file],
+          installCommands: dockerfile.installCommands,
+          ...(dockerfile.buildCommands.length > 0 ? { buildCommands: dockerfile.buildCommands } : {}),
+          startCommand: dockerfile.startCommand,
+          defaultPorts: dockerfile.exposedPorts,
+          baseImages: { build: dockerfile.baseImage, runtime: dockerfile.baseImage },
+        },
+        component: {
+          role: 'backend',
+          rootDir: dockerfile.rootDir,
+          language: 'unknown',
+          packageManager: 'unknown',
+          framework: 'unknown',
+          dependencies: [],
+          ports: [],
+          entrypoint: null,
+        },
+      });
+    }
   }
-  return '';
+
+  return result;
 }
 
 /**
