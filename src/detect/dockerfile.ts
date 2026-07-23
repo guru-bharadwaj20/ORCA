@@ -27,7 +27,10 @@ export interface DockerfileDetection {
   workingDir: string;
 }
 
-const DOCKERFILE_NAME = /^(?:dockerfile(?:\..+)?|Dockerfile(?:\..+)?)$/;
+// Matches `Dockerfile`/`dockerfile` (+ any `.suffix`) and `Containerfile`, the
+// OCI/Podman/Buildah equivalent with identical syntax. Case-insensitive so `DOCKERFILE`
+// and `containerfile` are caught too.
+const DOCKERFILE_NAME = /^(?:dockerfile|containerfile)(?:\..+)?$/i;
 
 function toPosix(path: string): string {
   return path.replace(/\\/g, '/');

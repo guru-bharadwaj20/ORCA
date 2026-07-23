@@ -112,7 +112,7 @@ async function hasDockerfile(dir: string): Promise<boolean> {
     return false;
   }
   for (const entry of entries) {
-    if (entry.isFile() && /^(?:dockerfile(?:\..+)?|Dockerfile(?:\..+)?)$/.test(entry.name)) {
+    if (entry.isFile() && /^(?:dockerfile|containerfile)(?:\..+)?$/i.test(entry.name)) {
       return true;
     }
   }
