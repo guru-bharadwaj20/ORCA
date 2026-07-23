@@ -4,11 +4,30 @@
  * plus a concrete patch.
  *
  * STAGE: 3 (ai) — used by STAGE 5 (self-heal). REAL code.
- * Inputs: the error output, the current generated files, and attempt number.
+ * Inputs: the error output, the current generated files, attempt number, and (optional)
+ * the recipe context for any synthesized ecosystem/inferred Dockerfiles.
  * Outputs: a { system, user } prompt pair for the client.
  */
 
 import type { PromptPair } from './fill.js';
+
+/**
+ * A synthesized service's build recipe, surfaced to the healer so a fix to a Go/Rust/
+ * inferred Dockerfile is grounded in the intended runtime and commands — not guessed
+ * from the Dockerfile text alone. Empty for pure seed-stack (template) runs.
+ */
+export interface HealRecipeContext {
+  /** The service node id, e.g. "app" or "api". */
+  serviceId: string;
+  /** The recipe runtime, e.g. "rust", "go", "jvm". */
+  runtime: string;
+  /** The recipe id, e.g. "rust-cargo" or "ai-rust". */
+  recipeId: string;
+  /** The intended install/build/start commands, so a fix stays faithful to the recipe. */
+  installCommands: string[];
+  buildCommands: string[];
+  startCommand: string;
+}
 
 /** Keep the *tail* of build output — that's where the actual error usually is. */
 const MAX_ERROR_CHARS = 5000;
@@ -26,11 +45,32 @@ Rules:
 - Only patch files from the provided list; do not introduce new files unless strictly required to fix the error.
 - If the error is unfixable by config changes (e.g. broken application code), say so in "explanation" and return an empty "patches" array.`;
 
+/** Render the recipe-context block for synthesized services, or '' when there is none. */
+function recipeSection(recipes: readonly HealRecipeContext[]): string {
+  if (recipes.length === 0) return '';
+  const blocks = recipes.map((r) =>
+    [
+      `### service "${r.serviceId}" — ${r.runtime} (recipe ${r.recipeId})`,
+      `install: ${r.installCommands.join(' && ') || '(none)'}`,
+      `build:   ${r.buildCommands.join(' && ') || '(none)'}`,
+      `start:   ${r.startCommand}`,
+    ].join('\n')
+  );
+  return [
+    '',
+    '## Synthesized service recipes (keep fixes faithful to these)',
+    'These Dockerfiles were generated from build recipes. Keep any fix consistent with the',
+    'runtime and intended commands below — do not switch a service to a different runtime.',
+    ...blocks,
+  ].join('\n');
+}
+
 /** Compose the heal prompt; demands explanation + fix + minimal patches. */
 export function buildHealPrompt(
   errorOutput: string,
   currentFiles: { path: string; contents: string }[],
-  attempt: number
+  attempt: number,
+  recipes: readonly HealRecipeContext[] = []
 ): PromptPair {
   const errorTail =
     errorOutput.length > MAX_ERROR_CHARS
@@ -53,7 +93,10 @@ export function buildHealPrompt(
     '',
     '## Current generated files',
     ...(fileSections.length > 0 ? fileSections : ['(none)']),
-  ].join('\n');
+    recipeSection(recipes),
+  ]
+    .join('\n')
+    .trimEnd();
 
   return { system: HEAL_SYSTEM, user };
 }

@@ -17,7 +17,7 @@ import { writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 import { ai } from '../ai/client.js';
-import { buildHealPrompt } from '../ai/prompts/heal.js';
+import { buildHealPrompt, type HealRecipeContext } from '../ai/prompts/heal.js';
 import { HealSuggestionSchema, type HealSuggestion } from '../ai/schema.js';
 import type { DiagnosisEntry, RunContext } from '../core/context.js';
 import { HealExhaustedError } from '../utils/errors.js';
@@ -48,6 +48,28 @@ function resolveAllowedPath(
   const rel = relative(workspaceDir, abs);
   if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) return null;
   return allowlist.has(rel.split(sep).join('/')) ? abs : null;
+}
+
+/**
+ * Recipe context for any synthesized ecosystem/inferred services in the plan, so the
+ * healer keeps a Go/Rust/inferred Dockerfile fix faithful to its runtime and commands.
+ * Empty for pure seed-stack runs (whose Dockerfiles come from templates, not recipes).
+ */
+function healRecipeContext(ctx: RunContext): HealRecipeContext[] {
+  const recipes: HealRecipeContext[] = [];
+  for (const node of ctx.plan?.services ?? []) {
+    if (node.source.type !== 'build' || node.source.recipe === undefined) continue;
+    const { recipe } = node.source;
+    recipes.push({
+      serviceId: node.id,
+      runtime: recipe.runtime,
+      recipeId: recipe.id,
+      installCommands: recipe.installCommands,
+      buildCommands: recipe.buildCommands ?? [],
+      startCommand: recipe.startCommand,
+    });
+  }
+  return recipes;
 }
 
 /** Current contents of every generated file, for the heal prompt's grounding. */
@@ -121,7 +143,12 @@ export async function runSelfHealLoop(ctx: RunContext): Promise<AttemptResult> {
       // Run-scoped facade when the pipeline provided one (--model / --cost-cap).
       const client = ctx.ai ?? ai;
       suggestion = await client.complete(
-        buildHealPrompt(errorOutput, await readGeneratedFiles(ctx), attempt),
+        buildHealPrompt(
+          errorOutput,
+          await readGeneratedFiles(ctx),
+          attempt,
+          healRecipeContext(ctx)
+        ),
         HealSuggestionSchema,
         ctx.cost,
         { schemaName: 'HealSuggestion' }
