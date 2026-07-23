@@ -83,7 +83,7 @@ item someone is **actively working on** shows **that person's** colour instead.
 | Stub | Item                           | Notes                                                                                                                                           |
 | :--: | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 |  ⚪  | Flaky `hostPorts` test         | Binds real OS ports, so it fails randomly on busy CI runners — make it deterministic                                                            |
-|  ⚪  | Ecosystem example repos        | Runnable `examples/<stack>` per ecosystem (Go/Rust/JVM/.NET/…) + golden tests. Recipes are unit-tested; runnable samples are the gap (Phase B3) |
+|  ⚪  | Ecosystem example repos        | `examples/go-sample` + `examples/rust-sample` land with synthesizer golden tests; JVM/.NET/PHP/Ruby samples still to come (Phase B3) |
 |  ⚪  | `PackageManager` open taxonomy | Widened with `uv`, but still a closed enum — Phase B1 called for an open string + known-set                                                     |
 |  ⚪  | Per-ecosystem entrypoints      | e.g. a JVM/.NET migrate-then-run analogue to the Django entrypoint — deferred until a recipe needs one                                          |
 |  ⚪  | Plan-doc reconciliation        | `docs/universal-understanding-plan.md` status table lags the code (Phase F persistence, 19 recipes)                                             |
