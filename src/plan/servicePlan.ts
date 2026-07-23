@@ -151,9 +151,11 @@ function componentVolumes(
 /**
  * Build a generic `'service'` node for an ecosystem/inferred component from its matched
  * `BuildRecipe`. Role-agnostic (a Go worker, a Rust CLI, a JVM app): it builds from a
- * synthesized Dockerfile (`source.recipeId` tells the generate stage to synthesize), and
- * publishes the recipe's first default port when it has one. No DB wiring here — that
- * stays with the seed-stack backend path until ecosystem DB inference exists.
+ * synthesized Dockerfile (the recipe rides inline on `source.recipe` so the generate
+ * stage synthesizes directly — no registry lookup, so AI-inferred `ai-*` recipes build
+ * identically), and publishes the recipe's first default port when it has one. No DB
+ * wiring here — that stays with the seed-stack backend path until ecosystem DB inference
+ * exists.
  */
 export function ecosystemServiceNode(
   id: string,
@@ -170,6 +172,7 @@ export function ecosystemServiceNode(
       context: contextFor(component.rootDir),
       dockerfile: 'Dockerfile',
       recipeId: recipe.id,
+      recipe,
     },
     ports: port === undefined ? [] : [{ host: port, container: port, protocol: 'tcp' }],
     environment: {},

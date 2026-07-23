@@ -206,12 +206,11 @@ function renderPreview(
     );
   }
 
-  // Ecosystem 'service' nodes: preview their synthesized Dockerfile from the recipe.
+  // Ecosystem/inferred 'service' nodes: preview the Dockerfile synthesized from the
+  // recipe carried inline on the node (so AI-inferred `ai-*` recipes preview too).
   for (const node of plan.services) {
     if (node.kind !== 'service' || node.source.type !== 'build') continue;
-    const { context, dockerfile, recipeId } = node.source;
-    if (recipeId === undefined) continue;
-    const recipe = ALL_RECIPES.find((e) => e.recipe.id === recipeId)?.recipe;
+    const { context, dockerfile, recipe } = node.source;
     if (recipe === undefined) continue;
     sections.push(
       `# --- ${context}/${dockerfile} (${node.id}, preview) ---`,
