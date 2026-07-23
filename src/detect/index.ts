@@ -1,15 +1,41 @@
+/**
+ * Runs every independent detector and aggregates their output into a single
+ * `DetectionResult`. This is the one place that composes the detect stage; each
+ * detector stays standalone so it could later become its own agent.
+ *
+ * STAGE: 2 (detect) — REAL code.
+ * Inputs: an absolute repo path.
+ * Outputs: a fully-populated `DetectionResult` (the STAGE 2 contract).
+ */
+
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { bestClaim, combineConfidence, type Claim, type Evidence } from '../model/claim.js';
+import type { RepoContext } from '../model/detector.js';
+import type { Runtime } from '../model/recipe.js';
+import { defaultRecipeRegistry } from '../model/recipes/index.js';
 import { DEFAULT_WALK_IGNORE, readFileIfExists } from '../utils/fs.js';
 import { OrcaError } from '../utils/errors.js';
+import { analyzeCi } from './ci.js';
+import { defaultDetectorRegistry } from './detectors/index.js';
 import { detectEntrypoint } from './entrypoint.js';
 import { detectBackendFramework, detectFrontendFramework } from './framework.js';
+import { matchFrameworks } from './frameworkSignatures.js';
 import { detectLanguages } from './language.js';
 import { readAllDependencies } from './manifest.js';
+import {
+  readDotnetDependencies,
+  readGoDependencies,
+  readJvmDependencies,
+  readRustDependencies,
+} from './manifestExt.js';
+import { detectMonorepo, type MonorepoInfo } from './monorepo.js';
 import { detectPackageManager } from './packageManager.js';
 import { detectPorts } from './ports.js';
 import { detectServices } from './services.js';
+import { recoverTasks } from './taskRunners.js';
+import { expandWorkspaceGlobs } from './workspaceGlobs.js';
 import type {
   BackendFramework,
   DetectedComponent,
@@ -19,16 +45,36 @@ import type {
   FrontendFramework,
   Language,
   PackageManager,
+  RepoInsights,
 } from './types.js';
 
 export type { DetectionResult } from './types.js';
 
-const MANIFEST_FILES = ['package.json', 'requirements.txt', 'pyproject.toml', 'manage.py'];
+/**
+ * Any of these marks a directory as a component root worth inspecting. The seed-stack
+ * manifests come first; the ecosystem manifests (Go/Rust/JVM/.NET) widen candidate
+ * discovery so those components surface, match a `BuildRecipe`, and containerize via
+ * the open-role 'service' path.
+ */
+const MANIFEST_FILES = [
+  'package.json',
+  'requirements.txt',
+  'pyproject.toml',
+  'manage.py',
+  'go.mod',
+  'Cargo.toml',
+  'pom.xml',
+  'build.gradle',
+  'build.gradle.kts',
+];
 
+/** Conventional directory names that disambiguate multiple candidates per role. */
 const FRONTEND_DIR_HINT = /^(client|frontend|web|ui)$/i;
 const BACKEND_DIR_HINT = /^(server|backend|api|service)$/i;
 
+/** A directory that declared a manifest, plus what its manifest revealed. */
 interface Candidate {
+  /** Repo-relative root (`.` for the repo root itself). */
   rootDir: string;
   absDir: string;
   frontend: FrontendFramework;
@@ -42,7 +88,16 @@ async function hasManifest(dir: string): Promise<boolean> {
   return false;
 }
 
-async function findCandidateRoots(repoPath: string): Promise<string[]> {
+/**
+ * The repo root plus every first-level subdirectory that declares a manifest, plus any
+ * `workspaceDirs` (already expanded from monorepo globs) that declare one. Nested
+ * workspace packages (`services/api`) only appear when passed via `workspaceDirs`,
+ * since the base scan is intentionally single-level.
+ */
+async function findCandidateRoots(
+  repoPath: string,
+  workspaceDirs: readonly string[] = []
+): Promise<string[]> {
   let entries;
   try {
     entries = await readdir(repoPath, { withFileTypes: true });
@@ -60,9 +115,15 @@ async function findCandidateRoots(repoPath: string): Promise<string[]> {
   for (const name of subdirs) {
     if (await hasManifest(join(repoPath, name))) roots.push(name);
   }
+
+  // Nested workspace packages (deeper than one level) discovered via monorepo globs.
+  for (const dir of workspaceDirs) {
+    if (!roots.includes(dir) && (await hasManifest(join(repoPath, dir)))) roots.push(dir);
+  }
   return roots;
 }
 
+/** Component-level language from its own manifests (repo-wide scan is separate). */
 async function componentLanguage(absDir: string): Promise<Language> {
   for (const pythonMarker of ['manage.py', 'requirements.txt', 'pyproject.toml']) {
     if ((await readFileIfExists(join(absDir, pythonMarker))) !== null) return 'python';
@@ -72,6 +133,10 @@ async function componentLanguage(absDir: string): Promise<Language> {
   return 'unknown';
 }
 
+/**
+ * Pick the single candidate for a role. Multiple matches are resolved by the
+ * conventional directory-name hint, then by first (alphabetical) order plus a warning.
+ */
 function pickCandidate(
   matches: Candidate[],
   hint: RegExp,
@@ -91,6 +156,7 @@ function pickCandidate(
   return chosen ?? null;
 }
 
+/** Run the per-component detectors and assemble a `DetectedComponent`. */
 async function buildComponent(
   role: 'frontend' | 'backend',
   candidate: Candidate
@@ -111,14 +177,24 @@ async function buildComponent(
     framework: role === 'frontend' ? candidate.frontend : candidate.backend,
     dependencies,
     ports,
+    // The entrypoint detector only sees the component dir; anchor its workingDir
+    // to the repo-relative root so later stages can `cd` from the repo root.
     entrypoint: entrypoint === null ? null : { ...entrypoint, workingDir: candidate.rootDir },
   };
 }
 
+/**
+ * Locate frontend/backend component roots, run each detector, decide
+ * `isSupported` + `confidence`, and collect warnings.
+ */
 export async function detectStack(repoPath: string): Promise<DetectionResult> {
   const warnings: DetectionWarning[] = [];
 
-  const roots = await findCandidateRoots(repoPath);
+  // Monorepo topology is resolved first so its workspace globs can promote nested
+  // packages to candidate roots (and is reused by gatherInsights — detected once).
+  const monorepo = await detectMonorepo(repoPath);
+  const workspaceDirs = await expandWorkspaceGlobs(repoPath, monorepo.packageGlobs);
+  const roots = await findCandidateRoots(repoPath, workspaceDirs);
   const candidates: Candidate[] = await Promise.all(
     roots.map(async (rootDir) => {
       const absDir = rootDir === '.' ? repoPath : join(repoPath, rootDir);
@@ -130,6 +206,7 @@ export async function detectStack(repoPath: string): Promise<DetectionResult> {
     })
   );
 
+  // A candidate may serve both roles (single-package repos with react + express).
   const frontendPick = pickCandidate(
     candidates.filter((c) => c.frontend !== 'unknown'),
     FRONTEND_DIR_HINT,
@@ -158,6 +235,7 @@ export async function detectStack(repoPath: string): Promise<DetectionResult> {
     backendPick === null ? null : buildComponent('backend', backendPick),
   ]);
 
+  // Databases: union across every candidate root, first-found per engine wins.
   const databases: DetectedDatabase[] = [];
   for (const c of candidates) {
     for (const db of await detectServices(c.absDir)) {
@@ -165,13 +243,20 @@ export async function detectStack(repoPath: string): Promise<DetectionResult> {
     }
   }
 
+  // Package managers seen anywhere (per candidate root), 'unknown' filtered out.
   const packageManagers: PackageManager[] = [];
   for (const c of candidates) {
     const pm = await detectPackageManager(c.absDir);
     if (pm !== 'unknown' && !packageManagers.includes(pm)) packageManagers.push(pm);
   }
 
-  const isSupported = frontend !== null || backend !== null;
+  // Insights (incl. matched ecosystem components) are gathered before the support
+  // decision, because a placeable ecosystem component (Go/Rust/JVM/.NET with a matched
+  // recipe) makes a repo containerizable even without a seed frontend/backend.
+  const insights = await gatherInsights(repoPath, roots, monorepo);
+  const hasEcosystem = insights.ecosystemComponents.length > 0;
+
+  const isSupported = frontend !== null || backend !== null || hasEcosystem;
   if (!isSupported) {
     warnings.push({
       code: 'unsupported-stack',
@@ -183,6 +268,8 @@ export async function detectStack(repoPath: string): Promise<DetectionResult> {
     });
   }
 
+  const evidence = confidenceEvidence(frontend, backend, databases, insights);
+
   return {
     repoPath,
     languages: await detectLanguages(repoPath),
@@ -191,21 +278,213 @@ export async function detectStack(repoPath: string): Promise<DetectionResult> {
     backend,
     databases,
     isSupported,
-    confidence: scoreConfidence(frontend, backend, databases),
+    confidence: combineConfidence(evidence),
+    reasoning: evidence.map((e) => e.signal),
+    insights,
     warnings,
   };
 }
 
-function scoreConfidence(
+/** Read every direct dependency across all ecosystems at one component root. */
+async function allEcosystemDependencies(dir: string): Promise<string[]> {
+  const [common, go, rust, jvm, dotnet] = await Promise.all([
+    readAllDependencies(dir),
+    readGoDependencies(dir),
+    readRustDependencies(dir),
+    readJvmDependencies(dir),
+    readDotnetDependencies(dir),
+  ]);
+  return [...new Set([...common, ...go, ...rust, ...jvm, ...dotnet])];
+}
+
+/** True when any of the named files exists at `dir`. */
+async function hasFile(dir: string, ...names: string[]): Promise<boolean> {
+  for (const name of names) {
+    if ((await readFileIfExists(join(dir, name))) !== null) return true;
+  }
+  return false;
+}
+
+/** Basenames present at a directory, for file-marker matching. */
+async function filesAt(dir: string): Promise<string[]> {
+  const markers = [
+    'go.mod',
+    'Cargo.toml',
+    'pom.xml',
+    'build.gradle',
+    'build.gradle.kts',
+    'manage.py',
+    'vite.config.ts',
+    'vite.config.js',
+    'global.json',
+    'Directory.Build.props',
+  ];
+  const present: string[] = [];
+  for (const m of markers) {
+    if ((await readFileIfExists(join(dir, m))) !== null) present.push(m);
+  }
+  return present;
+}
+
+/**
+ * Gather the forward-looking Phase-B/C signals: runtime claims (via the detector
+ * registry), framework matches per candidate root, monorepo topology, and CI analysis.
+ * Advisory — failures here never fail detection.
+ */
+async function gatherInsights(
+  repoPath: string,
+  roots: string[],
+  monorepo: MonorepoInfo
+): Promise<RepoInsights> {
+  const registry = defaultDetectorRegistry();
+  const recipes = defaultRecipeRegistry();
+  const runtimeSet = new Set<Runtime>();
+  const frameworkSet = new Set<string>();
+  const taskCommands: RepoInsights['taskCommands'] = [];
+  const seenTask = new Set<string>();
+  const ecosystemComponents: RepoInsights['ecosystemComponents'] = [];
+
+  for (const rootDir of roots) {
+    const absDir = rootDir === '.' ? repoPath : join(repoPath, rootDir);
+    const ctx: RepoContext = { repoPath, scopeDir: rootDir };
+
+    // Maintainer-declared tasks (Makefile/Taskfile/justfile/package scripts), deduped
+    // by source+name across roots.
+    for (const task of await recoverTasks(absDir)) {
+      const key = `${task.source}:${task.name}:${task.command}`;
+      if (seenTask.has(key)) continue;
+      seenTask.add(key);
+      taskCommands.push({
+        source: task.source,
+        name: task.name,
+        command: task.command,
+        kind: task.kind,
+      });
+    }
+
+    // Runtime claims from tier-1 detectors, best (highest-confidence) first.
+    const claims: Claim<unknown>[] = [];
+    for (const detector of registry.atTier(1)) {
+      claims.push(...(await detector.detect(ctx)));
+    }
+    const runtimeClaim = bestClaim(claims as Claim<Runtime>[]);
+    const dependencies = await allEcosystemDependencies(absDir);
+    const files = await filesAt(absDir);
+
+    // Only runtimes with a genuine manifest at this root count as present. node/python
+    // are inferred from their common manifests (package.json / requirements|pyproject),
+    // which the seed-stack readers already parsed into `dependencies`.
+    if (runtimeClaim) runtimeSet.add(runtimeClaim.value);
+    const hasNode = await hasFile(absDir, 'package.json');
+    const hasPython = await hasFile(absDir, 'requirements.txt', 'pyproject.toml', 'manage.py');
+    if (hasNode) runtimeSet.add('node');
+    if (hasPython) runtimeSet.add('python');
+
+    // Match frameworks against whichever runtimes are actually present here. A probe
+    // set is unnecessary now that runtime presence is established up front.
+    const present: Runtime[] = [
+      runtimeClaim?.value,
+      hasNode ? 'node' : undefined,
+      hasPython ? 'python' : undefined,
+    ].filter((r): r is Runtime => Boolean(r));
+    for (const rt of present) {
+      for (const match of matchFrameworks({ runtime: rt, dependencies, files })) {
+        frameworkSet.add(match.id);
+      }
+    }
+
+    // A non-seed ecosystem root (Go/Rust/JVM/.NET) with a matched recipe becomes an
+    // open 'service' component. node/python roots stay on the seed frontend/backend
+    // path, so they're excluded here to avoid double-placing the same directory.
+    if (runtimeClaim && runtimeClaim.value !== 'node' && runtimeClaim.value !== 'python') {
+      const recipe = recipes.match({ runtime: runtimeClaim.value, dependencies, files });
+      if (recipe) {
+        ecosystemComponents.push({
+          rootDir,
+          runtime: runtimeClaim.value,
+          recipeId: recipe.id,
+        });
+      }
+    }
+  }
+
+  const ci = await analyzeCi(repoPath);
+
+  return {
+    frameworks: [...frameworkSet],
+    runtimes: [...runtimeSet],
+    monorepoTools: monorepo.tools,
+    ciCommands: ci.commands.map((c) => ({ command: c.command, kind: c.kind })),
+    ciRuntimeVersions: ci.runtimeVersions,
+    taskCommands,
+    ecosystemComponents,
+  };
+}
+
+/**
+ * Build the evidence trail behind the detection confidence: one weighted signal per
+ * observed piece of the expected shape of a supported repo. Confidence is then the
+ * probabilistic-OR combination of these weights (see `combineConfidence`), so
+ * independent signals agreeing drive it up. A full frontend+backend+db repo with
+ * entrypoints scores ~0.9; a bare unsupported repo yields no evidence and scores 0.
+ *
+ * Weights are tuned to preserve the prior heuristic's decision boundaries: a full
+ * stack lands well above 0.8, a backend+db service above 0.5.
+ */
+function confidenceEvidence(
   frontend: DetectedComponent | null,
   backend: DetectedComponent | null,
-  databases: DetectedDatabase[]
-): number {
-  let score = 0;
-  if (backend !== null) score += 0.35;
-  if (frontend !== null) score += 0.25;
-  if (databases.length > 0) score += 0.15;
-  if (frontend?.entrypoint) score += 0.1;
-  if (backend?.entrypoint) score += 0.1;
-  return Math.min(1, Number(score.toFixed(2)));
+  databases: DetectedDatabase[],
+  insights: RepoInsights
+): Evidence[] {
+  const evidence: Evidence[] = [];
+  if (backend !== null) {
+    evidence.push({
+      detector: 'index',
+      signal: `backend component detected (${backend.framework})`,
+      weight: 0.55,
+    });
+  }
+  if (frontend !== null) {
+    evidence.push({
+      detector: 'index',
+      signal: `frontend component detected (${frontend.framework})`,
+      weight: 0.45,
+    });
+  }
+  if (databases.length > 0) {
+    evidence.push({
+      detector: 'index',
+      signal: `database dependency found (${databases.map((d) => d.engine).join(', ')})`,
+      weight: 0.35,
+    });
+  }
+  if (frontend?.entrypoint) {
+    evidence.push({ detector: 'index', signal: 'frontend entrypoint resolved', weight: 0.25 });
+  }
+  if (backend?.entrypoint) {
+    evidence.push({ detector: 'index', signal: 'backend entrypoint resolved', weight: 0.25 });
+  }
+  for (const eco of insights.ecosystemComponents) {
+    evidence.push({
+      detector: 'recipe',
+      signal: `ecosystem component matched (${eco.runtime} → ${eco.recipeId})`,
+      weight: 0.55,
+    });
+  }
+  // CI corroboration only *reinforces* an already-detected stack (the maintainer's own
+  // build recipe agreeing with detection); it never manufactures confidence on its own,
+  // so a repo with CI but no recognized component still scores 0.
+  const hasStack = frontend !== null || backend !== null || insights.ecosystemComponents.length > 0;
+  const ciBuildSignals = insights.ciCommands.filter(
+    (c) => c.kind === 'build' || c.kind === 'start'
+  );
+  if (hasStack && ciBuildSignals.length > 0) {
+    evidence.push({
+      detector: 'ci',
+      signal: `CI corroborates the build (${ciBuildSignals.length} build/start step(s))`,
+      weight: 0.2,
+    });
+  }
+  return evidence;
 }

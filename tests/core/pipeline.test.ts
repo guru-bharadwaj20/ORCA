@@ -102,6 +102,9 @@ describe('runPipeline (walking skeleton)', () => {
     expect(ctx.plan?.source).toBe('template');
     expect(ctx.approved).toBe(true);
     expect(lines.some((l) => l.includes('using template defaults'))).toBe(true);
+    // The evidence model is surfaced to the user: reasoning trail + detected signals.
+    expect(lines.some((l) => l.includes('Detection reasoning:'))).toBe(true);
+    expect(lines.some((l) => l.includes('Detected stack signals.'))).toBe(true);
 
     const out = printed();
     expect(out).toContain('flowchart LR');
@@ -170,13 +173,69 @@ describe('runPipeline (walking skeleton)', () => {
   });
 
   it('throws UNSUPPORTED_STACK on a repo outside ORCA scope', async () => {
-    const { result } = startRun(
-      fixture('unsupported-repo'),
+    // unknown-repo has no manifest at all — nothing matches a seed or ecosystem recipe.
+    const { result } = startRun(fixture('unknown-repo'), { dryRun: true, autoApprove: true }, null);
+
+    await expect(result).rejects.toMatchObject({ code: 'UNSUPPORTED_STACK' });
+  });
+
+  it('containerizes an ecosystem repo (Rust) end-to-end via a synthesized Dockerfile', async () => {
+    const { ctx, result, printed } = startRun(
+      fixture('unsupported-repo'), // Rust — now supported via the cargo recipe
       { dryRun: true, autoApprove: true },
       null
     );
+    await result;
 
-    await expect(result).rejects.toMatchObject({ code: 'UNSUPPORTED_STACK' });
+    // Placed as an open 'service' node, not a seed frontend/backend.
+    const svc = ctx.plan?.services.find((s) => s.kind === 'service');
+    expect(svc).toBeDefined();
+    // The preview shows a synthesized multi-stage Dockerfile for it.
+    const out = printed();
+    expect(out).toContain('AS builder');
+    expect(out).toContain('cargo build --release');
+  });
+
+  it('builds a deterministically-unsupported repo via an AI-inferred recipe (with a key)', async () => {
+    // No manifest → deterministic detection can't place it, but tier-3 inference yields
+    // a recipe, so the repo now containerizes through the open-role synthesis path
+    // instead of hard-stopping. The inferred `ai-*` recipe rides inline on the node.
+    const repoDir = fixture('unknown-repo');
+    const { logger, lines } = collectLogger();
+    const ctx = createRunContext({
+      repoUrl: repoDir,
+      workspaceDir: repoDir,
+      logger,
+      options: { ...DEFAULT_RUN_OPTIONS, dryRun: true, autoApprove: true },
+      resolveKey: (name) => (name === 'ANTHROPIC_API_KEY' ? 'sk-ant-test' : undefined),
+    });
+    const output = new PassThrough();
+    let printed = '';
+    output.on('data', (chunk: Buffer) => (printed += chunk.toString()));
+    // Inject a fake AI facade so tier-3 inference runs without the network. Empty base
+    // images (as inferBuild returns) must be filled by the synthesizer.
+    ctx.ai = {
+      complete: () =>
+        Promise.resolve({
+          runtime: 'rust',
+          installCommands: ['cargo fetch'],
+          buildCommands: ['cargo build --release'],
+          startCommand: './target/release/app',
+          ports: [],
+          reasoning: ['Cargo.toml present', 'binary crate in src/main.rs'],
+        }),
+    };
+
+    await runPipeline(ctx, { output });
+
+    // The inferred stack proceeds to a plan with an open 'service' node.
+    const svc = ctx.plan?.services.find((s) => s.kind === 'service');
+    expect(svc?.source).toMatchObject({ type: 'build', recipeId: 'ai-rust' });
+    expect(lines.some((l) => l.includes('AI understanding') && l.includes('rust'))).toBe(true);
+    expect(lines.some((l) => l.includes('AI-inferred build recipe'))).toBe(true);
+    // The preview synthesizes its multi-stage Dockerfile, blank base images filled in.
+    expect(printed).toContain('cargo build --release');
+    expect(printed).toContain('FROM rust:1 AS builder');
   });
 
   it('lets an injected approvePlan hook replace the terminal gate entirely', async () => {

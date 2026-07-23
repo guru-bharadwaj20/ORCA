@@ -47,6 +47,35 @@ It is deliberately **narrow** — a small set of common stacks rather than anyth
 Anything outside this set is declined with a clear warning rather than guessed at — see
 [`docs/supported-stacks.md`](docs/supported-stacks.md).
 
+## Where ORCA is heading — Universal Repository Understanding
+
+The stacks above are the _deterministic-first_ core. The next evolution generalizes
+ORCA from a three-framework template system into a **generic repository-understanding
+engine**: give it any public repo, and it infers how to build, containerize, and run
+it — from manifests, repo files, CI pipelines, and (as a fallback) AI inference, with
+every inference carrying a confidence score and a reasoning trail.
+
+The full architecture and phased roadmap live in
+[`docs/universal-understanding-plan.md`](docs/universal-understanding-plan.md). The
+foundation and deterministic-detection layers have landed: an open, evidence-based
+detection model where **adding a framework is adding data, not editing an enum**.
+
+| Concept                  | What it is                                                                             | Status                 |
+| ------------------------ | -------------------------------------------------------------------------------------- | ---------------------- |
+| `Claim<T>` / `Evidence`  | Every detected fact carries computed confidence + a traceable reasoning trail          | ✅ Landed              |
+| `Detector` plugins       | Standalone `(ctx) → Claim[]` units, registered in a list, independently testable       | ✅ Landed              |
+| `BuildRecipe`            | The generic build/run model; 3 seed stacks + Go/Rust/JVM/.NET re-expressed as **data** | ✅ Landed              |
+| Deterministic detection  | 9 languages, framework signatures, monorepo topology, non-JS/Py manifest readers       | ✅ Landed              |
+| CI & repo understanding  | GitHub Actions + Makefile/Taskfile/justfile/scripts recovered into `insights`          | ✅ Landed              |
+| AI-assisted inference    | LLM fallback when deterministic tiers are thin, capped below determinism               | ✅ Landed (diagnostic) |
+| Generic Dockerfile synth | Multi-stage Dockerfiles synthesized from any matched/inferred recipe                   | ✅ Landed              |
+| Synthesizer → pipeline   | Route ecosystem/inferred recipes through generate + build (not just seed stacks)       | 📋 Next                |
+| Dynamic probing          | Observe real runtime behavior in an isolated sandbox                                   | 📋 Designed, deferred  |
+
+> ORCA stays **honest about uncertainty**: an unfamiliar repo yields a graded,
+> reviewable plan ("62% confident this is a Go/Gin service — here's why") rather than
+> a silent guess or a hard rejection.
+
 ## Install
 
 ```bash
