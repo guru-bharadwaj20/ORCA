@@ -31,7 +31,6 @@ export interface ServiceSpec {
     timeout: string;
     retries: number;
   };
-  command?: string;
 }
 
 export interface ComposeVars {
