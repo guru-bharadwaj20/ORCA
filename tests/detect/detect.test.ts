@@ -97,18 +97,22 @@ describe('detect stage', () => {
     expect(result.confidence).toBeGreaterThan(0.5);
   });
 
-  it('classifies a recognized-but-not-yet-containerizable stack (Rust) rather than dropping it', async () => {
-    // The Rust fixture: its language is now *classified* (Phase B), but the
-    // containerize path has no Rust framework component yet, so isSupported stays
-    // false and confidence stays 0 — honest about what ORCA can and cannot run.
+  it('supports a Rust repo via an ecosystem recipe (open-role containerization)', async () => {
+    // The Rust fixture matches the cargo recipe, so it's now containerizable as an
+    // open 'service' even without a seed frontend/backend: supported, non-zero
+    // confidence, and the ecosystem component surfaced for the plan to place.
     const result = await detectStack(fixture('unsupported-repo'));
 
     expect(result.languages).toEqual(['rust']);
-    expect(result.isSupported).toBe(false);
+    expect(result.isSupported).toBe(true);
     expect(result.frontend).toBeNull();
     expect(result.backend).toBeNull();
-    expect(result.confidence).toBe(0);
-    expect(result.warnings.some((w) => w.code === 'unsupported-stack')).toBe(true);
+    expect(result.confidence).toBeGreaterThan(0);
+    expect(result.insights.ecosystemComponents).toContainEqual({
+      rootDir: '.',
+      runtime: 'rust',
+      recipeId: 'rust-cargo',
+    });
   });
 
   it('flags a genuinely unrecognizable repo with no language and no evidence', async () => {

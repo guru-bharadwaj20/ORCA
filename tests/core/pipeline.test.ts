@@ -187,17 +187,31 @@ describe('runPipeline (walking skeleton)', () => {
   });
 
   it('throws UNSUPPORTED_STACK on a repo outside ORCA scope', async () => {
-    const { result } = startRun(
-      fixture('unsupported-repo'),
-      { dryRun: true, autoApprove: true },
-      null
-    );
+    // unknown-repo has no manifest at all — nothing matches a seed or ecosystem recipe.
+    const { result } = startRun(fixture('unknown-repo'), { dryRun: true, autoApprove: true }, null);
 
     await expect(result).rejects.toMatchObject({ code: 'UNSUPPORTED_STACK' });
   });
 
+  it('containerizes an ecosystem repo (Rust) end-to-end via a synthesized Dockerfile', async () => {
+    const { ctx, result, printed } = startRun(
+      fixture('unsupported-repo'), // Rust — now supported via the cargo recipe
+      { dryRun: true, autoApprove: true },
+      null
+    );
+    await result;
+
+    // Placed as an open 'service' node, not a seed frontend/backend.
+    const svc = ctx.plan?.services.find((s) => s.kind === 'service');
+    expect(svc).toBeDefined();
+    // The preview shows a synthesized multi-stage Dockerfile for it.
+    const out = printed();
+    expect(out).toContain('AS builder');
+    expect(out).toContain('cargo build --release');
+  });
+
   it('logs a graded AI understanding before rejecting an unsupported repo (with a key)', async () => {
-    const repoDir = fixture('unsupported-repo'); // the Rust fixture — not containerizable yet
+    const repoDir = fixture('unknown-repo'); // no manifest → genuinely unsupported
     const { logger, lines } = collectLogger();
     const ctx = createRunContext({
       repoUrl: repoDir,

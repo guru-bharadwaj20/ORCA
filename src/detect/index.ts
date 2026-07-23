@@ -250,7 +250,13 @@ export async function detectStack(repoPath: string): Promise<DetectionResult> {
     if (pm !== 'unknown' && !packageManagers.includes(pm)) packageManagers.push(pm);
   }
 
-  const isSupported = frontend !== null || backend !== null;
+  // Insights (incl. matched ecosystem components) are gathered before the support
+  // decision, because a placeable ecosystem component (Go/Rust/JVM/.NET with a matched
+  // recipe) makes a repo containerizable even without a seed frontend/backend.
+  const insights = await gatherInsights(repoPath, roots, monorepo);
+  const hasEcosystem = insights.ecosystemComponents.length > 0;
+
+  const isSupported = frontend !== null || backend !== null || hasEcosystem;
   if (!isSupported) {
     warnings.push({
       code: 'unsupported-stack',
@@ -262,7 +268,6 @@ export async function detectStack(repoPath: string): Promise<DetectionResult> {
     });
   }
 
-  const insights = await gatherInsights(repoPath, roots, monorepo);
   const evidence = confidenceEvidence(frontend, backend, databases, insights);
 
   return {
@@ -460,10 +465,17 @@ function confidenceEvidence(
   if (backend?.entrypoint) {
     evidence.push({ detector: 'index', signal: 'backend entrypoint resolved', weight: 0.25 });
   }
+  for (const eco of insights.ecosystemComponents) {
+    evidence.push({
+      detector: 'recipe',
+      signal: `ecosystem component matched (${eco.runtime} → ${eco.recipeId})`,
+      weight: 0.55,
+    });
+  }
   // CI corroboration only *reinforces* an already-detected stack (the maintainer's own
   // build recipe agreeing with detection); it never manufactures confidence on its own,
   // so a repo with CI but no recognized component still scores 0.
-  const hasStack = frontend !== null || backend !== null;
+  const hasStack = frontend !== null || backend !== null || insights.ecosystemComponents.length > 0;
   const ciBuildSignals = insights.ciCommands.filter(
     (c) => c.kind === 'build' || c.kind === 'start'
   );
