@@ -1,0 +1,60 @@
+version: 2.1
+
+orbs:
+  node: circleci/node@5.2.0
+
+# The real work lives here, one level of indirection away from every job below.
+commands:
+  install-deps:
+    description: Install dependencies with the requested package manager.
+    parameters:
+      pkg-manager:
+        type: string
+        default: npm
+    steps:
+      - run:
+          name: Install dependencies
+          command: << parameters.pkg-manager >> ci
+
+  # A command that invokes another command, forwarding a parameter of its own to it.
+  build-app:
+    parameters:
+      mode:
+        type: string
+        default: production
+      pkg-manager:
+        type: string
+        default: npm
+    steps:
+      - install-deps:
+          pkg-manager: << parameters.pkg-manager >>
+      - run: npm run build -- --mode << parameters.mode >>
+
+jobs:
+  build:
+    docker:
+      - image: cimg/node:20.10
+    steps:
+      - checkout
+      # An orb command: it cannot be resolved from this file, so it must be skipped
+      # cleanly rather than throwing or emitting an empty entry.
+      - node/install-packages
+      - build-app
+      - run: npm test
+
+  deploy:
+    docker:
+      - image: cimg/node:20.10
+    steps:
+      - checkout
+      - build-app:
+          mode: staging
+      - run: npm start
+
+workflows:
+  main:
+    jobs:
+      - build
+      - deploy:
+          requires:
+            - build
