@@ -1,0 +1,7 @@
+trigger:
+  - main
+
+jobs:
+  - template: templates/build-job.yml
+    parameters:
+      image: 'myregistry.io:5000/weird"app:1.0'

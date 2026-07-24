@@ -1,0 +1,4 @@
+- job: Build
+  container: ${{ parameters.image }}
+  steps:
+    - script: npm ci

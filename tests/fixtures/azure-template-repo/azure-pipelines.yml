@@ -1,0 +1,7 @@
+trigger:
+  - main
+
+jobs:
+  - template: templates/build-job.yml
+    parameters:
+      imageTag: '20'

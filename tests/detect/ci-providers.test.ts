@@ -305,3 +305,34 @@ describe('analyzeGitlabCi: include: resolution', () => {
     expect(config.jobs[0]).toMatchObject({ name: 'build', image: 'node:20' });
   });
 });
+
+describe('analyzeAzurePipelines: template: resolution', () => {
+  it('merges a one-level job template with parameters: substitution', async () => {
+    const analysis = await analyzeAzurePipelines(fixture('azure-template-repo'));
+    const config = analysis.configs[0]!;
+
+    expect(config.jobs).toHaveLength(1);
+    // The template's `container: node:${{ parameters.imageTag }}` becomes `node:20` -
+    // literal substitution, not JSON-escaped (which would produce the wrong node:"20").
+    expect(config.jobs[0]).toMatchObject({ name: 'Build', image: 'node:20' });
+    expect(analysis.runtimeVersions).toContainEqual({ runtime: 'node', version: '20' });
+  });
+
+  it('substitutes a parameter value containing a colon and a quote without corrupting the YAML', async () => {
+    const analysis = await analyzeAzurePipelines(fixture('azure-template-params-repo'));
+    const config = analysis.configs[0]!;
+
+    expect(config.jobs).toHaveLength(1);
+    // Exact round-trip: the colon and embedded quote both survive intact, and the YAML
+    // still parses (not a crash, not a truncated/garbled value).
+    expect(config.jobs[0]?.image).toBe('myregistry.io:5000/weird"app:1.0');
+  });
+
+  it('catches a circular template (a -> b -> a) without hanging or crashing', async () => {
+    const analysis = await analyzeAzurePipelines(fixture('azure-circular-template-repo'));
+    expect(analysis.found).toBe(true);
+    // Both templates are pure template-refs with no real job content, and the cycle is
+    // refused - nothing resolves, but nothing hangs or throws either.
+    expect(analysis.configs[0]?.jobs).toEqual([]);
+  });
+});
