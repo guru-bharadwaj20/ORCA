@@ -1,0 +1,40 @@
+version: 2.1
+
+jobs:
+  lint:
+    docker:
+      - image: cimg/node:20.10
+    steps:
+      - run: npm run lint
+  unit:
+    docker:
+      - image: cimg/node:20.10
+    steps:
+      - run: npm test
+  package:
+    docker:
+      - image: cimg/node:20.10
+    steps:
+      - run: npm run build
+  publish:
+    docker:
+      - image: cimg/node:20.10
+    steps:
+      - run: npm run release
+
+workflows:
+  # `package` is declared LAST among the three but must be ordered after lint and unit,
+  # which is what distinguishes dependency order from declaration order.
+  verify:
+    jobs:
+      - lint
+      - unit
+      - package:
+          requires:
+            - lint
+            - unit
+
+  # A second workflow must stay its own sequence, not merge into the first.
+  nightly:
+    jobs:
+      - publish
