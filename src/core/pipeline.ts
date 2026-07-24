@@ -51,6 +51,7 @@ import {
 } from '../clone/workspace.js';
 import { ENV_KEYS, type KeyResolver } from '../config/settings.js';
 import { inferBuild, type InferenceInput } from '../detect/aiInference.js';
+import { detectComponentRole } from '../detect/componentRole.js';
 import { runtimeFromBaseImage } from '../detect/dockerfile.js';
 import { detectStack } from '../detect/index.js';
 import type { DetectedComponent, DetectionResult } from '../detect/types.js';
@@ -85,7 +86,16 @@ export interface PipelineIO extends ReviewIO {
   approvePlan?: (plan: ServicePlan) => Promise<ReviewOutcome>;
 }
 
-/** The component roles the pipeline fills and renders, in plan order. */
+/**
+ * The component roles the pipeline fills and renders, in plan order.
+ *
+ * NOTE: this local `ComponentRole` deliberately SHADOWS the one in `detect/types.ts` and
+ * is a strictly narrower thing — the two seed-stack slots on `DetectionResult`
+ * (`.frontend` / `.backend`) that get an AI template fill and a rendered Dockerfile. It
+ * is not the open role vocabulary (§2.3): worker/cli/library/job components never come
+ * through here, they ride on `insights.ecosystemComponents` and are placed as open
+ * `'service'` nodes. Widening the shared type must not widen this list.
+ */
 const COMPONENT_ROLES = ['backend', 'frontend'] as const;
 type ComponentRole = (typeof COMPONENT_ROLES)[number];
 
@@ -120,7 +130,7 @@ async function readReadme(repoDir: string): Promise<string> {
  * root's basename (or "app" at the repo root); unknown recipe ids are skipped. The
  * `DetectedComponent` is minimal by design — synthesis needs only the root + recipe.
  */
-function ecosystemComponentsFrom(detection: DetectionResult): EcosystemComponent[] {
+async function ecosystemComponentsFrom(detection: DetectionResult): Promise<EcosystemComponent[]> {
   const result: EcosystemComponent[] = [];
   for (const eco of detection.insights.ecosystemComponents) {
     const recipe = ALL_RECIPES.find((e) => e.recipe.id === eco.recipeId)?.recipe;
@@ -130,7 +140,10 @@ function ecosystemComponentsFrom(detection: DetectionResult): EcosystemComponent
       id,
       recipe,
       component: {
-        role: 'backend',
+        // Detection's role, not a hardcoded 'backend' — this is what lets a worker/CLI
+        // reach the plan without a published port (§2.3). Components detection could not
+        // reclassify still arrive as 'backend', so existing repos are unaffected.
+        role: eco.role,
         rootDir: eco.rootDir,
         language: 'unknown',
         packageManager: 'unknown',
@@ -148,6 +161,20 @@ function ecosystemComponentsFrom(detection: DetectionResult): EcosystemComponent
           dockerfile.rootDir === '.' ? dockerfile.file : `${dockerfile.rootDir}-${dockerfile.file}`
         ) || 'app';
       const runtime = runtimeFromBaseImage(dockerfile.baseImage);
+      // Role detection for the Dockerfile-derived path. This is the route a Node CLI
+      // package takes (a `bin` package with no react/express never becomes an ecosystem
+      // component), so without it `cli` would be unreachable. A Dockerfile that EXPOSEs
+      // a port declares a listener, which the master gate honors — so only a genuinely
+      // portless image can be reclassified here.
+      const absDir =
+        dockerfile.rootDir === '.'
+          ? detection.repoPath
+          : join(detection.repoPath, dockerfile.rootDir);
+      const detectedRole = await detectComponentRole(absDir, {
+        dependencies: [],
+        declaredPorts: dockerfile.exposedPorts,
+        startCommand: dockerfile.startCommand,
+      });
       result.push({
         id,
         recipe: {
@@ -163,7 +190,7 @@ function ecosystemComponentsFrom(detection: DetectionResult): EcosystemComponent
           baseImages: { build: dockerfile.baseImage, runtime: dockerfile.baseImage },
         },
         component: {
-          role: 'backend',
+          role: detectedRole?.role ?? 'backend',
           rootDir: dockerfile.rootDir,
           language: 'unknown',
           packageManager: 'unknown',
@@ -339,6 +366,18 @@ function logInsights(insights: DetectionResult['insights'], logger: Logger): voi
     const shown = buildTasks.map((t) => `${t.source}:${t.name}`).join(', ');
     logger.info(`Maintainer tasks available: ${shown}.`);
   }
+  const declared = insights.scriptSources.flatMap((s) =>
+    s.commands
+      .filter((c) => c.kind === 'build' || c.kind === 'start')
+      .map((c) => `${s.file}: ${c.command}`)
+  );
+  if (declared.length > 0) {
+    logger.info(`README/scripts declare: ${declared.join(' | ')}.`);
+  }
+  const declaredPorts = [...new Set(insights.scriptSources.flatMap((s) => s.ports))];
+  if (declaredPorts.length > 0) {
+    logger.info(`README/scripts mention port(s): ${declaredPorts.join(', ')}.`);
+  }
 }
 
 /** README + a couple of high-value manifest snippets to ground AI build inference. */
@@ -494,7 +533,7 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
     // are placed as open 'service' nodes alongside the seed frontend/backend.
     signal?.throwIfAborted();
     const ecosystem = [
-      ...ecosystemComponentsFrom(detection),
+      ...(await ecosystemComponentsFrom(detection)),
       ...(inferredComponent !== null ? [inferredComponent] : []),
     ];
     ctx.plan = buildServicePlan(detection, filled, inferred, ecosystem);

@@ -57,6 +57,7 @@ describe('PHP/Ruby detect + synthesize goldens', () => {
         rootDir: '.',
         runtime,
         recipeId,
+        role: 'backend',
       });
 
       const recipe = ALL_RECIPES.find((e) => e.recipe.id === recipeId)?.recipe;

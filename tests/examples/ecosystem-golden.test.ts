@@ -120,6 +120,7 @@ describe('ecosystem examples detect end-to-end', () => {
         rootDir: '.',
         runtime,
         recipeId,
+        role: 'backend',
       });
     });
   }

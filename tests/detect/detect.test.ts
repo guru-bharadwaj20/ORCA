@@ -105,6 +105,8 @@ describe('detect stage', () => {
       rootDir: '.',
       runtime: 'rust',
       recipeId: 'rust-cargo',
+      // A web-shaped ecosystem repo stays a backend — role widening reclassifies nothing.
+      role: 'backend',
     });
   });
 
@@ -122,6 +124,7 @@ describe('detect stage', () => {
       rootDir: '.',
       runtime: 'python',
       recipeId: 'python-fastapi',
+      role: 'backend',
     });
     // The Postgres dependency is still detected — it wires into the service's plan node.
     expect(result.databases).toEqual([
@@ -139,6 +142,7 @@ describe('detect stage', () => {
       rootDir: '.',
       runtime: 'dotnet',
       recipeId: 'dotnet-sdk',
+      role: 'backend',
     });
   });
 
