@@ -137,18 +137,53 @@ function fromScripts(insights: RepoInsights): RecoveredCommand[] {
   return out;
 }
 
-/** Commands of one kind, in source-priority order, deduplicated by command text. */
+/**
+ * Commands that describe CI/CD INFRASTRUCTURE rather than how the application is built.
+ *
+ * This filter is not optional polish — without it the feature is actively harmful. A CI
+ * file's most common "build" step is `docker build -t app .`, which `classifyCommand`
+ * quite correctly labels `build`: it just isn't a build of the *app*, it is a build of
+ * the container ORCA is already building. Copying it into the generated Dockerfile emits
+ * `RUN docker build …` inside the image, which cannot work — there is no Docker CLI or
+ * daemon in there. The same goes for deployment tooling: `kubectl`, `helm`, `terraform`,
+ * and cloud CLIs act on infrastructure, never on the artifact.
+ */
+const INFRA_COMMAND =
+  /^(?:sudo\s+)?(?:docker|docker-compose|kubectl|helm|terraform|aws|gcloud|az|heroku|flyctl|vercel|netlify|serverless|gh|git)\b/i;
+
+/**
+ * References to variables only the CI runner defines — GitLab `$CI_*`, GitHub
+ * `${{ … }}`, Azure `$(Build.*)`/`$(System.*)`. A command carrying one is meaningless
+ * outside its runner: copied into a Dockerfile the token either expands to empty or is
+ * taken literally, so the command silently does the wrong thing.
+ */
+const CI_ONLY_VARIABLE = /\$\{\{|\$CI_|\$\{CI_|\$GITHUB_|\$\{GITHUB_|\$\(Build\.|\$\(System\./;
+
+/** True when a command is about the app itself, not the pipeline that ships it. */
+function isAppCommand(command: string): boolean {
+  return !INFRA_COMMAND.test(command.trim()) && !CI_ONLY_VARIABLE.test(command);
+}
+
+/**
+ * Commands of one kind from the HIGHEST-PRIORITY family that declares any, deduplicated.
+ *
+ * Exclusive by family on purpose. CI, a Makefile, and a README are alternative
+ * expressions of the same intent, not stages of one pipeline — a repo whose CI runs
+ * `go build ./cmd/api` and whose Makefile runs `make build` needs one of them, not both
+ * concatenated into the image.
+ */
 function ofKind(commands: readonly RecoveredCommand[], kind: string): RecoveredCommand[] {
-  const picked: RecoveredCommand[] = [];
-  const seen = new Set<string>();
   for (const source of SOURCE_PRIORITY) {
+    const picked: RecoveredCommand[] = [];
+    const seen = new Set<string>();
     for (const c of commands) {
       if (c.source !== source || c.kind !== kind || seen.has(c.command)) continue;
       seen.add(c.command);
       picked.push(c);
     }
+    if (picked.length > 0) return picked;
   }
-  return picked;
+  return [];
 }
 
 /**
@@ -159,7 +194,9 @@ function ofKind(commands: readonly RecoveredCommand[], kind: string): RecoveredC
  * producing an empty recovery that callers must special-case.
  */
 export function recoverBuild(insights: RepoInsights): Claim<RecoveredBuild> | null {
-  const commands = [...fromCi(insights), ...fromTasks(insights), ...fromScripts(insights)];
+  const commands = [...fromCi(insights), ...fromTasks(insights), ...fromScripts(insights)].filter(
+    (c) => isAppCommand(c.command)
+  );
   if (commands.length === 0) return null;
 
   const installs = ofKind(commands, 'install');
@@ -169,15 +206,25 @@ export function recoverBuild(insights: RepoInsights): Claim<RecoveredBuild> | nu
   // Nothing that changes how the repo is built — `test`/`other` alone is not a recovery.
   if (installs.length === 0 && builds.length === 0 && starts.length === 0) return null;
 
-  const actionable = [...installs, ...builds, ...starts];
-  const origins = [...new Set(actionable.map((c) => c.origin))];
+  // Two different sets, and the distinction matters:
+  //   `selected`  — the commands actually used, exclusive by family (§ `ofKind`).
+  //   `declaring` — every family that declared an actionable command at all.
+  // Provenance comes from `selected` (cite what we run), but CONFIDENCE comes from
+  // `declaring`: a repo whose CI, Makefile, and README all describe the same build is
+  // better understood than one with only a README, and §4 makes cross-source agreement
+  // the strongest signal there is. Scoring only the winner would throw that away.
+  const selected = [...installs, ...builds, ...starts];
+  const declaring = commands.filter(
+    (c) => c.kind === 'install' || c.kind === 'build' || c.kind === 'start'
+  );
+  const origins = [...new Set(selected.map((c) => c.origin))];
 
   // One evidence entry per contributing family, weighted as that family already is, so
   // independent sources agreeing raises confidence exactly like any other cross-tier
   // agreement (§4) rather than through a bespoke rule.
   const evidence: Evidence[] = [];
   for (const source of SOURCE_PRIORITY) {
-    const mine = actionable.filter((c) => c.source === source);
+    const mine = declaring.filter((c) => c.source === source);
     if (mine.length === 0) continue;
     const cited = [...new Set(mine.map((c) => c.origin))].join(', ');
     evidence.push({
@@ -191,14 +238,14 @@ export function recoverBuild(insights: RepoInsights): Claim<RecoveredBuild> | nu
     installCommands: installs.map((c) => c.command),
     buildCommands: builds.map((c) => c.command),
     startCommand: starts[0]?.command ?? null,
-    image: actionable.find((c) => c.image !== undefined)?.image ?? null,
-    commands: actionable,
+    image: selected.find((c) => c.image !== undefined)?.image ?? null,
+    commands: selected,
     origins,
   };
 
   // `'ci'` whenever CI contributed — it is the strongest family and the one the
   // `ClaimSource` taxonomy already names; otherwise this is ordinary static analysis.
-  const source = actionable.some((c) => c.source === 'ci') ? 'ci' : 'deterministic';
+  const source = declaring.some((c) => c.source === 'ci') ? 'ci' : 'deterministic';
   return claim(value, evidence, source);
 }
 
@@ -217,10 +264,15 @@ export interface RecipeWithProvenance {
  *   1. A **Dockerfile-derived** recipe is never touched. That recipe already *is* the
  *      repo's own declared build, read from a tier-1 source; CI is tier 2 and must not
  *      second-guess it. Callers signal this with `fromDockerfile`.
- *   2. Otherwise, recovered `buildCommands` / `startCommand` REPLACE the recipe's
- *      defaults, satisfying §5 Phase C ("ORCA prefers the repo's own declared commands
- *      over recipe defaults"). A registry recipe's start command is a sensible guess;
- *      a command the maintainer actually runs in CI is a fact.
+ *   2. `buildCommands` and `startCommand` move as an ATOMIC PAIR, or not at all. They
+ *      are coupled: the build produces the artifact the start command runs. Taking CI's
+ *      `go build ./...` while keeping the recipe's `CMD /app/server` yields an image that
+ *      builds fine and then dies at runtime, because `go build ./...` writes no binary to
+ *      that path. So the pair is replaced only when recovery supplies BOTH halves;
+ *      when it supplies one, that half is used only to fill a gap the recipe left empty.
+ *      Within that rule, recovered commands still win over recipe defaults (§5 Phase C) —
+ *      a registry recipe's commands are a sensible guess, a command the maintainer
+ *      actually runs is a fact.
  *   3. `installCommands` are only FILLED IN, never replaced. A recipe's install step is
  *      tied to its base image and lockfile handling (`npm ci` needs a lockfile in the
  *      image, `uv sync` needs uv installed); a CI runner's install assumes a prepared
@@ -245,18 +297,28 @@ export function applyRecoveredBuild(
   const origins = new Set<string>();
   const next: BuildRecipe = { ...recipe };
 
-  if (recovered.buildCommands.length > 0) {
-    next.buildCommands = [...recovered.buildCommands];
-    for (const c of recovered.buildCommands) {
-      const origin = originOf(c);
-      if (origin !== undefined) origins.add(origin);
-    }
-  }
-
-  if (recovered.startCommand !== null) {
-    next.startCommand = recovered.startCommand;
-    const origin = originOf(recovered.startCommand);
+  const take = (command: string): void => {
+    const origin = originOf(command);
     if (origin !== undefined) origins.add(origin);
+  };
+
+  // The coupled pair. Both halves recovered → replace both, so build and start stay
+  // consistent with each other. Only one half → fill the recipe's gap if it has one,
+  // otherwise leave its coherent pair alone (see rule 2 above).
+  const hasBuild = recovered.buildCommands.length > 0;
+  const hasStart = recovered.startCommand !== null;
+
+  if (hasBuild && hasStart) {
+    next.buildCommands = [...recovered.buildCommands];
+    next.startCommand = recovered.startCommand as string;
+    for (const c of recovered.buildCommands) take(c);
+    take(recovered.startCommand as string);
+  } else if (hasBuild && (recipe.buildCommands?.length ?? 0) === 0) {
+    next.buildCommands = [...recovered.buildCommands];
+    for (const c of recovered.buildCommands) take(c);
+  } else if (hasStart && recipe.startCommand.trim() === '') {
+    next.startCommand = recovered.startCommand as string;
+    take(recovered.startCommand as string);
   }
 
   if (recipe.installCommands.length === 0 && recovered.installCommands.length > 0) {
