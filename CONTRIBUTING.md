@@ -93,8 +93,8 @@ item someone is **actively working on** shows **that person's** colour instead.
 |  🟢  | Cargo dependency subtables       | `readRustDependencies` now reads `[dependencies.<name>]` subtables (features / git / path / optional deps) and target-specific tables — crates declared this way were previously dropped entirely                              |
 |  🟢  | Route Node frameworks to recipes | `node-next`/`nest`/`angular`/`vite` recipes exist but are unreachable: a Next.js repo detects as seed `react`, never routing to `node-next`. Needs the seed/ecosystem boundary to defer to a framework recipe when one matches |
 |  🟢   | Symfony-aware PHP recipe         | Symfony repos fall to the generic `php-composer` recipe; its `public/` front controller works but a dedicated recipe could run `symfony server` and detect the framework as an insight (parallel to Laravel)                   |
-|  🟠  | Multi-port service plan wiring   | `detectPorts` now surfaces every EXPOSE'd port, but the plan/compose layer still publishes the first — thread the extra ports through to `ServiceSpec.ports`                                                                   |
-|  🔴  | Probing implementation           | Phase G execution behind the existing seam — deferred by design decision #2                                                                                                                                                    |
+|  🟢  | Multi-port service plan wiring   | `detectPorts` now surfaces every EXPOSE'd port, but the plan/compose layer still publishes the first — thread the extra ports through to `ServiceSpec.ports`                                                                   |
+|  🟠  | Probing implementation           | Phase G execution behind the existing seam — deferred by design decision #2                                                                                                                                                    |
 
 **When you start on a red item, change its stub to your colour; when you finish, make it
 green.**
