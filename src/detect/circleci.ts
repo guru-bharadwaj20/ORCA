@@ -14,7 +14,12 @@ import { join } from 'node:path';
 
 import { parse as parseYaml } from 'yaml';
 
-import { classifyCommand, type CiCommand } from './ci.js';
+import {
+  classifyCommand,
+  parseRuntimeFromImage,
+  type CiCommand,
+  type CiRuntimeVersion,
+} from './ci.js';
 import { readFileIfExists } from '../utils/fs.js';
 
 /** A job recovered from a CircleCI config. */
@@ -37,6 +42,8 @@ export interface CircleCiConfig {
 export interface CircleCiAnalysis {
   found: boolean;
   configs: CircleCiConfig[];
+  /** Runtime versions recovered from every job's docker/executor image, deduped across configs. */
+  runtimeVersions: CiRuntimeVersion[];
 }
 
 async function configFiles(repoPath: string): Promise<string[]> {
@@ -137,5 +144,19 @@ export async function analyzeCircleCi(repoPath: string): Promise<CircleCiAnalysi
     configs.push({ file, ...parsed });
   }
 
-  return { found: configs.length > 0, configs };
+  const runtimeVersions: CiRuntimeVersion[] = [];
+  const seenVer = new Set<string>();
+  for (const config of configs) {
+    for (const job of config.jobs) {
+      if (job.image === null) continue;
+      const parsed = parseRuntimeFromImage(job.image);
+      if (parsed === null) continue;
+      const key = `${parsed.runtime}:${parsed.version}`;
+      if (seenVer.has(key)) continue;
+      seenVer.add(key);
+      runtimeVersions.push(parsed);
+    }
+  }
+
+  return { found: configs.length > 0, configs, runtimeVersions };
 }
