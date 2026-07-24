@@ -20,6 +20,7 @@ import { OrcaError } from '../utils/errors.js';
 import { analyzeAzurePipelines } from './azurePipelines.js';
 import { analyzeCi } from './ci.js';
 import { analyzeCircleCi } from './circleci.js';
+import { detectComponentRole } from './componentRole.js';
 import { analyzeDockerfiles, runtimeFromBaseImage } from './dockerfile.js';
 import { analyzeGitlabCi } from './gitlabCi.js';
 import { defaultDetectorRegistry } from './detectors/index.js';
@@ -518,12 +519,31 @@ async function gatherInsights(
     if (runtime !== 'unknown') runtimeSet.add(runtime);
   }
 
-  const [ci, gitlabCi, azurePipelines, circleCi] = await Promise.all([
+  const [readme, shellScripts, ci, gitlabCi, azurePipelines, circleCi] = await Promise.all([
+    analyzeReadme(repoPath),
+    analyzeShellScripts(repoPath),
     analyzeCi(repoPath),
     analyzeGitlabCi(repoPath),
     analyzeAzurePipelines(repoPath),
     analyzeCircleCi(repoPath),
   ]);
+  const scriptSources: RepoInsights['scriptSources'] = [];
+  if (readme.found) {
+    scriptSources.push({
+      source: 'readme',
+      file: readme.file,
+      commands: readme.commands,
+      ports: readme.ports,
+    });
+  }
+  for (const script of shellScripts.scripts) {
+    scriptSources.push({
+      source: 'shell-script',
+      file: script.file,
+      commands: script.commands,
+      ports: script.ports,
+    });
+  }
   const ciProviders: RepoInsights['ciProviders'] = [
     ...gitlabCi.configs.map((c) => ({ provider: 'gitlab' as const, ...c })),
     ...azurePipelines.configs.map((c) => ({ provider: 'azure' as const, ...c })),
@@ -539,6 +559,7 @@ async function gatherInsights(
     ciProviders,
     dockerfiles,
     taskCommands,
+    scriptSources,
     ecosystemComponents,
   };
 }
