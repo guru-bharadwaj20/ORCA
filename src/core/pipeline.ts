@@ -51,6 +51,7 @@ import {
 } from '../clone/workspace.js';
 import { ENV_KEYS, type KeyResolver } from '../config/settings.js';
 import { inferBuild, type InferenceInput } from '../detect/aiInference.js';
+import { applyRecoveredBuild } from '../detect/buildRecovery.js';
 import { detectComponentRole } from '../detect/componentRole.js';
 import { runtimeFromBaseImage } from '../detect/dockerfile.js';
 import { detectStack } from '../detect/index.js';
@@ -133,12 +134,17 @@ async function readReadme(repoDir: string): Promise<string> {
 async function ecosystemComponentsFrom(detection: DetectionResult): Promise<EcosystemComponent[]> {
   const result: EcosystemComponent[] = [];
   for (const eco of detection.insights.ecosystemComponents) {
-    const recipe = ALL_RECIPES.find((e) => e.recipe.id === eco.recipeId)?.recipe;
-    if (recipe === undefined) continue;
+    const matched = ALL_RECIPES.find((e) => e.recipe.id === eco.recipeId)?.recipe;
+    if (matched === undefined) continue;
     const id = eco.rootDir === '.' ? 'app' : (eco.rootDir.split('/').pop() ?? 'app');
+    // The repo's own declared commands (CI job / Makefile target / README block) win over
+    // the registry recipe's defaults — §5 Phase C. Install commands are only filled in,
+    // never replaced; see `applyRecoveredBuild` for the full precedence rules.
+    const { recipe, origins } = applyRecoveredBuild(matched, detection.insights.recoveredBuild);
     result.push({
       id,
       recipe,
+      ...(origins.length > 0 ? { commandOrigins: origins } : {}),
       component: {
         // Detection's role, not a hardcoded 'backend' — this is what lets a worker/CLI
         // reach the plan without a published port (§2.3). Components detection could not
@@ -175,6 +181,9 @@ async function ecosystemComponentsFrom(detection: DetectionResult): Promise<Ecos
         declaredPorts: dockerfile.exposedPorts,
         startCommand: dockerfile.startCommand,
       });
+      // NOTE: no `applyRecoveredBuild` here on purpose. A Dockerfile-derived recipe IS
+      // the repo's own declared build, read from a tier-1 source; letting tier-2 CI
+      // overwrite it would be a downgrade.
       result.push({
         id,
         recipe: {
@@ -378,6 +387,15 @@ function logInsights(insights: DetectionResult['insights'], logger: Logger): voi
   if (declaredPorts.length > 0) {
     logger.info(`README/scripts mention port(s): ${declaredPorts.join(', ')}.`);
   }
+  const recovered = insights.recoveredBuild;
+  if (recovered !== null) {
+    const pct = Math.round(recovered.confidence * 100);
+    logger.info(`Recovered the build from the repo's own declarations (${pct}% confident).`, {
+      build: recovered.buildCommands.join(' && ') || 'none',
+      start: recovered.startCommand ?? 'none',
+      from: recovered.origins.join(', '),
+    });
+  }
 }
 
 /** README + a couple of high-value manifest snippets to ground AI build inference. */
@@ -415,9 +433,17 @@ async function inferEcosystemComponent(ctx: RunContext): Promise<EcosystemCompon
         `run \`${inferred.value.startCommand}\`.`
     );
     ctx.logger.info(`AI reasoning: ${reasoning(inferred).join('; ')}.`);
+    // An AI-inferred recipe is the weakest thing in the system, so anything the repo
+    // actually declares outranks it — including the CI image, which fills the blank base
+    // image `inferBuild` returns.
+    const { recipe, origins } = applyRecoveredBuild(
+      inferred.value,
+      ctx.detection?.insights.recoveredBuild ?? null
+    );
     return {
       id: 'app',
-      recipe: inferred.value,
+      recipe,
+      ...(origins.length > 0 ? { commandOrigins: origins } : {}),
       component: {
         role: 'backend',
         rootDir: '.',

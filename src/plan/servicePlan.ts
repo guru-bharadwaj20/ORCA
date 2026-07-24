@@ -168,7 +168,8 @@ function componentVolumes(
 export function ecosystemServiceNode(
   id: string,
   component: DetectedComponent,
-  recipe: BuildRecipe
+  recipe: BuildRecipe,
+  commandOrigins: readonly string[] = []
 ): ServiceNode {
   // Only a listening role publishes a port. Every shipped ecosystem recipe carries
   // `defaultPorts: [8080]` because it was written for web services, so a worker/CLI/job
@@ -188,6 +189,9 @@ export function ecosystemServiceNode(
       dockerfile: 'Dockerfile',
       recipeId: recipe.id,
       recipe,
+      // Provenance travels with the node so the review gate and the diagnosis log can
+      // say which file a command came from, not just what it is.
+      ...(commandOrigins.length > 0 ? { commandOrigins: [...commandOrigins] } : {}),
     },
     ports: ports.map((port) => ({ host: port, container: port, protocol: 'tcp' })),
     environment: {},
@@ -217,6 +221,12 @@ export interface EcosystemComponent {
   id: string;
   component: DetectedComponent;
   recipe: BuildRecipe;
+  /**
+   * Origins of any commands recovered from the repo's own declarations (CI job, Makefile
+   * target, README block) and overlaid onto `recipe`. Empty/absent when the recipe's own
+   * defaults were used unchanged.
+   */
+  commandOrigins?: string[];
 }
 
 /** Assemble ServiceNodes for frontend/backend/databases and wire dependency edges. */
@@ -311,7 +321,7 @@ export function buildServicePlan(
   }));
   for (const eco of ecosystem) {
     if (nodes.some((n) => n.id === eco.id)) continue;
-    const node = ecosystemServiceNode(eco.id, eco.component, eco.recipe);
+    const node = ecosystemServiceNode(eco.id, eco.component, eco.recipe, eco.commandOrigins ?? []);
     Object.assign(node.environment, dbEnv);
     node.dependsOn = [...node.dependsOn, ...dbDeps];
     nodes.push(node);
