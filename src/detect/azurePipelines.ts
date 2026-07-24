@@ -64,17 +64,22 @@ function isTemplateRef(entry: unknown): entry is TemplateRef {
 
 /**
  * Literal `${{ parameters.name }}` substitution on the template file's raw YAML text,
- * before parsing — the simplest correct way to handle a parameter landing anywhere (an
- * image tag, a pool name, inside an already-quoted string). The replacement is
- * `JSON.stringify`d (not spliced in bare) so a value containing a colon, quote, or
- * backslash still produces valid YAML — a JSON string literal is also a valid YAML
- * double-quoted scalar. Azure's expression language (`${{ if }}`, `${{ each }}`) is out
- * of scope; an un-substituted expression is simply left as-is.
+ * before parsing — the simplest way to handle a parameter landing anywhere (an image
+ * tag, a pool name), and the only approach that works for the common "prefix + parameter"
+ * idiom (`container: node:${{ parameters.imageTag }}`): quoting/escaping the replacement
+ * would corrupt that case (`node:"20"` is not `node:20`), since the parameter is only
+ * part of the value, not the whole scalar. A value containing YAML-hostile characters
+ * (a colon followed by a space, a leading quote) can still produce invalid YAML after
+ * substitution — that's an accepted best-effort limitation, not silently "fixed": the
+ * caller's `parseYaml` try/catch already turns a resulting parse failure into a graceful
+ * skip (that template's jobs are dropped, nothing crashes, nothing else is corrupted).
+ * Azure's expression language (`${{ if }}`, `${{ each }}`) is out of scope; an
+ * un-substituted expression is simply left as-is.
  */
 function substituteParameters(text: string, parameters: Record<string, unknown>): string {
   return text.replace(/\$\{\{\s*parameters\.(\w+)\s*\}\}/g, (match, name: string) => {
     const value = parameters[name];
-    return value === undefined ? match : JSON.stringify(String(value));
+    return value === undefined ? match : String(value);
   });
 }
 
