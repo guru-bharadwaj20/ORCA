@@ -129,6 +129,80 @@ describe('detect stage', () => {
     ]);
   });
 
+  describe('Node framework recipes take priority over the seed react/express match', () => {
+    // Next.js/NestJS declare react/express themselves, so a naive seed match would
+    // misdetect them; Angular/non-React Vite previously matched nothing at all. Each
+    // must resolve through the more specific recipe at the full detectStack level, not
+    // just when the registry is queried directly (that layer was already correct).
+
+    it('routes a Next.js repo to node-next, not the seed react match', async () => {
+      const result = await detectStack(fixture('nextjs-repo'));
+
+      expect(result.isSupported).toBe(true);
+      expect(result.frontend).toBeNull();
+      expect(result.backend).toBeNull();
+      expect(result.insights.ecosystemComponents).toContainEqual({
+        rootDir: '.',
+        runtime: 'node',
+        recipeId: 'node-next',
+      });
+    });
+
+    it('routes a NestJS repo to node-nest, not the seed express match', async () => {
+      const result = await detectStack(fixture('nestjs-repo'));
+
+      expect(result.isSupported).toBe(true);
+      expect(result.frontend).toBeNull();
+      expect(result.backend).toBeNull();
+      expect(result.insights.ecosystemComponents).toContainEqual({
+        rootDir: '.',
+        runtime: 'node',
+        recipeId: 'node-nest',
+      });
+    });
+
+    it('routes an Angular repo to node-angular (previously unmatched)', async () => {
+      const result = await detectStack(fixture('angular-repo'));
+
+      expect(result.isSupported).toBe(true);
+      expect(result.frontend).toBeNull();
+      expect(result.insights.ecosystemComponents).toContainEqual({
+        rootDir: '.',
+        runtime: 'node',
+        recipeId: 'node-angular',
+      });
+    });
+
+    it('routes a non-React Vite (Vue) repo to node-vite (previously unmatched)', async () => {
+      const result = await detectStack(fixture('vite-vue-repo'));
+
+      expect(result.isSupported).toBe(true);
+      expect(result.frontend).toBeNull();
+      expect(result.insights.ecosystemComponents).toContainEqual({
+        rootDir: '.',
+        runtime: 'node',
+        recipeId: 'node-vite',
+      });
+    });
+
+    it('regression: a plain React + Express repo (MERN) still resolves to the seed path, with no double-placement', async () => {
+      const result = await detectStack(fixture('mern-repo'));
+
+      expect(result.frontend?.framework).toBe('react');
+      expect(result.backend?.framework).toBe('express');
+      // node-react/node-express must NOT also appear as ecosystem components for the
+      // same roots — the seed path and the ecosystem path must stay disjoint.
+      expect(result.insights.ecosystemComponents).toEqual([]);
+    });
+
+    it('regression: a plain Express-only repo still resolves to node-express via the seed path', async () => {
+      const result = await detectStack(fixture('express-dbconfig-repo'));
+
+      expect(result.backend?.framework).toBe('express');
+      expect(result.insights.ecosystemComponents).toEqual([]);
+    });
+  });
+
   it('supports a bare .csproj .NET repo (matched by project-file extension)', async () => {
     // The common .NET shape is a project file with an arbitrary name and no global.json.
     // It must be detected by the `.csproj` extension, not a fixed manifest filename.
