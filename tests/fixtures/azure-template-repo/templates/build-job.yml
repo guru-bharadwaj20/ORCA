@@ -1,0 +1,5 @@
+- job: Build
+  container: node:${{ parameters.imageTag }}
+  steps:
+    - script: npm ci
+    - script: npm run build
