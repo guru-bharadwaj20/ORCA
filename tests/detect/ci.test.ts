@@ -9,7 +9,7 @@ import { join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { analyzeCi, classifyCommand } from '../../src/detect/ci.js';
+import { analyzeCi, classifyCommand, parseRuntimeFromImage } from '../../src/detect/ci.js';
 
 let repo: string;
 beforeEach(async () => {
@@ -32,6 +32,53 @@ describe('classifyCommand', () => {
     expect(classifyCommand('pytest -q')).toBe('test');
     expect(classifyCommand('python manage.py runserver')).toBe('start');
     expect(classifyCommand('echo hello')).toBe('other');
+  });
+});
+
+describe('parseRuntimeFromImage', () => {
+  it('parses clean and suffixed version tags across runtimes', () => {
+    expect(parseRuntimeFromImage('node:20')).toEqual({ runtime: 'node', version: '20' });
+    expect(parseRuntimeFromImage('python:3.12-slim')).toEqual({
+      runtime: 'python',
+      version: '3.12',
+    });
+    expect(parseRuntimeFromImage('golang:1.22-alpine')).toEqual({ runtime: 'go', version: '1.22' });
+    expect(parseRuntimeFromImage('eclipse-temurin:21-jdk')).toEqual({
+      runtime: 'java',
+      version: '21',
+    });
+  });
+
+  it('parses a namespaced image (registry/org prefix before the runtime name)', () => {
+    expect(parseRuntimeFromImage('cimg/node:20.10')).toEqual({ runtime: 'node', version: '20.10' });
+  });
+
+  it('finds the runtime keyword anywhere in a multi-segment repo path, using the LAST colon for the tag', () => {
+    // The runtime keyword ("dotnet") isn't the last path segment ("sdk") — the whole
+    // repo path is searched, not just the final segment. And the last `:` (before "8.0")
+    // is what separates the tag, not the first one.
+    expect(parseRuntimeFromImage('mcr.microsoft.com/dotnet/sdk:8.0')).toEqual({
+      runtime: 'dotnet',
+      version: '8.0',
+    });
+  });
+
+  it('matches a bare "go" image only as an exact path segment, not a substring', () => {
+    expect(parseRuntimeFromImage('go:1.23')).toEqual({ runtime: 'go', version: '1.23' });
+    // "django" contains "go" as a substring but is not the Go runtime.
+    expect(parseRuntimeFromImage('django:4.2')).toBeNull();
+  });
+
+  it('rejects an unversioned tag (e.g. "latest") even for a recognized runtime', () => {
+    expect(parseRuntimeFromImage('node:latest')).toBeNull();
+  });
+
+  it('rejects an image with no tag at all', () => {
+    expect(parseRuntimeFromImage('node')).toBeNull();
+  });
+
+  it('rejects an unrecognized/custom image, even with a clean version tag', () => {
+    expect(parseRuntimeFromImage('registry.example.com/internal/base:2.3.1')).toBeNull();
   });
 });
 
