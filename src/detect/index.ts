@@ -563,6 +563,7 @@ async function gatherInsights(
       file: readme.file,
       commands: readme.commands,
       ports: readme.ports,
+      readmePorts: readme.detectedPorts,
     });
   }
   for (const script of shellScripts.scripts) {
