@@ -8,7 +8,7 @@
  * package. No AI.
  */
 
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 import { parse as parseYaml } from 'yaml';
 
@@ -42,6 +42,66 @@ export interface AzurePipelinesAnalysis {
   configs: AzurePipelinesConfig[];
   /** Runtime versions recovered from every job's `image:` tag, deduped across configs. */
   runtimeVersions: CiRuntimeVersion[];
+}
+
+/** Runaway (non-cyclic) template chains stop here — a backstop, not the primary guard. */
+const MAX_TEMPLATE_DEPTH = 10;
+
+/** A stage-list or job-list entry that's a `template:` reference rather than a real entry. */
+interface TemplateRef {
+  template: string;
+  parameters?: Record<string, unknown>;
+}
+
+function isTemplateRef(entry: unknown): entry is TemplateRef {
+  return (
+    entry !== null &&
+    typeof entry === 'object' &&
+    !Array.isArray(entry) &&
+    typeof (entry as { template?: unknown }).template === 'string'
+  );
+}
+
+/**
+ * Literal `${{ parameters.name }}` substitution on the template file's raw YAML text,
+ * before parsing — the simplest correct way to handle a parameter landing anywhere (an
+ * image tag, a pool name, inside an already-quoted string). The replacement is
+ * `JSON.stringify`d (not spliced in bare) so a value containing a colon, quote, or
+ * backslash still produces valid YAML — a JSON string literal is also a valid YAML
+ * double-quoted scalar. Azure's expression language (`${{ if }}`, `${{ each }}`) is out
+ * of scope; an un-substituted expression is simply left as-is.
+ */
+function substituteParameters(text: string, parameters: Record<string, unknown>): string {
+  return text.replace(/\$\{\{\s*parameters\.(\w+)\s*\}\}/g, (match, name: string) => {
+    const value = parameters[name];
+    return value === undefined ? match : JSON.stringify(String(value));
+  });
+}
+
+/** Azure `template:` paths are relative to the directory of the file that references them. */
+function resolveTemplatePath(fromFile: string, templatePath: string): string {
+  return join(dirname(fromFile), templatePath);
+}
+
+/**
+ * Load a referenced template file's top-level array — a job- or stage-template file's
+ * own top level IS a list (no `jobs:`/`stages:` wrapper key) — with its `parameters:`
+ * substituted first.
+ */
+async function loadTemplateArray(
+  templateFile: string,
+  parameters: Record<string, unknown>
+): Promise<unknown[] | null> {
+  const raw = await readFileIfExists(templateFile);
+  if (raw === null) return null;
+  const substituted = substituteParameters(raw, parameters);
+  let doc: unknown;
+  try {
+    doc = parseYaml(substituted);
+  } catch {
+    return null;
+  }
+  return Array.isArray(doc) ? doc : null;
 }
 
 /** Candidate paths for the pipeline definition, root-level plus the common dotted alias. */
@@ -129,11 +189,118 @@ function jobFrom(
 }
 
 /**
+ * Expand a `jobs:` list (from the root file or a loaded job-template array), resolving
+ * any `template:` entries into the jobs they contain — recursively, so a template's own
+ * entries may reference further templates — and turning every plain job object into an
+ * `AzurePipelinesJob` via `jobFrom`. `stack` is the current template ancestry (not an
+ * ever-visited set): a legitimately repeated, non-cyclic template reference (the same
+ * job template used twice with different `parameters:`, a normal Azure pattern) still
+ * resolves both times; only a true cycle is refused. `depth` backstops non-cyclic chains.
+ */
+async function expandJobEntries(
+  entries: unknown[],
+  fromFile: string,
+  stage: string | null,
+  fallbackImage: string | null,
+  stack: Set<string>,
+  depth: number
+): Promise<AzurePipelinesJob[]> {
+  const jobs: AzurePipelinesJob[] = [];
+  for (const entry of entries) {
+    if (entry === null || typeof entry !== 'object') continue;
+
+    if (isTemplateRef(entry)) {
+      const templateFile = resolveTemplatePath(fromFile, entry.template);
+      const absPath = resolve(templateFile);
+      if (stack.has(absPath) || depth > MAX_TEMPLATE_DEPTH) continue;
+      stack.add(absPath);
+      try {
+        const templateEntries = await loadTemplateArray(templateFile, entry.parameters ?? {});
+        if (templateEntries !== null) {
+          jobs.push(
+            ...(await expandJobEntries(templateEntries, templateFile, stage, fallbackImage, stack, depth + 1))
+          );
+        }
+      } finally {
+        stack.delete(absPath);
+      }
+      continue;
+    }
+
+    jobs.push(jobFrom(entry as JobLike, stage, fallbackImage));
+  }
+  return jobs;
+}
+
+/** One stage's own name + its (already job-template-expanded) jobs. */
+interface ExpandedStage {
+  name: string | null;
+  jobs: AzurePipelinesJob[];
+}
+
+/**
+ * Expand a `stages:` list (from the root file or a loaded stage-template array), the
+ * same way `expandJobEntries` expands a job list — `template:` entries resolved
+ * recursively, real stage entries processed into a name plus their own (job-template-
+ * expanded) jobs.
+ */
+async function expandStageEntries(
+  entries: unknown[],
+  fromFile: string,
+  rootImage: string | null,
+  stack: Set<string>,
+  depth: number
+): Promise<ExpandedStage[]> {
+  const stages: ExpandedStage[] = [];
+  for (const entry of entries) {
+    if (entry === null || typeof entry !== 'object') continue;
+
+    if (isTemplateRef(entry)) {
+      const templateFile = resolveTemplatePath(fromFile, entry.template);
+      const absPath = resolve(templateFile);
+      if (stack.has(absPath) || depth > MAX_TEMPLATE_DEPTH) continue;
+      stack.add(absPath);
+      try {
+        const templateEntries = await loadTemplateArray(templateFile, entry.parameters ?? {});
+        if (templateEntries !== null) {
+          stages.push(
+            ...(await expandStageEntries(templateEntries, templateFile, rootImage, stack, depth + 1))
+          );
+        }
+      } finally {
+        stack.delete(absPath);
+      }
+      continue;
+    }
+
+    const se = entry as Record<string, unknown>;
+    const stageName = typeof se.stage === 'string' ? se.stage : null;
+    const stageImage = containerImage(se.container) ?? vmImageOf(se.pool) ?? rootImage;
+
+    let jobs: AzurePipelinesJob[] = [];
+    if (Array.isArray(se.jobs)) {
+      jobs = await expandJobEntries(se.jobs, fromFile, stageName, stageImage, stack, depth);
+    } else if (Array.isArray(se.steps)) {
+      jobs = [jobFrom(se as JobLike, stageName, stageImage)];
+    }
+    stages.push({ name: stageName, jobs });
+  }
+  return stages;
+}
+
+/**
  * Parse one Azure Pipelines document into its stages, jobs (name/stage/commands/image),
  * and top-level image hint. Handles the three shapes the schema allows: `stages` (each
  * with nested `jobs`), bare `jobs`, or a bare top-level `steps` list (single implicit job).
+ * `template:` references at the stage-list or job-list level are resolved and expanded
+ * inline before returning — the caller sees a complete job list either way.
  */
-function parseConfig(doc: unknown): Omit<AzurePipelinesConfig, 'file'> | null {
+async function parseConfig(
+  doc: unknown,
+  filePath: string,
+  stack: Set<string>,
+  depth: number
+): Promise<Omit<AzurePipelinesConfig, 'file'> | null> {
   if (doc === null || typeof doc !== 'object') return null;
   const root = doc as Record<string, unknown>;
   const rootImage = containerImage(root.container) ?? vmImageOf(root.pool);
@@ -142,27 +309,13 @@ function parseConfig(doc: unknown): Omit<AzurePipelinesConfig, 'file'> | null {
   const jobs: AzurePipelinesJob[] = [];
 
   if (Array.isArray(root.stages)) {
-    for (const stageEntry of root.stages) {
-      if (stageEntry === null || typeof stageEntry !== 'object') continue;
-      const se = stageEntry as Record<string, unknown>;
-      const stageName = typeof se.stage === 'string' ? se.stage : null;
-      if (stageName !== null) stages.push(stageName);
-      const stageImage = containerImage(se.container) ?? vmImageOf(se.pool) ?? rootImage;
-
-      if (Array.isArray(se.jobs)) {
-        for (const jobEntry of se.jobs) {
-          if (jobEntry === null || typeof jobEntry !== 'object') continue;
-          jobs.push(jobFrom(jobEntry as JobLike, stageName, stageImage));
-        }
-      } else if (Array.isArray(se.steps)) {
-        jobs.push(jobFrom(se as JobLike, stageName, stageImage));
-      }
+    const expanded = await expandStageEntries(root.stages, filePath, rootImage, stack, depth);
+    for (const stage of expanded) {
+      if (stage.name !== null) stages.push(stage.name);
+      jobs.push(...stage.jobs);
     }
   } else if (Array.isArray(root.jobs)) {
-    for (const jobEntry of root.jobs) {
-      if (jobEntry === null || typeof jobEntry !== 'object') continue;
-      jobs.push(jobFrom(jobEntry as JobLike, null, rootImage));
-    }
+    jobs.push(...(await expandJobEntries(root.jobs, filePath, null, rootImage, stack, depth)));
   } else if (Array.isArray(root.steps)) {
     jobs.push(jobFrom({ steps: root.steps }, null, rootImage));
   }
@@ -188,7 +341,7 @@ export async function analyzeAzurePipelines(repoPath: string): Promise<AzurePipe
     } catch {
       continue;
     }
-    const parsed = parseConfig(doc);
+    const parsed = await parseConfig(doc, file, new Set(), 0);
     if (parsed === null) continue;
     configs.push({ file, ...parsed });
   }
