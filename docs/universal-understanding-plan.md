@@ -578,6 +578,20 @@ Landed on `feat/universal-understanding` (behind the full test suite):
   a parser and no change here. Ranking is `ci` > `task` > `script`, reusing the weights
   those families already carry in the confidence model.
 
+- **README-sourced ports (landed)** — `DetectedPort.source` had declared `'readme'` since
+  the type was written without any detector emitting it; README ports existed only inside
+  `insights.scriptSources`, with no port-level record of origin. `detectPorts` now reads a
+  component's own README (`-p 8080:8080`, `--port`, `PORT=`, a pasted `EXPOSE`, or a
+  `localhost:` URL) and emits real `DetectedPort`s carrying that provenance, which the
+  reasoning trail reports as "backend port 8080 read from the README".
+
+  It reuses the existing merge rather than adding a parallel list: README is simply the
+  LAST source `declaredPorts` consults, so `add()`'s first-claimant rule means a port a
+  Dockerfile `EXPOSE` or the source code also declares keeps its stronger origin — no
+  precedence rule was needed. Known service ports are filtered exactly as `portsFromCode`
+  filters them, so a README documenting `docker run -p 5432:5432 postgres` describes the
+  app's dependency without publishing the app on 5432.
+
 - **Component-role widening (landed, §2.3)** — `ComponentRole` now carries
   `worker | cli | library | job` alongside the original three, with `worker` and `cli`
   detected deterministically and `library`/`job` left as vocabulary. See §2.3 for the
@@ -641,6 +655,9 @@ about the gap. Nothing below is implemented on this branch.
 | 7   | **`cli`/`job` as one-shot services.** They become ordinary portless `'service'` nodes; there is no `restart: no` / "runnable, not long-lived" affordance.                                                                                                                                                                                     | §2.3                      |
 | 8   | **`library` and `job` detection.** Vocabulary only, deliberately — see §2.3.                                                                                                                                                                                                                                                                  | §2.3                      |
 | 9   | **Probing implementation.** Seam only, by decision #2. This one is a _choice_, not a gap.                                                                                                                                                                                                                                                     | §5 Phase G                |
+
+`DetectedPort.source`'s remaining unused member is `'inferred'` — no detector emits it,
+since nothing currently infers a port without a declaring source. `'readme'` is now live.
 
 Two things the doc names that are **partly** true and worth stating precisely:
 
