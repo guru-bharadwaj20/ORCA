@@ -223,7 +223,14 @@ async function expandJobEntries(
         const templateEntries = await loadTemplateArray(templateFile, entry.parameters ?? {});
         if (templateEntries !== null) {
           jobs.push(
-            ...(await expandJobEntries(templateEntries, templateFile, stage, fallbackImage, stack, depth + 1))
+            ...(await expandJobEntries(
+              templateEntries,
+              templateFile,
+              stage,
+              fallbackImage,
+              stack,
+              depth + 1
+            ))
           );
         }
       } finally {
@@ -269,7 +276,13 @@ async function expandStageEntries(
         const templateEntries = await loadTemplateArray(templateFile, entry.parameters ?? {});
         if (templateEntries !== null) {
           stages.push(
-            ...(await expandStageEntries(templateEntries, templateFile, rootImage, stack, depth + 1))
+            ...(await expandStageEntries(
+              templateEntries,
+              templateFile,
+              rootImage,
+              stack,
+              depth + 1
+            ))
           );
         }
       } finally {

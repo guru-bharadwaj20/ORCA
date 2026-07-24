@@ -67,14 +67,22 @@ const MAX_INCLUDE_DEPTH = 10;
  * does; they're silently skipped, contributing nothing rather than erroring).
  */
 function localIncludePaths(value: unknown): string[] {
-  const entries = Array.isArray(value) ? value : value === undefined || value === null ? [] : [value];
+  const entries = Array.isArray(value)
+    ? value
+    : value === undefined || value === null
+      ? []
+      : [value];
   const paths: string[] = [];
   for (const entry of entries) {
     if (typeof entry === 'string') {
       paths.push(entry);
       continue;
     }
-    if (entry !== null && typeof entry === 'object' && typeof (entry as { local?: unknown }).local === 'string') {
+    if (
+      entry !== null &&
+      typeof entry === 'object' &&
+      typeof (entry as { local?: unknown }).local === 'string'
+    ) {
       paths.push((entry as { local: string }).local);
     }
   }
