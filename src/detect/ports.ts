@@ -92,9 +92,9 @@ async function portsFromCode(componentPath: string): Promise<number[]> {
  */
 async function defaultPortFor(componentPath: string, role: ComponentRole): Promise<number | null> {
   if (role === 'backend') {
-    const isDjango =
-      (await readFileIfExists(join(componentPath, 'manage.py'))) !== null ||
-      (await readFileIfExists(join(componentPath, 'requirements.txt'))) !== null;
+    // Only manage.py marks Django (port 8000). A bare requirements.txt is far too broad —
+    // Flask, FastAPI, and generic Python backends ship one too and don't listen on 8000.
+    const isDjango = (await readFileIfExists(join(componentPath, 'manage.py'))) !== null;
     return isDjango ? 8000 : 3000;
   }
   if (role === 'frontend') {

@@ -114,11 +114,13 @@ describe('analyzeCircleCi', () => {
     expect(analysis.configs).toHaveLength(1);
 
     const config = analysis.configs[0]!;
-    expect(config.stages).toEqual([]);
+    // The config declares `workflows.build_and_test` over both jobs, so `stages` now
+    // carries the recovered execution order (workflow-qualified) rather than [].
+    expect(config.stages).toEqual(['build_and_test:build', 'build_and_test:test']);
     expect(config.jobs).toHaveLength(2);
 
     const build = config.jobs.find((j) => j.name === 'build');
-    expect(build).toMatchObject({ stage: null, image: 'cimg/node:20.10' });
+    expect(build).toMatchObject({ stage: 'build_and_test', image: 'cimg/node:20.10' });
     expect(build?.commands).toEqual([
       { command: 'npm ci', kind: 'install' },
       { command: 'npm run build', kind: 'build' },

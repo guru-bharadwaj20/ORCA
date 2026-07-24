@@ -588,6 +588,21 @@ Landed on `feat/universal-understanding` (behind the full test suite):
   a parser and no change here. Ranking is `ci` > `task` > `script`, reusing the weights
   those families already carry in the confidence model.
 
+- **CircleCI workflow ordering (landed)** — `circleci.ts` parsed `jobs:` but ignored
+  `workflows:`, so `stages` was always `[]` and every `requires:` edge was lost.
+  `workflows:` is CircleCI's analog of GitLab stages, except it expresses order as a DAG
+  rather than a list, so `stages` now carries the recovered execution order as
+  `<workflow>:<job>` entries — qualified by workflow so a config with several workflows
+  stays several sequences instead of one merged list. Each job also reports the workflow
+  that runs it in `stage`, which was previously hardcoded `null`.
+
+  Ordering implements CircleCI's OWN rule rather than a heuristic: a job with no
+  `requires:` starts immediately, in parallel with every other unblocked job — it does not
+  implicitly wait for the jobs declared above it. Declaration order only breaks ties within
+  a level. A `requires:` naming a job outside the workflow is ignored, and a cyclic graph
+  (which CircleCI itself rejects) appends its unresolved remainder rather than dropping
+  jobs. Orb jobs that never appear under `jobs:` are still recorded in the order.
+
 - **README-sourced ports (landed)** — `DetectedPort.source` had declared `'readme'` since
   the type was written without any detector emitting it; README ports existed only inside
   `insights.scriptSources`, with no port-level record of origin. `detectPorts` now reads a

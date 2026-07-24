@@ -76,14 +76,20 @@ function contextFor(rootDir: string): string {
   return rootDir === '.' ? '.' : `./${rootDir}`;
 }
 
+/** A detected database paired with the concrete node built for it. */
+interface DatabasePair {
+  db: DetectedDatabase;
+  node: ServiceNode;
+}
+
 interface DatabaseNodes {
   nodes: ServiceNode[];
-  byEngine: Map<DetectedDatabase['engine'], ServiceNode>;
+  pairs: DatabasePair[];
 }
 
 function databaseNodes(databases: DetectedDatabase[]): DatabaseNodes {
   const nodes: ServiceNode[] = [];
-  const byEngine = new Map<DetectedDatabase['engine'], ServiceNode>();
+  const pairs: DatabasePair[] = [];
   let primaryTaken = false;
 
   for (const db of databases) {
@@ -110,20 +116,19 @@ function databaseNodes(databases: DetectedDatabase[]): DatabaseNodes {
       healthcheck: spec.healthcheck,
     };
     nodes.push(node);
-    byEngine.set(db.engine, node);
+    pairs.push({ db, node });
   }
-  return { nodes, byEngine };
+  return { nodes, pairs };
 }
 
-/** Connection env a backend needs for each database node, keyed off the golden configs. */
-function connectionEnv(
-  byEngine: Map<DetectedDatabase['engine'], ServiceNode>,
-  databases: DetectedDatabase[]
-): Record<string, string> {
+/**
+ * Connection env a backend needs for each database node, keyed off the golden configs.
+ * Wires each database to the exact node built for it (not an engine lookup), so a node is
+ * never orphaned or mis-addressed if detection ever yields two of the same engine.
+ */
+function connectionEnv(pairs: DatabasePair[]): Record<string, string> {
   const env: Record<string, string> = {};
-  for (const db of databases) {
-    const node = byEngine.get(db.engine);
-    if (node === undefined) continue;
+  for (const { db, node } of pairs) {
     if (db.engine === 'postgres') {
       Object.assign(env, {
         POSTGRES_DB: DB_NAME,
@@ -236,7 +241,7 @@ export function buildServicePlan(
   inferred: InferredEnv | null = null,
   ecosystem: readonly EcosystemComponent[] = []
 ): ServicePlan {
-  const { nodes: dbNodes, byEngine } = databaseNodes(detection.databases);
+  const { nodes: dbNodes, pairs: dbPairs } = databaseNodes(detection.databases);
   const nodes: ServiceNode[] = [...dbNodes];
 
   // Both components sharing one root would collide on ./Dockerfile — disambiguate.
@@ -274,7 +279,7 @@ export function buildServicePlan(
         ...(detection.backend.language === 'python'
           ? { DJANGO_DEBUG: '1' }
           : { NODE_ENV: 'development', PORT: String(backendVars.port) }),
-        ...connectionEnv(byEngine, detection.databases),
+        ...connectionEnv(dbPairs),
       },
       dependsOn: dbDeps,
       volumes: componentVolumes(detection.backend, backendVars),
@@ -314,7 +319,7 @@ export function buildServicePlan(
   // already placed (databases, seed components). Any detected database is a repo-wide
   // dependency, so each ecosystem service gets the same health-gated `depends_on` and
   // connection env a seed backend would — that's the ecosystem DB wiring.
-  const dbEnv = connectionEnv(byEngine, detection.databases);
+  const dbEnv = connectionEnv(dbPairs);
   const dbDeps: ServiceDependency[] = dbNodes.map((db) => ({
     serviceId: db.id,
     condition: db.healthcheck ? 'service_healthy' : 'service_started',
