@@ -60,7 +60,7 @@ describe('analyzeAzurePipelines', () => {
     const config = analysis.configs[0]!;
     expect(config.stages).toEqual(['Build', 'Test']);
     expect(config.image).toBe('ubuntu-latest');
-    expect(config.jobs).toHaveLength(2);
+    expect(config.jobs).toHaveLength(3);
 
     const buildJob = config.jobs.find((j) => j.name === 'BuildJob');
     expect(buildJob).toMatchObject({ stage: 'Build', image: 'ubuntu-latest' });
@@ -73,6 +73,14 @@ describe('analyzeAzurePipelines', () => {
     const testJob = config.jobs.find((j) => j.name === 'TestJob');
     expect(testJob).toMatchObject({ stage: 'Test', image: 'ubuntu-22.04' });
     expect(testJob?.commands).toEqual([{ command: 'npm test', kind: 'test' }]);
+
+    // A job-level container: overrides pool.vmImage too — a real runtime image, not
+    // just an OS label.
+    const packageJob = config.jobs.find((j) => j.name === 'PackageJob');
+    expect(packageJob).toMatchObject({ stage: 'Build', image: 'python:3.12' });
+    expect(packageJob?.commands).toEqual([
+      { command: 'pip install -r requirements.txt', kind: 'install' },
+    ]);
   });
 });
 
