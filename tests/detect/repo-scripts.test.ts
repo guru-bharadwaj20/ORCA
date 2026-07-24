@@ -76,7 +76,26 @@ describe('analyzeReadme', () => {
 
   it('reports not-found when the repo has no README at all', async () => {
     const analysis = await analyzeReadme(fixture('shell-script-repo'));
-    expect(analysis).toEqual({ found: false, file: '', commands: [], ports: [] });
+    expect(analysis).toEqual({
+      found: false,
+      file: '',
+      commands: [],
+      ports: [],
+      detectedPorts: [],
+    });
+  });
+
+  it('emits detectedPorts as proper DetectedPort entries alongside the bare ports list', async () => {
+    const analysis = await analyzeReadme(fixture('readme-only-repo'));
+
+    expect(analysis.detectedPorts).toEqual([{ port: 4000, protocol: 'tcp', source: 'readme' }]);
+    // Same numbers as `ports`, just wrapped — never a second source of truth.
+    expect(analysis.detectedPorts.map((p) => p.port)).toEqual(analysis.ports);
+  });
+
+  it('finds no detectedPorts in an ambiguous, prose-only README', async () => {
+    const analysis = await analyzeReadme(fixture('readme-ambiguous-repo'));
+    expect(analysis.detectedPorts).toEqual([]);
   });
 });
 
@@ -214,6 +233,16 @@ describe('scriptSources reaching DetectionResult.insights', () => {
       { command: 'node scripts/migrate.js', kind: 'start' },
       { command: 'npm start', kind: 'start' },
     ]);
+  });
+
+  it('populates readmePorts (DetectedPort[]) on the readme entry, leaves it unset on the shell-script entry', async () => {
+    const result = await detectStack(fixture('readme-and-script-repo'));
+
+    const readme = result.insights.scriptSources.find((s) => s.source === 'readme');
+    expect(readme?.readmePorts).toEqual([{ port: 3001, protocol: 'tcp', source: 'readme' }]);
+
+    const script = result.insights.scriptSources.find((s) => s.source === 'shell-script');
+    expect(script?.readmePorts).toBeUndefined();
   });
 
   it('contributes a confidence signal when no Dockerfile or CI already spoke', async () => {
