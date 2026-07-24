@@ -43,8 +43,13 @@ export async function readGoDependencies(dir: string): Promise<string[]> {
 }
 
 /**
- * Rust crate dependencies from `Cargo.toml`'s `[dependencies]` / `[dev-dependencies]`
- * tables. Light line scan: `name = "1.0"` or `name = { version = "1.0" }`.
+ * Rust crate dependencies from `Cargo.toml`'s `[dependencies]` / `[dev-dependencies]` /
+ * `[build-dependencies]` tables. Handles both shapes a crate is declared in:
+ *   - inline in the table:   `name = "1.0"` or `name = { version = "1.0" }`
+ *   - as its own subtable:   `[dependencies.name]` (used whenever a dep needs `features`,
+ *                            a git/path source, or `optional = true`) — here the crate name
+ *                            is the last segment of the table header, and the body is options.
+ * The subtable form is common and was previously missed entirely.
  */
 export async function readRustDependencies(dir: string): Promise<string[]> {
   const raw = await readFileIfExists(join(dir, 'Cargo.toml'));
@@ -55,7 +60,16 @@ export async function readRustDependencies(dir: string): Promise<string[]> {
     const trimmed = line.trim();
     const table = /^\[([^\]]+)\]/.exec(trimmed);
     if (table) {
-      inDeps = /dependencies$/.test(table[1] ?? '');
+      const header = table[1] ?? '';
+      // `[dependencies.serde]` / `[target.'cfg(unix)'.dependencies.nix]`: the segment after
+      // a `*dependencies.` prefix is the crate itself, not a table to scan line-by-line.
+      const sub = /(?:^|\.)(?:dev-|build-)?dependencies\.([A-Za-z0-9_-]+)$/.exec(header);
+      if (sub?.[1]) {
+        deps.push(sub[1]);
+        inDeps = false;
+        continue;
+      }
+      inDeps = /(?:^|\.)(?:dev-|build-)?dependencies$/.test(header);
       continue;
     }
     if (!inDeps) continue;

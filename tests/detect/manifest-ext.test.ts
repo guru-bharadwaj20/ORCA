@@ -78,6 +78,35 @@ describe('readRustDependencies', () => {
     expect(deps).toEqual(expect.arrayContaining(['serde', 'tokio', 'criterion']));
     expect(deps).not.toContain('name'); // package-table key must not leak in
   });
+
+  it('reads crates declared as [dependencies.<name>] subtables', async () => {
+    // A crate needing features / a git or path source / optional is written as its own
+    // subtable; its name is the table header, not an inline `name = ...` line.
+    await writeFile(
+      join(dir, 'Cargo.toml'),
+      [
+        '[package]',
+        'name = "app"',
+        '',
+        '[dependencies]',
+        'actix-web = "4"',
+        '',
+        '[dependencies.serde]',
+        'version = "1"',
+        'features = ["derive"]',
+        '',
+        '[build-dependencies.cc]',
+        'version = "1"',
+        '',
+        "[target.'cfg(unix)'.dependencies]",
+        'nix = "0.27"',
+      ].join('\n')
+    );
+    const deps = await readRustDependencies(dir);
+    expect(deps.sort()).toEqual(['actix-web', 'cc', 'nix', 'serde']);
+    expect(deps).not.toContain('version'); // subtable option keys must not leak in
+    expect(deps).not.toContain('features');
+  });
 });
 
 describe('readJvmDependencies', () => {
