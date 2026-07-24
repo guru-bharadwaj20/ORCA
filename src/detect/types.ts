@@ -224,6 +224,29 @@ export interface RepoInsights {
      */
     role: RunnableRole;
   }[];
+  /**
+   * The build/run shape recovered from every source that declares one — CI (GitHub
+   * Actions plus every `ciProviders` entry), task runners, README/shell scripts — ranked
+   * with provenance, or null when nothing declared anything actionable.
+   *
+   * This is the consumer the other command fields never had: `ciCommands`,
+   * `ciProviders`, `taskCommands`, and `scriptSources` were previously read only by
+   * `logInsights`. The plan overlays this onto a matched recipe so a repo's own declared
+   * commands actually drive the build (§5 Phase C exit criterion).
+   */
+  recoveredBuild: {
+    installCommands: string[];
+    buildCommands: string[];
+    startCommand: string | null;
+    image: string | null;
+    commands: { command: string; kind: string; source: string; origin: string }[];
+    /** Distinct files/jobs that contributed, e.g. ["gitlab:.gitlab-ci.yml#build_app"]. */
+    origins: string[];
+    /** The recovery claim's computed confidence. */
+    confidence: number;
+    /** The claim's evidence projected to strings, same convention as `reasoning`. */
+    reasoning: string[];
+  } | null;
 }
 
 /**

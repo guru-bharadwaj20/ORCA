@@ -11,13 +11,20 @@
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { bestClaim, combineConfidence, type Claim, type Evidence } from '../model/claim.js';
+import {
+  bestClaim,
+  combineConfidence,
+  reasoning,
+  type Claim,
+  type Evidence,
+} from '../model/claim.js';
 import type { RepoContext } from '../model/detector.js';
 import type { Runtime } from '../model/recipe.js';
 import { defaultRecipeRegistry } from '../model/recipes/index.js';
 import { DEFAULT_WALK_IGNORE, readFileIfExists } from '../utils/fs.js';
 import { OrcaError } from '../utils/errors.js';
 import { analyzeAzurePipelines } from './azurePipelines.js';
+import { recoverBuild } from './buildRecovery.js';
 import { analyzeCi } from './ci.js';
 import { analyzeCircleCi } from './circleci.js';
 import { detectComponentRole } from './componentRole.js';
@@ -598,7 +605,7 @@ async function gatherInsights(
     ciRuntimeVersions.push(v);
   }
 
-  return {
+  const insights: RepoInsights = {
     frameworks: [...frameworkSet],
     runtimes: [...runtimeSet],
     monorepoTools: monorepo.tools,
@@ -609,7 +616,21 @@ async function gatherInsights(
     taskCommands,
     scriptSources,
     ecosystemComponents,
+    recoveredBuild: null,
   };
+
+  // Recovery reads the assembled insights (it spans CI, tasks, and scripts), so it runs
+  // last and folds its own answer back in. Projected to plain data here — the plan reads
+  // insights, not `Claim`s — keeping the claim's confidence and reasoning trail.
+  const recovered = recoverBuild(insights);
+  if (recovered !== null) {
+    insights.recoveredBuild = {
+      ...recovered.value,
+      confidence: recovered.confidence,
+      reasoning: reasoning(recovered),
+    };
+  }
+  return insights;
 }
 
 /**
@@ -655,6 +676,23 @@ function confidenceEvidence(
   }
   if (backend?.entrypoint) {
     evidence.push({ detector: 'index', signal: 'backend entrypoint resolved', weight: 0.25 });
+  }
+  // Ports recovered from a README are explained, not scored. `DetectedPort.source` exists
+  // so the log can say WHY a port was chosen, and a README-sourced port is the one case a
+  // user is most likely to want to double-check. Weight 0 keeps it in the reasoning trail
+  // without moving confidence — the README already contributes through `scriptSources`.
+  for (const [role, component] of [
+    ['frontend', frontend],
+    ['backend', backend],
+  ] as const) {
+    for (const port of component?.ports ?? []) {
+      if (port.source !== 'readme') continue;
+      evidence.push({
+        detector: 'ports',
+        signal: `${role} port ${port.port} read from the README`,
+        weight: 0,
+      });
+    }
   }
   if (insights.dockerfiles.length > 0) {
     evidence.push({

@@ -33,7 +33,21 @@ export type ServiceKind = 'frontend' | 'backend' | 'database' | 'cache' | 'servi
  * seed-stack template path (unchanged).
  */
 export type ServiceSource =
-  | { type: 'build'; context: string; dockerfile: string; recipeId?: string; recipe?: BuildRecipe }
+  | {
+      type: 'build';
+      context: string;
+      dockerfile: string;
+      recipeId?: string;
+      recipe?: BuildRecipe;
+      /**
+       * Where this node's build/start commands came from, when they were recovered from
+       * the repo's own declarations rather than taken from the matched recipe's defaults
+       * — e.g. `["gitlab:.gitlab-ci.yml#build_app"]`, `["makefile:build"]`. Absent when
+       * the recipe defaults were used unchanged. This is what lets the plan say *why* it
+       * is running a given command, and lets a reviewer trace it back to a file.
+       */
+      commandOrigins?: string[];
+    }
   | { type: 'image'; image: string };
 
 /** A published port mapping (host:container). */

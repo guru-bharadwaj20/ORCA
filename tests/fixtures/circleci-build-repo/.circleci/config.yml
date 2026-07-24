@@ -1,0 +1,14 @@
+version: 2.1
+
+jobs:
+  compile:
+    docker:
+      - image: cimg/go:1.23
+    steps:
+      - checkout
+      - run: go build -o bin/apiservice ./cmd/api
+  serve:
+    docker:
+      - image: cimg/go:1.23
+    steps:
+      - run: ./bin/apiservice --serve
