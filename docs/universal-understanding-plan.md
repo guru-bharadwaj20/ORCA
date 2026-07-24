@@ -603,6 +603,32 @@ Landed on `feat/universal-understanding` (behind the full test suite):
   (which CircleCI itself rejects) appends its unresolved remainder rather than dropping
   jobs. Orb jobs that never appear under `jobs:` are still recorded in the order.
 
+- **CircleCI reusable `commands` (landed)** — a 2.1 config routinely hoists its real steps
+  into a top-level `commands:` block and has each job merely name them, so `circleci.ts`,
+  which read only inline `run:` steps, recovered nothing at all from such a job.
+  `expandJobSteps` now resolves that indirection as a PRE-PROCESSING PASS over the parsed
+  YAML: by the time `jobCommands` runs, every local command reference has been replaced by
+  the `run:` steps it stands for. Nothing downstream — stage building, insights population,
+  build recovery — knows the indirection existed, which is what kept the change to one
+  module.
+
+  Simple scalar parameters are substituted from the invoking step's arguments, falling back
+  to the parameter's declared `default`. Substitution happens on the way out, one nesting
+  level at a time, so a command that forwards its own parameter to a nested command
+  resolves correctly.
+
+  UNRESOLVABLE REFERENCES ARE PASSED THROUGH, NOT DROPPED OR RAISED. An orb command
+  (`node/install-packages`), an unknown name, a cycle, and nesting past the depth cap all
+  leave the step untouched — and since `jobCommands` reads only `run:` steps, an untouched
+  reference contributes nothing rather than contributing garbage. Steps still carrying an
+  unresolved `<< … >>` after expansion are discarded, so a parameter with neither an
+  argument nor a default never reaches a Dockerfile `RUN` as a literal.
+
+  That last check is deliberately narrow — it matches a dotted lowercase namespace
+  (`<< parameters.x >>`, `<< pipeline.number >>`), not any `<< … >>`. The obvious wider
+  pattern also matches the shell heredoc `cat << 'EOF' >> .npmrc`, which is ordinary CI
+  work; a regression test pins it.
+
 - **README-sourced ports (landed)** — `DetectedPort.source` had declared `'readme'` since
   the type was written without any detector emitting it; README ports existed only inside
   `insights.scriptSources`, with no port-level record of origin. `detectPorts` now reads a
@@ -671,7 +697,7 @@ about the gap. Nothing below is implemented on this branch.
 
 | #   | Gap                                                                                                                                                                                                                                                                                                                                           | Where the doc claims it   |
 | --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
-| 1   | ~~**Multi-provider CI.**~~ **RESOLVED.** GitLab CI, Azure Pipelines, and CircleCI are parsed into `insights.ciProviders` and consumed by build recovery. Depth gaps remain (CircleCI `workflows`, reusable `commands`, `include:` expansion) — tracked in CONTRIBUTING.                                                                       | §5 Phase C                |
+| 1   | ~~**Multi-provider CI.**~~ **RESOLVED.** GitLab CI, Azure Pipelines, and CircleCI are parsed into `insights.ciProviders` and consumed by build recovery. Depth gaps remain (`include:`/`template:` expansion, provider-image runtime versions) — tracked in CONTRIBUTING.                                                                     | §5 Phase C                |
 | 2   | **Graded `{ recipe, tier }` outcome.** `isSupported: boolean` is still the contract; the review gate shows no confidence tier.                                                                                                                                                                                                                | §4                        |
 | 3   | **A real confidence gate.** Tier-3 escalation triggers on `!isSupported`, not on a threshold or on recipe-field completeness — a placed-but-poorly-understood repo never escalates.                                                                                                                                                           | §3, §5 Phase D            |
 | 4   | ~~**Recovered commands don't drive the build.**~~ **RESOLVED.** `detect/buildRecovery.ts` folds CI (GitHub Actions + every `ciProviders` entry), task runners, and README/scripts into a ranked `Claim` on `insights.recoveredBuild`; the pipeline overlays it onto the matched recipe and the plan node carries `commandOrigins` provenance. | §5 Phase C exit criterion |
