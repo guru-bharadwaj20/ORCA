@@ -31,9 +31,11 @@ const PHP_IMAGES = { build: 'composer:2', runtime: 'php:8.3-cli' } as const;
 const RUBY_IMAGES = { build: 'ruby:3.3', runtime: 'ruby:3.3' } as const;
 
 /**
- * PHP recipes, most-specific-first: Laravel (framework-aware `artisan serve`) before the
- * generic Composer app (PHP's built-in server over `public/`). `composer install` is a
- * build command so the synthesizer routes it through the Composer builder stage.
+ * PHP recipes, most-specific-first: Laravel (framework-aware `artisan serve`), then
+ * Symfony (framework-aware, but on the same built-in PHP server the generic fallback
+ * uses — see below), before the generic Composer app (PHP's built-in server over
+ * `public/`). `composer install` is a build command so the synthesizer routes it
+ * through the Composer builder stage.
  */
 export const PHP_RECIPES: readonly RecipeEntry[] = [
   {
@@ -47,6 +49,34 @@ export const PHP_RECIPES: readonly RecipeEntry[] = [
         'composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader',
       ],
       startCommand: 'php artisan serve --host=0.0.0.0 --port=8000',
+      defaultPorts: [8000],
+      baseImages: PHP_IMAGES,
+    },
+  },
+  {
+    // Symfony's own recommended dev server is the `symfony` CLI binary, which isn't a
+    // Composer dependency and isn't installable via apt on this image — adding it would
+    // mean a curl-installer step (a pattern no recipe here uses) or a third-image COPY
+    // (which the shared synthesizer doesn't support). So this recipe runs the same
+    // built-in PHP server the generic fallback does — Symfony's own documented
+    // alternative when the CLI isn't present — and earns its place by classifying the
+    // repo correctly (surfacing the "symfony" framework insight) rather than by a
+    // different runtime command. `bin/console` corroborates the dependency so a repo
+    // that merely requires framework-bundle as a transitive dep doesn't false-positive.
+    matcher: {
+      runtime: 'php',
+      anyDependency: ['symfony/symfony', 'symfony/framework-bundle'],
+      anyFile: ['bin/console'],
+    },
+    recipe: {
+      id: 'php-symfony',
+      runtime: 'php',
+      dependencyFiles: ['composer.json'],
+      installCommands: [],
+      buildCommands: [
+        'composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader',
+      ],
+      startCommand: 'php -S 0.0.0.0:8000 -t public',
       defaultPorts: [8000],
       baseImages: PHP_IMAGES,
     },
