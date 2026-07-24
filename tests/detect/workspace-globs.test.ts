@@ -44,8 +44,17 @@ describe('expandWorkspaceGlobs', () => {
     expect(dirs).toEqual(['packages/a']);
   });
 
-  it('ignores unsupported deep ** patterns rather than walking', async () => {
+  it('expands a trailing dir/** to immediate subdirectories (the pnpm form)', async () => {
     await mkdir(join(repo, 'packages', 'a'), { recursive: true });
-    expect(await expandWorkspaceGlobs(repo, ['packages/**'])).toEqual([]);
+    await mkdir(join(repo, 'packages', 'b'), { recursive: true });
+    expect((await expandWorkspaceGlobs(repo, ['packages/**'])).sort()).toEqual([
+      'packages/a',
+      'packages/b',
+    ]);
+  });
+
+  it('ignores a non-trailing wildcard rather than walking', async () => {
+    await mkdir(join(repo, 'packages', 'a', 'lib'), { recursive: true });
+    expect(await expandWorkspaceGlobs(repo, ['packages/*/lib'])).toEqual([]);
   });
 });

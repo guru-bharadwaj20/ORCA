@@ -1,12 +1,15 @@
 /**
  * Expand monorepo workspace globs (from `detectMonorepo`) into concrete package
  * directories, so `findCandidateRoots` promotes nested workspace packages
- * (`services/api`, `apps/web`) to detected components. Supports the two glob shapes
- * that dominate real workspaces:
+ * (`services/api`, `apps/web`) to detected components. Supports the glob shapes that
+ * dominate real workspaces:
  *   - `dir/*`       → every immediate subdirectory of `dir`
+ *   - `dir/**`      → same immediate subdirectories (the ubiquitous pnpm form; the packages
+ *                     themselves live one level down, and `findCandidateRoots` filters the
+ *                     results by manifest presence, so a non-package group dir drops out)
  *   - `dir/pkg`     → that exact directory
- * Deeper `**` patterns are intentionally out of scope (rare in workspace configs and
- * a walk-cost risk); they degrade to a literal path check.
+ * A `*`/`**` anywhere but the trailing segment is still out of scope (rare, and a walk-cost
+ * risk); such patterns degrade to a literal path check that finds nothing.
  *
  * STAGE: 2 (detect) / PHASE B follow-up — REAL code. No AI.
  */
@@ -18,8 +21,12 @@ import { join } from 'node:path';
 async function expandGlob(repoPath: string, glob: string): Promise<string[]> {
   const normalized = glob.replace(/\/+$/, '');
 
-  if (normalized.endsWith('/*')) {
-    const parent = normalized.slice(0, -2);
+  // `dir/*` and `dir/**` both resolve to the immediate subdirectories of `dir`: that's
+  // where workspace packages live, and the manifest filter downstream discards any
+  // subdirectory that isn't actually a package.
+  const star = /\/\*{1,2}$/.exec(normalized);
+  if (star) {
+    const parent = normalized.slice(0, star.index);
     const parentAbs = join(repoPath, parent);
     try {
       const entries = await readdir(parentAbs, { withFileTypes: true });
@@ -31,7 +38,7 @@ async function expandGlob(repoPath: string, glob: string): Promise<string[]> {
     }
   }
 
-  // Literal path (or an unsupported deeper pattern): include it if it's a real dir.
+  // Literal path (or an unsupported non-trailing wildcard): include it if it's a real dir.
   if (normalized.includes('*')) return [];
   try {
     if ((await stat(join(repoPath, normalized))).isDirectory()) return [normalized];
