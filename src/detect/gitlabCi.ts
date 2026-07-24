@@ -11,7 +11,12 @@ import { join, resolve } from 'node:path';
 
 import { parse as parseYaml } from 'yaml';
 
-import { classifyCommand, parseRuntimeFromImage, type CiCommand, type CiRuntimeVersion } from './ci.js';
+import {
+  classifyCommand,
+  parseRuntimeFromImage,
+  type CiCommand,
+  type CiRuntimeVersion,
+} from './ci.js';
 import { readFileIfExists } from '../utils/fs.js';
 
 /** A job recovered from a GitLab CI config. */
