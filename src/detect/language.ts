@@ -35,6 +35,9 @@ const MANIFEST_LANGUAGE: Record<string, Exclude<Language, 'unknown'>> = {
   'Cargo.toml': 'rust',
   'pom.xml': 'java',
   'build.gradle': 'java',
+  'build.gradle.kts': 'java',
+  'settings.gradle': 'java',
+  'settings.gradle.kts': 'java',
   'composer.json': 'php',
   Gemfile: 'ruby',
 };
