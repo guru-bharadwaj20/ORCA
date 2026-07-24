@@ -11,6 +11,10 @@ stages:
         steps:
           - script: npm ci
           - script: npm run build
+      - job: PackageJob
+        container: python:3.12
+        steps:
+          - script: pip install -r requirements.txt
 
   - stage: Test
     jobs:
