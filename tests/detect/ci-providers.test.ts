@@ -269,11 +269,7 @@ describe('analyzeGitlabCi: include: resolution', () => {
     const analysis = await analyzeGitlabCi(fixture('gitlab-nested-include-repo'));
     const config = analysis.configs[0]!;
 
-    expect(config.jobs.map((j) => j.name).sort()).toEqual([
-      'level1_job',
-      'level2_job',
-      'root_job',
-    ]);
+    expect(config.jobs.map((j) => j.name).sort()).toEqual(['level1_job', 'level2_job', 'root_job']);
     expect(analysis.runtimeVersions).toEqual(
       expect.arrayContaining([
         { runtime: 'node', version: '20' },
