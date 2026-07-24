@@ -187,14 +187,24 @@ and no existing repo was reclassified. What changed downstream:
 
 Which roles have detectors, and which are vocabulary only:
 
-| Role      | Status        | Signal                                                                                                                                                             |
-| --------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `worker`  | **detected**  | Procfile `worker:` with no `web:`; a worker start command; or a queue library (Celery/Sidekiq/BullMQ/asynq…) with no web framework — all gated on no declared port |
-| `cli`     | **detected**  | `package.json` `bin` with no `start`/`dev`/`serve` script and no port                                                                                              |
-| `library` | **type only** | Identifiable only by _absence_ of an entrypoint — negative evidence, which belongs to tier-3, and a library has no meaningful compose node anyway                  |
-| `job`     | **type only** | Not separable from `worker` without a scheduler signal (cron config, `Procfile release:`)                                                                          |
+| Role      | Status       | Signal                                                                                                                                                                                            |
+| --------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `worker`  | **detected** | Procfile `worker:` with no `web:`; a worker start command; or a queue library (Celery/Sidekiq/BullMQ/asynq…) with no web framework — all gated on no declared port                                |
+| `cli`     | **detected** | `package.json` `bin` with no `start`/`dev`/`serve` script and no port                                                                                                                             |
+| `library` | **detected** | Per-ecosystem "nothing to run" rules (Node: no bin/server script/entry module; Go: no `package main`; Rust: lib target only; Python: packaged with no runnable module). JVM/PHP/.NET/Ruby decline |
+| `job`     | **detected** | A cron table, or a Procfile `release:`/`cron:`/`scheduler:` process with no `web:`/`worker:` beside it — all gated on no declared port                                                            |
 
-`library` and `job` are deliberately undetected rather than guessed at, per decision #3.
+`job` and `library` are `Detector` plugins in `detect/detectors/role.ts` (`ROLE_DETECTORS`),
+consulted by `detectComponentRole` only after its positive worker/cli rules decline, so
+positive evidence always outranks negative. They are kept out of `defaultDetectorRegistry()`
+on purpose: that registry's tier-1 claims are read as `Claim<Runtime>`, and mixing claim
+value types in one registry would corrupt runtime detection.
+
+`library` rests on negative evidence, so its rules are **per-ecosystem rather than generic**.
+A first draft used one "no recognizable entry file" heuristic and mislabelled real services —
+a Maven app entered through `src/main/java/.../App.java`, a PHP app served from
+`public/index.php`. Ecosystems without a reliable library convention now decline instead of
+guessing, which is decision #3 applied to a detector rather than to a whole role.
 
 The `ServicePlan` synthesizer maps roles onto compose services. A `cli`/`job` currently
 becomes an ordinary (portless) `'service'` node; surfacing it as "runnable but not a
