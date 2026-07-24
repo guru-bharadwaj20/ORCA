@@ -187,14 +187,24 @@ and no existing repo was reclassified. What changed downstream:
 
 Which roles have detectors, and which are vocabulary only:
 
-| Role      | Status        | Signal                                                                                                                                                             |
-| --------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `worker`  | **detected**  | Procfile `worker:` with no `web:`; a worker start command; or a queue library (Celery/Sidekiq/BullMQ/asynq…) with no web framework — all gated on no declared port |
-| `cli`     | **detected**  | `package.json` `bin` with no `start`/`dev`/`serve` script and no port                                                                                              |
-| `library` | **type only** | Identifiable only by _absence_ of an entrypoint — negative evidence, which belongs to tier-3, and a library has no meaningful compose node anyway                  |
-| `job`     | **type only** | Not separable from `worker` without a scheduler signal (cron config, `Procfile release:`)                                                                          |
+| Role      | Status       | Signal                                                                                                                                                                                            |
+| --------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `worker`  | **detected** | Procfile `worker:` with no `web:`; a worker start command; or a queue library (Celery/Sidekiq/BullMQ/asynq…) with no web framework — all gated on no declared port                                |
+| `cli`     | **detected** | `package.json` `bin` with no `start`/`dev`/`serve` script and no port                                                                                                                             |
+| `library` | **detected** | Per-ecosystem "nothing to run" rules (Node: no bin/server script/entry module; Go: no `package main`; Rust: lib target only; Python: packaged with no runnable module). JVM/PHP/.NET/Ruby decline |
+| `job`     | **detected** | A cron table, or a Procfile `release:`/`cron:`/`scheduler:` process with no `web:`/`worker:` beside it — all gated on no declared port                                                            |
 
-`library` and `job` are deliberately undetected rather than guessed at, per decision #3.
+`job` and `library` are `Detector` plugins in `detect/detectors/role.ts` (`ROLE_DETECTORS`),
+consulted by `detectComponentRole` only after its positive worker/cli rules decline, so
+positive evidence always outranks negative. They are kept out of `defaultDetectorRegistry()`
+on purpose: that registry's tier-1 claims are read as `Claim<Runtime>`, and mixing claim
+value types in one registry would corrupt runtime detection.
+
+`library` rests on negative evidence, so its rules are **per-ecosystem rather than generic**.
+A first draft used one "no recognizable entry file" heuristic and mislabelled real services —
+a Maven app entered through `src/main/java/.../App.java`, a PHP app served from
+`public/index.php`. Ecosystems without a reliable library convention now decline instead of
+guessing, which is decision #3 applied to a detector rather than to a whole role.
 
 The `ServicePlan` synthesizer maps roles onto compose services. A `cli`/`job` currently
 becomes an ordinary (portless) `'service'` node; surfacing it as "runnable but not a
@@ -577,6 +587,21 @@ Landed on `feat/universal-understanding` (behind the full test suite):
   field is a label inside the provenance string, never a branch — a fifth provider needs
   a parser and no change here. Ranking is `ci` > `task` > `script`, reusing the weights
   those families already carry in the confidence model.
+
+- **CircleCI workflow ordering (landed)** — `circleci.ts` parsed `jobs:` but ignored
+  `workflows:`, so `stages` was always `[]` and every `requires:` edge was lost.
+  `workflows:` is CircleCI's analog of GitLab stages, except it expresses order as a DAG
+  rather than a list, so `stages` now carries the recovered execution order as
+  `<workflow>:<job>` entries — qualified by workflow so a config with several workflows
+  stays several sequences instead of one merged list. Each job also reports the workflow
+  that runs it in `stage`, which was previously hardcoded `null`.
+
+  Ordering implements CircleCI's OWN rule rather than a heuristic: a job with no
+  `requires:` starts immediately, in parallel with every other unblocked job — it does not
+  implicitly wait for the jobs declared above it. Declaration order only breaks ties within
+  a level. A `requires:` naming a job outside the workflow is ignored, and a cyclic graph
+  (which CircleCI itself rejects) appends its unresolved remainder rather than dropping
+  jobs. Orb jobs that never appear under `jobs:` are still recorded in the order.
 
 - **README-sourced ports (landed)** — `DetectedPort.source` had declared `'readme'` since
   the type was written without any detector emitting it; README ports existed only inside
