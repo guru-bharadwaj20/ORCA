@@ -1,0 +1,22 @@
+image: node:20-slim
+
+stages:
+  - install
+  - build
+  - test
+
+install_deps:
+  stage: install
+  script:
+    - npm ci
+
+build_app:
+  stage: build
+  script:
+    - npm run build
+
+run_tests:
+  stage: test
+  image: node:20
+  script:
+    - npm test

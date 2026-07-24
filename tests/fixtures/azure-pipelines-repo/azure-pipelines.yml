@@ -1,0 +1,21 @@
+trigger:
+  - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+  - stage: Build
+    jobs:
+      - job: BuildJob
+        steps:
+          - script: npm ci
+          - script: npm run build
+
+  - stage: Test
+    jobs:
+      - job: TestJob
+        pool:
+          vmImage: 'ubuntu-22.04'
+        steps:
+          - script: npm test

@@ -15,6 +15,7 @@ import { basename } from 'node:path';
 import type { FilledTemplateVars, InferredEnv } from '../ai/schema.js';
 import { refineDockerfileVars } from '../ai/refineVars.js';
 import { selectEnvVars } from '../orchestrate/envFiles.js';
+import { LISTENING_ROLES } from '../detect/types.js';
 import type { DetectedComponent, DetectedDatabase, DetectionResult } from '../detect/types.js';
 import type { BuildRecipe } from '../model/recipe.js';
 import { describeComponent } from '../templates/registry.js';
@@ -168,7 +169,12 @@ export function ecosystemServiceNode(
   component: DetectedComponent,
   recipe: BuildRecipe
 ): ServiceNode {
-  const port = recipe.defaultPorts[0];
+  // Only a listening role publishes a port. Every shipped ecosystem recipe carries
+  // `defaultPorts: [8080]` because it was written for web services, so a worker/CLI/job
+  // would otherwise advertise a port nothing binds — the component's detected role, not
+  // the recipe's default, is the authority here (§2.3).
+  const listens = LISTENING_ROLES.includes(component.role);
+  const port = listens ? recipe.defaultPorts[0] : undefined;
   return {
     id,
     name: id,

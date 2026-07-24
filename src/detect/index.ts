@@ -17,8 +17,12 @@ import type { Runtime } from '../model/recipe.js';
 import { defaultRecipeRegistry } from '../model/recipes/index.js';
 import { DEFAULT_WALK_IGNORE, readFileIfExists } from '../utils/fs.js';
 import { OrcaError } from '../utils/errors.js';
+import { analyzeAzurePipelines } from './azurePipelines.js';
 import { analyzeCi } from './ci.js';
+import { analyzeCircleCi } from './circleci.js';
+import { detectComponentRole } from './componentRole.js';
 import { analyzeDockerfiles, runtimeFromBaseImage } from './dockerfile.js';
+import { analyzeGitlabCi } from './gitlabCi.js';
 import { defaultDetectorRegistry } from './detectors/index.js';
 import { detectEntrypoint } from './entrypoint.js';
 import { detectBackendFramework, detectFrontendFramework } from './framework.js';
@@ -35,8 +39,10 @@ import {
 } from './manifestExt.js';
 import { detectMonorepo, type MonorepoInfo } from './monorepo.js';
 import { detectPackageManager } from './packageManager.js';
-import { detectPorts } from './ports.js';
+import { declaredPorts, detectPorts } from './ports.js';
+import { analyzeReadme } from './readme.js';
 import { detectServices } from './services.js';
+import { analyzeShellScripts } from './shellScript.js';
 import { recoverTasks } from './taskRunners.js';
 import { expandWorkspaceGlobs } from './workspaceGlobs.js';
 import type {
@@ -460,16 +466,28 @@ async function gatherInsights(
       }
     }
 
+    // Role (§2.3): default 'backend' — the pre-widening behavior — unless a detector
+    // finds unambiguous evidence this root is a queue worker or a CLI. Resolved once per
+    // root and shared by both placement paths below. The declared-port list deliberately
+    // excludes defaults, so "listens on something real" is what gates a reclassification.
+    const rootPorts = await declaredPorts(absDir);
+
     // A non-seed ecosystem root (Go/Rust/JVM/.NET) with a matched recipe becomes an
     // open 'service' component. node/python roots stay on the seed frontend/backend
     // path, so they're excluded here to avoid double-placing the same directory.
     if (runtimeClaim && runtimeClaim.value !== 'node' && runtimeClaim.value !== 'python') {
       const recipe = recipes.match({ runtime: runtimeClaim.value, dependencies, files });
       if (recipe) {
+        const detected = await detectComponentRole(absDir, {
+          dependencies,
+          declaredPorts: rootPorts.map((p) => p.port),
+          startCommand: recipe.startCommand,
+        });
         ecosystemComponents.push({
           rootDir,
           runtime: runtimeClaim.value,
           recipeId: recipe.id,
+          role: detected?.role ?? 'backend',
         });
       }
     }
@@ -481,7 +499,17 @@ async function gatherInsights(
     if (hasPython) {
       const recipe = recipes.match({ runtime: 'python', dependencies, files });
       if (recipe && recipe.id !== 'python-django') {
-        ecosystemComponents.push({ rootDir, runtime: 'python', recipeId: recipe.id });
+        const detected = await detectComponentRole(absDir, {
+          dependencies,
+          declaredPorts: rootPorts.map((p) => p.port),
+          startCommand: recipe.startCommand,
+        });
+        ecosystemComponents.push({
+          rootDir,
+          runtime: 'python',
+          recipeId: recipe.id,
+          role: detected?.role ?? 'backend',
+        });
       }
     }
   }
@@ -491,7 +519,36 @@ async function gatherInsights(
     if (runtime !== 'unknown') runtimeSet.add(runtime);
   }
 
-  const ci = await analyzeCi(repoPath);
+  const [readme, shellScripts, ci, gitlabCi, azurePipelines, circleCi] = await Promise.all([
+    analyzeReadme(repoPath),
+    analyzeShellScripts(repoPath),
+    analyzeCi(repoPath),
+    analyzeGitlabCi(repoPath),
+    analyzeAzurePipelines(repoPath),
+    analyzeCircleCi(repoPath),
+  ]);
+  const scriptSources: RepoInsights['scriptSources'] = [];
+  if (readme.found) {
+    scriptSources.push({
+      source: 'readme',
+      file: readme.file,
+      commands: readme.commands,
+      ports: readme.ports,
+    });
+  }
+  for (const script of shellScripts.scripts) {
+    scriptSources.push({
+      source: 'shell-script',
+      file: script.file,
+      commands: script.commands,
+      ports: script.ports,
+    });
+  }
+  const ciProviders: RepoInsights['ciProviders'] = [
+    ...gitlabCi.configs.map((c) => ({ provider: 'gitlab' as const, ...c })),
+    ...azurePipelines.configs.map((c) => ({ provider: 'azure' as const, ...c })),
+    ...circleCi.configs.map((c) => ({ provider: 'circleci' as const, ...c })),
+  ];
 
   return {
     frameworks: [...frameworkSet],
@@ -499,8 +556,10 @@ async function gatherInsights(
     monorepoTools: monorepo.tools,
     ciCommands: ci.commands.map((c) => ({ command: c.command, kind: c.kind })),
     ciRuntimeVersions: ci.runtimeVersions,
+    ciProviders,
     dockerfiles,
     taskCommands,
+    scriptSources,
     ecosystemComponents,
   };
 }
@@ -562,6 +621,17 @@ function confidenceEvidence(
       signal: `ecosystem component matched (${eco.runtime} → ${eco.recipeId})`,
       weight: 0.55,
     });
+    // A non-default role is explained, not scored: knowing a component is a worker
+    // rather than a service changes how it's PLACED (no published port), not how
+    // confident ORCA is that it understood the repo. Weight 0 keeps it in the reasoning
+    // trail without moving the number.
+    if (eco.role !== 'backend') {
+      evidence.push({
+        detector: 'component-role',
+        signal: `'${eco.rootDir}' classified as ${eco.role} — no published port`,
+        weight: 0,
+      });
+    }
   }
   // CI corroboration only *reinforces* an already-detected stack (the maintainer's own
   // build recipe agreeing with detection); it never manufactures confidence on its own,
@@ -579,6 +649,23 @@ function confidenceEvidence(
       detector: 'ci',
       signal: `CI corroborates the build (${ciBuildSignals.length} build/start step(s))`,
       weight: 0.2,
+    });
+  }
+  // README/shell-script commands are the weakest deterministic signal here, so they are
+  // strictly GAP-FILLING: they count only when no more authoritative source already spoke
+  // (no Dockerfile, no CI), and — like CI above — only when a stack was already detected.
+  // Both guards together mean this source can never promote an unsupported repo, and
+  // never outranks a Dockerfile, a CI config, or a matched recipe.
+  const scriptBuildSignals = insights.scriptSources.flatMap((s) =>
+    s.commands.filter((c) => c.kind === 'build' || c.kind === 'start')
+  );
+  const authoritativeSourceSpoke =
+    insights.dockerfiles.length > 0 || insights.ciCommands.length > 0;
+  if (hasStack && !authoritativeSourceSpoke && scriptBuildSignals.length > 0) {
+    evidence.push({
+      detector: 'repo-scripts',
+      signal: `README/scripts declare the build (${scriptBuildSignals.length} build/start command(s))`,
+      weight: 0.15,
     });
   }
   return evidence;

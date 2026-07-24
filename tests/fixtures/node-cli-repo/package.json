@@ -1,0 +1,14 @@
+{
+  "name": "widgetctl",
+  "version": "2.1.0",
+  "bin": {
+    "widgetctl": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "commander": "^12.1.0"
+  }
+}
