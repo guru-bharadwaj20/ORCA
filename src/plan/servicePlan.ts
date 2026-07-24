@@ -159,16 +159,15 @@ function componentVolumes(
  * `BuildRecipe`. Role-agnostic (a Go worker, a Rust CLI, a JVM app): it builds from a
  * synthesized Dockerfile (the recipe rides inline on `source.recipe` so the generate
  * stage synthesizes directly — no registry lookup, so AI-inferred `ai-*` recipes build
- * identically), and publishes the recipe's first default port when it has one. No DB
- * wiring here — that stays with the seed-stack backend path until ecosystem DB inference
- * exists.
+ * identically), and publishes every one of the recipe's default ports (e.g. a Dockerfile
+ * with multiple EXPOSEs). No DB wiring here — that stays with the seed-stack backend path
+ * until ecosystem DB inference exists.
  */
 export function ecosystemServiceNode(
   id: string,
   component: DetectedComponent,
   recipe: BuildRecipe
 ): ServiceNode {
-  const port = recipe.defaultPorts[0];
   return {
     id,
     name: id,
@@ -180,7 +179,7 @@ export function ecosystemServiceNode(
       recipeId: recipe.id,
       recipe,
     },
-    ports: port === undefined ? [] : [{ host: port, container: port, protocol: 'tcp' }],
+    ports: recipe.defaultPorts.map((port) => ({ host: port, container: port, protocol: 'tcp' })),
     environment: {},
     dependsOn: [],
     volumes: [],
@@ -246,7 +245,11 @@ export function buildServicePlan(
         context: contextFor(detection.backend.rootDir),
         dockerfile: sharedRoot ? 'Dockerfile.backend' : 'Dockerfile',
       },
-      ports: [{ host: backendVars.port, container: backendVars.port, protocol: 'tcp' }],
+      ports: (backendVars.ports ?? [backendVars.port]).map((port) => ({
+        host: port,
+        container: port,
+        protocol: 'tcp',
+      })),
       environment: {
         ...(detection.backend.language === 'python'
           ? { DJANGO_DEBUG: '1' }
@@ -270,7 +273,11 @@ export function buildServicePlan(
         context: contextFor(detection.frontend.rootDir),
         dockerfile: sharedRoot ? 'Dockerfile.frontend' : 'Dockerfile',
       },
-      ports: [{ host: vars.port, container: vars.port, protocol: 'tcp' }],
+      ports: (vars.ports ?? [vars.port]).map((port) => ({
+        host: port,
+        container: port,
+        protocol: 'tcp',
+      })),
       environment: {
         NODE_ENV: 'development',
         // The browser talks to the backend from the host, hence localhost.
