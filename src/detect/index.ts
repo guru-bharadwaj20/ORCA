@@ -464,8 +464,10 @@ async function gatherInsights(
     }
 
     // A non-seed ecosystem root (Go/Rust/JVM/.NET) with a matched recipe becomes an
-    // open 'service' component. node/python roots stay on the seed frontend/backend
-    // path, so they're excluded here to avoid double-placing the same directory.
+    // open 'service' component. Plain-react/plain-express node roots and Django python
+    // roots stay on the seed frontend/backend path, so they're excluded below (by
+    // runtime here, by recipe id further down) to avoid double-placing the same
+    // directory.
     if (runtimeClaim && runtimeClaim.value !== 'node' && runtimeClaim.value !== 'python') {
       const recipe = recipes.match({ runtime: runtimeClaim.value, dependencies, files });
       if (recipe) {
@@ -485,6 +487,19 @@ async function gatherInsights(
       const recipe = recipes.match({ runtime: 'python', dependencies, files });
       if (recipe && recipe.id !== 'python-django') {
         ecosystemComponents.push({ rootDir, runtime: 'python', recipeId: recipe.id });
+      }
+    }
+
+    // A Node root whose framework the seed frontend/backend path can't place (plain
+    // react/express are the only seed Node frameworks) but which matches a more
+    // specific Node framework recipe — Next.js/NestJS/Angular, or a non-React Vite app
+    // — becomes an open 'service' too, mirroring the Python handling above. Plain
+    // react/express are excluded by id so they stay on the seed path, keeping the two
+    // paths disjoint (framework.ts already defers those roots out of 'react'/'express').
+    if (hasNode) {
+      const recipe = recipes.match({ runtime: 'node', dependencies, files });
+      if (recipe && recipe.id !== 'node-react' && recipe.id !== 'node-express') {
+        ecosystemComponents.push({ rootDir, runtime: 'node', recipeId: recipe.id });
       }
     }
   }
