@@ -25,8 +25,11 @@ export function buildEnvFile(inferred: InferredEnv, plan: ServicePlan): string {
   ];
   for (const variable of variables) {
     lines.push('', `# ${variable.required ? '(required) ' : ''}${variable.reason}`);
+    // Compose's dotenv parser processes escape sequences inside double-quoted values, so a
+    // backslash must be escaped first (before the quote), or a Windows path / regex value
+    // would be corrupted. Order matters: backslashes, then quotes.
     const value = /[\s#'"]/.test(variable.value)
-      ? `"${variable.value.replace(/"/g, '\\"')}"`
+      ? `"${variable.value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
       : variable.value;
     lines.push(`${variable.key}=${value}`);
   }
