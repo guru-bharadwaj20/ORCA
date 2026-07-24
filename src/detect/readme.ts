@@ -21,6 +21,7 @@ import { join } from 'node:path';
 
 import type { CiCommand } from './ci.js';
 import { extractShellCommands, localhostPorts } from './shellScript.js';
+import type { DetectedPort } from './types.js';
 import { readFileIfExists } from '../utils/fs.js';
 
 /** Everything the README analysis recovered from a repo. */
@@ -31,6 +32,12 @@ export interface ReadmeAnalysis {
   file: string;
   commands: CiCommand[];
   ports: number[];
+  /**
+   * The same ports as `ports`, in the standard `DetectedPort` shape (source: 'readme')
+   * so a README-declared port carries its origin the same way a Dockerfile- or
+   * env-declared one does, instead of living only as a bare number.
+   */
+  detectedPorts: DetectedPort[];
 }
 
 /**
@@ -133,14 +140,20 @@ export async function analyzeReadme(repoPath: string): Promise<ReadmeAnalysis> {
     // inside a code block. Flag-style ports (`-p`, `--port`) stay confined to recognized
     // command lines, where they can't be confused with arbitrary numbers.
     ports.push(...localhostPorts(raw));
+    const uniquePorts = [...new Set(ports)];
 
     return {
       found: commands.length > 0 || ports.length > 0,
       file: name,
       commands,
-      ports: [...new Set(ports)],
+      ports: uniquePorts,
+      detectedPorts: uniquePorts.map((port) => ({
+        port,
+        protocol: 'tcp' as const,
+        source: 'readme' as const,
+      })),
     };
   }
 
-  return { found: false, file: '', commands: [], ports: [] };
+  return { found: false, file: '', commands: [], ports: [], detectedPorts: [] };
 }
