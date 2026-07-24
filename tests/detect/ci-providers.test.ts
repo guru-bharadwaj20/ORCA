@@ -3,8 +3,11 @@
  * fixtures under tests/fixtures/ and asserts the recovered stages/jobs/commands/image,
  * plus that multiple CI providers in the same repo are all detected.
  */
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { analyzeAzurePipelines } from '../../src/detect/azurePipelines.js';
 import { analyzeCircleCi } from '../../src/detect/circleci.js';
@@ -42,6 +45,13 @@ describe('analyzeGitlabCi', () => {
     const test = config.jobs.find((j) => j.name === 'run_tests');
     expect(test).toMatchObject({ stage: 'test', image: 'node:20' });
     expect(test?.commands).toEqual([{ command: 'npm test', kind: 'test' }]);
+  });
+
+  it('populates runtimeVersions from job images, deduped by runtime:version', async () => {
+    const analysis = await analyzeGitlabCi(fixture('gitlab-ci-repo'));
+    // install_deps/build_app inherit the top-level node:20-slim, run_tests overrides to
+    // node:20 — both parse to the same {node, 20}, so this is one entry, not three.
+    expect(analysis.runtimeVersions).toEqual([{ runtime: 'node', version: '20' }]);
   });
 });
 
@@ -82,6 +92,13 @@ describe('analyzeAzurePipelines', () => {
       { command: 'pip install -r requirements.txt', kind: 'install' },
     ]);
   });
+
+  it('populates runtimeVersions only from real container images, not vmImage OS labels', async () => {
+    const analysis = await analyzeAzurePipelines(fixture('azure-pipelines-repo'));
+    // BuildJob (ubuntu-latest) and TestJob (ubuntu-22.04) are VM OS labels, not runtime
+    // images — only PackageJob's container: python:3.12 parses to a runtime version.
+    expect(analysis.runtimeVersions).toEqual([{ runtime: 'python', version: '3.12' }]);
+  });
 });
 
 describe('analyzeCircleCi', () => {
@@ -110,6 +127,12 @@ describe('analyzeCircleCi', () => {
     const test = config.jobs.find((j) => j.name === 'test');
     expect(test?.commands).toEqual([{ command: 'npm test', kind: 'test' }]);
   });
+
+  it('populates runtimeVersions from docker image, deduped across jobs', async () => {
+    const analysis = await analyzeCircleCi(fixture('circleci-repo'));
+    // build and test both use cimg/node:20.10 — one entry, not two.
+    expect(analysis.runtimeVersions).toEqual([{ runtime: 'node', version: '20.10' }]);
+  });
 });
 
 describe('multiple CI providers in one repo', () => {
@@ -132,5 +155,86 @@ describe('multiple CI providers in one repo', () => {
     const result = await detectStack(fixture('multi-ci-repo'));
     const providers = result.insights.ciProviders.map((c) => c.provider).sort();
     expect(providers).toEqual(['circleci', 'gitlab']);
+  });
+});
+
+describe('insights.ciRuntimeVersions merges across all CI sources', () => {
+  let repo: string;
+  beforeEach(async () => {
+    repo = await mkdtemp(join(tmpdir(), 'orca-ci-runtime-'));
+  });
+  afterEach(async () => {
+    await rm(repo, { recursive: true, force: true });
+  });
+
+  it('still extracts GitHub Actions setup-node pins unchanged (regression)', async () => {
+    const wf = join(repo, '.github', 'workflows');
+    await mkdir(wf, { recursive: true });
+    await writeFile(
+      join(wf, 'ci.yml'),
+      [
+        'jobs:',
+        '  build:',
+        '    steps:',
+        '      - uses: actions/setup-node@v4',
+        '        with:',
+        "          node-version: '18'",
+      ].join('\n')
+    );
+
+    const result = await detectStack(repo);
+    expect(result.insights.ciRuntimeVersions).toEqual([{ runtime: 'node', version: '18' }]);
+  });
+
+  it('keeps BOTH entries on a genuine cross-source version difference (GH Actions node:18 vs a GitLab image node:20)', async () => {
+    const wf = join(repo, '.github', 'workflows');
+    await mkdir(wf, { recursive: true });
+    await writeFile(
+      join(wf, 'ci.yml'),
+      [
+        'jobs:',
+        '  build:',
+        '    steps:',
+        '      - uses: actions/setup-node@v4',
+        '        with:',
+        "          node-version: '18'",
+      ].join('\n')
+    );
+    await writeFile(
+      join(repo, '.gitlab-ci.yml'),
+      ['stages:', '  - test', '', 'test_job:', '  stage: test', '  image: node:20', '  script:', '    - npm test'].join(
+        '\n'
+      )
+    );
+
+    const result = await detectStack(repo);
+    // Deduped by the full runtime:version key, not by runtime alone — a real
+    // discrepancy between sources is surfaced, not silently collapsed.
+    expect(result.insights.ciRuntimeVersions).toEqual(
+      expect.arrayContaining([
+        { runtime: 'node', version: '18' },
+        { runtime: 'node', version: '20' },
+      ])
+    );
+    expect(result.insights.ciRuntimeVersions).toHaveLength(2);
+  });
+
+  it('skips an image that does not cleanly parse (unrecognized name, no version)', async () => {
+    await writeFile(
+      join(repo, '.gitlab-ci.yml'),
+      [
+        'stages:',
+        '  - deploy',
+        '',
+        'deploy_job:',
+        '  stage: deploy',
+        '  image: registry.example.com/internal/base:latest',
+        '  script:',
+        '    - echo deploying',
+      ].join('\n')
+    );
+
+    const result = await detectStack(repo);
+    expect(result.insights.ciRuntimeVersions).toEqual([]);
   });
 });
