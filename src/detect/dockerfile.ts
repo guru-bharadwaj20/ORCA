@@ -190,6 +190,28 @@ async function candidateDirs(repoPath: string): Promise<string[]> {
   return dirs;
 }
 
+/**
+ * Exposed ports declared by any Dockerfile/Containerfile variant in a single directory,
+ * deduplicated and in declaration order. Shares the name matching and EXPOSE parsing with
+ * `analyzeDockerfiles`, so a component's port lookup honors `Containerfile`, `Dockerfile.prod`,
+ * JSON-array EXPOSE, and multi-port lines — not just a bare `Dockerfile` with one number.
+ */
+export async function dockerfilePortsAt(dir: string): Promise<number[]> {
+  const ports: number[] = [];
+  for (const file of await dockerfileFiles(dir)) {
+    const raw = await readFileIfExists(file);
+    if (raw === null) continue;
+    // Read EXPOSE directly rather than via `parseDockerfile`: a `FROM` + `EXPOSE` file with
+    // no explicit CMD (common for nginx/postgres-based images) is not a full recipe but still
+    // declares a real port. Port lookup must not require a start command.
+    for (const line of logicalLines(raw)) {
+      const match = /^EXPOSE\b\s*(.*)$/i.exec(line);
+      if (match) ports.push(...parsePorts(match[1] ?? ''));
+    }
+  }
+  return [...new Set(ports)];
+}
+
 /** Parse every Dockerfile-like file at the repo root and common first-level subdirs. */
 export async function analyzeDockerfiles(repoPath: string): Promise<DockerfileAnalysis> {
   const detections: DockerfileDetection[] = [];

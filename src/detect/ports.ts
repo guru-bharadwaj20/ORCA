@@ -1,5 +1,6 @@
 import { basename, extname, join } from 'node:path';
 
+import { dockerfilePortsAt } from './dockerfile.js';
 import { readFileIfExists, walk } from '../utils/fs.js';
 import type { DetectedPort, ComponentRole } from './types.js';
 
@@ -34,14 +35,11 @@ async function portFromEnvFiles(componentPath: string): Promise<number | null> {
   return null;
 }
 
-async function portFromDockerfile(componentPath: string): Promise<number | null> {
-  const raw = await readFileIfExists(join(componentPath, 'Dockerfile'));
-  const match = raw === null ? null : /^\s*EXPOSE\s+(\d{2,5})/m.exec(raw);
-  if (match?.[1]) {
-    const port = Number(match[1]);
-    if (isValidPort(port)) return port;
-  }
-  return null;
+async function portsFromDockerfile(componentPath: string): Promise<number[]> {
+  // Honors every container-file variant the detector recognizes (Containerfile,
+  // Dockerfile.prod, JSON-array/multi EXPOSE), not just a bare `Dockerfile`, and keeps
+  // every exposed port — a container declaring EXPOSE 80 443 surfaces both.
+  return (await dockerfilePortsAt(componentPath)).filter(isValidPort);
 }
 
 async function portsFromCode(componentPath: string): Promise<number[]> {
@@ -95,8 +93,7 @@ export async function detectPorts(
   const fromEnv = await portFromEnvFiles(componentPath);
   if (fromEnv !== null) add(fromEnv, 'env');
 
-  const fromDockerfile = await portFromDockerfile(componentPath);
-  if (fromDockerfile !== null) add(fromDockerfile, 'dockerfile');
+  for (const port of await portsFromDockerfile(componentPath)) add(port, 'dockerfile');
 
   for (const port of await portsFromCode(componentPath)) add(port, 'code');
 
