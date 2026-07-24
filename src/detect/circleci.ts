@@ -52,7 +52,11 @@ async function configFiles(repoPath: string): Promise<string[]> {
 function jobImage(job: Record<string, unknown>): string | null {
   if (Array.isArray(job.docker)) {
     const first = job.docker[0];
-    if (first !== null && typeof first === 'object' && typeof (first as { image?: unknown }).image === 'string') {
+    if (
+      first !== null &&
+      typeof first === 'object' &&
+      typeof (first as { image?: unknown }).image === 'string'
+    ) {
       return (first as { image: string }).image;
     }
   }
