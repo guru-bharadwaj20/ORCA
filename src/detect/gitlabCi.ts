@@ -11,7 +11,7 @@ import { join } from 'node:path';
 
 import { parse as parseYaml } from 'yaml';
 
-import { classifyCommand, type CiCommand } from './ci.js';
+import { classifyCommand, parseRuntimeFromImage, type CiCommand, type CiRuntimeVersion } from './ci.js';
 import { readFileIfExists } from '../utils/fs.js';
 
 /** A job recovered from a GitLab CI config. */
@@ -34,6 +34,8 @@ export interface GitlabCiConfig {
 export interface GitlabCiAnalysis {
   found: boolean;
   configs: GitlabCiConfig[];
+  /** Runtime versions recovered from every job's `image:` tag, deduped across configs. */
+  runtimeVersions: CiRuntimeVersion[];
 }
 
 /** Top-level keys that are GitLab CI configuration, never job definitions. */
@@ -147,5 +149,19 @@ export async function analyzeGitlabCi(repoPath: string): Promise<GitlabCiAnalysi
     configs.push({ file, ...parsed });
   }
 
-  return { found: configs.length > 0, configs };
+  const runtimeVersions: CiRuntimeVersion[] = [];
+  const seenVer = new Set<string>();
+  for (const config of configs) {
+    for (const job of config.jobs) {
+      if (job.image === null) continue;
+      const parsed = parseRuntimeFromImage(job.image);
+      if (parsed === null) continue;
+      const key = `${parsed.runtime}:${parsed.version}`;
+      if (seenVer.has(key)) continue;
+      seenVer.add(key);
+      runtimeVersions.push(parsed);
+    }
+  }
+
+  return { found: configs.length > 0, configs, runtimeVersions };
 }
