@@ -32,7 +32,33 @@ describe('PHP recipes', () => {
     expect(recipe?.defaultPorts).toEqual([8000]);
   });
 
-  it('falls back to the generic php-composer recipe for a non-Laravel composer app', () => {
+  it('resolves Symfony to a dedicated recipe when the dependency and bin/console both match', () => {
+    const recipe = registry.match(
+      facts({
+        dependencies: ['symfony/framework-bundle'],
+        files: ['composer.json', 'bin/console'],
+      })
+    );
+    expect(recipe?.id).toBe('php-symfony');
+    expect(recipe?.buildCommands?.[0]).toContain('composer install');
+    expect(recipe?.baseImages.build).toBe('composer:2');
+    expect(recipe?.baseImages.runtime).toBe('php:8.3-cli');
+    // Same built-in server the generic fallback uses — Symfony's own documented
+    // alternative to the CLI binary, which isn't installable via Composer/apt.
+    expect(recipe?.startCommand).toBe('php -S 0.0.0.0:8000 -t public');
+    expect(recipe?.defaultPorts).toEqual([8000]);
+  });
+
+  it('does not resolve Symfony without bin/console corroborating the dependency', () => {
+    // A repo that merely lists framework-bundle without the CLI entrypoint falls back
+    // to the generic Composer recipe rather than a false-positive Symfony match.
+    const recipe = registry.match(
+      facts({ dependencies: ['symfony/framework-bundle'], files: ['composer.json'] })
+    );
+    expect(recipe?.id).toBe('php-composer');
+  });
+
+  it('falls back to the generic php-composer recipe for a non-Laravel, non-Symfony composer app', () => {
     const recipe = registry.match(
       facts({ dependencies: ['monolog/monolog'], files: ['composer.json'] })
     );
