@@ -51,8 +51,30 @@ export type BackendFramework = 'express' | 'django' | 'unknown';
 /** Supported database / cache engines. */
 export type DatabaseEngine = 'postgres' | 'mongodb' | 'redis';
 
-/** The high-level role a detected component plays in the app. */
-export type ComponentRole = 'frontend' | 'backend' | 'database';
+/**
+ * The high-level role a detected component plays in the app
+ * (docs/universal-understanding-plan.md §2.3).
+ *
+ * The first three are the original web-shaped roles and are unchanged. The rest widen
+ * the model to repos that are not web apps at all: a background `worker`, a `cli` binary,
+ * a `library` package, a one-shot `job`. The distinction that matters downstream is that
+ * only `frontend`/`backend` are assumed to LISTEN — the others get no default port (see
+ * `defaultPortFor` in `ports.ts`) and publish none in the plan.
+ *
+ * `library` and `job` are currently type-only: they are part of the vocabulary so the
+ * model can express them, but no deterministic detector assigns them yet. `library` is
+ * detectable only by *negative* evidence ("no entrypoint anywhere"), which is precisely
+ * the ambiguity that belongs to tier-3 AI inference; `job` is not separable from `worker`
+ * without a scheduler signal. Both are left for a detector that has real evidence.
+ */
+export type ComponentRole =
+  'frontend' | 'backend' | 'database' | 'worker' | 'cli' | 'library' | 'job';
+
+/** The roles that describe a runnable component (everything except the database node). */
+export type RunnableRole = Exclude<ComponentRole, 'database'>;
+
+/** Roles ORCA expects to listen on a port. Everything else publishes none. */
+export const LISTENING_ROLES: readonly ComponentRole[] = ['frontend', 'backend'];
 
 /**
  * A network port a component listens on, together with how ORCA learned about it.
@@ -79,9 +101,13 @@ export interface Entrypoint {
   source: 'package-json-script' | 'procfile' | 'manage-py' | 'readme' | 'inferred';
 }
 
-/** A detected application component (frontend or backend service). */
+/**
+ * A detected application component. The seed-stack detectors only ever produce
+ * `frontend`/`backend`; the wider roles arrive via `insights.ecosystemComponents`, which
+ * is why this is now the full runnable set rather than the old two-member `Extract`.
+ */
 export interface DetectedComponent {
-  role: Extract<ComponentRole, 'frontend' | 'backend'>;
+  role: RunnableRole;
   /** Path to the component root, relative to the repo root (`.` for single-package repos). */
   rootDir: string;
   language: Language;
@@ -131,6 +157,21 @@ export interface RepoInsights {
   ciCommands: { command: string; kind: string }[];
   /** Runtime versions pinned in CI, e.g. [{ runtime: "node", version: "20" }]. */
   ciRuntimeVersions: { runtime: string; version: string }[];
+  /**
+   * Build/run commands the repo states in its own README code blocks and shell scripts
+   * (`start.sh`, `scripts/*.sh`, `bin/*.sh`), plus any ports they advertise. Tier-1 like
+   * the task runners, but the weakest deterministic source here — strictly gap-filling,
+   * it never overrides a Dockerfile, a CI config, or a matched recipe (see
+   * `confidenceEvidence` in `detect/index.ts`, which only counts it when no more
+   * authoritative source spoke).
+   */
+  scriptSources: {
+    source: 'readme' | 'shell-script';
+    /** Repo-relative path of the file the commands came from. */
+    file: string;
+    commands: { command: string; kind: string }[];
+    ports: number[];
+  }[];
   /** Dockerfiles parsed from the repo, with their extracted build/run signals. */
   dockerfiles: {
     rootDir: string;
@@ -153,7 +194,17 @@ export interface RepoInsights {
    * the id of its matched recipe, so the pipeline can place them as open `'service'`
    * nodes and synthesize their Dockerfiles.
    */
-  ecosystemComponents: { rootDir: string; runtime: string; recipeId: string }[];
+  ecosystemComponents: {
+    rootDir: string;
+    runtime: string;
+    recipeId: string;
+    /**
+     * The role this component plays. `'backend'` unless a role detector found
+     * unambiguous evidence otherwise (a queue worker, a CLI binary) — so every repo that
+     * resolved to a service before this field existed still resolves to one.
+     */
+    role: RunnableRole;
+  }[];
 }
 
 /**

@@ -7,6 +7,8 @@ export interface PackageJson {
   scripts?: Record<string, string>;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
+  /** npm's `bin` field: a string for a single binary, or a name→path map. Marks a CLI. */
+  bin?: string | Record<string, string>;
 }
 
 export async function readPackageJson(dir: string): Promise<PackageJson | null> {
