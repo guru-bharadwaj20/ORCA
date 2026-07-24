@@ -75,10 +75,13 @@ function defaultPortFor(framework: DetectedComponent['framework']): number {
   }
 }
 
-function startCommandFor(framework: DetectedComponent['framework'], python: boolean): string {
+function startCommandFor(framework: DetectedComponent['framework']): string {
+  // Only Django needs `manage.py runserver`, and Django is the sole Python seed
+  // framework — so this must key off the framework, never off "is this Python". A
+  // non-Django component (react/express/unknown) runs the Node dev script and must
+  // never inherit a command that assumes a manage.py the repo doesn't ship.
   if (framework === 'django') return 'python manage.py runserver 0.0.0.0:8000';
-  if (framework === 'react' || framework === 'express') return 'npm run dev';
-  return python ? 'python manage.py runserver 0.0.0.0:8000' : 'npm run dev';
+  return 'npm run dev';
 }
 
 export function defaultDockerfileVars(component: DetectedComponent): DockerfileVars {
@@ -97,7 +100,7 @@ export function defaultDockerfileVars(component: DetectedComponent): DockerfileV
     packageManager: pm,
     dependencyFiles: dependencyFilesFor(pm),
     installCommand: installCommandFor(pm),
-    startCommand: startCommandFor(component.framework, python),
+    startCommand: startCommandFor(component.framework),
     port: ports[0]!,
     ports,
   };
