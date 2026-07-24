@@ -204,9 +204,16 @@ describe('insights.ciRuntimeVersions merges across all CI sources', () => {
     );
     await writeFile(
       join(repo, '.gitlab-ci.yml'),
-      ['stages:', '  - test', '', 'test_job:', '  stage: test', '  image: node:20', '  script:', '    - npm test'].join(
-        '\n'
-      )
+      [
+        'stages:',
+        '  - test',
+        '',
+        'test_job:',
+        '  stage: test',
+        '  image: node:20',
+        '  script:',
+        '    - npm test',
+      ].join('\n')
     );
 
     const result = await detectStack(repo);
