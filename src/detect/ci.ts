@@ -58,6 +58,49 @@ export function classifyCommand(command: string): CiCommand['kind'] {
   return 'other';
 }
 
+/** Runtime name substrings recognized in an image's repo path (before the tag). */
+function runtimeFromImageName(repoPath: string): string | null {
+  const lower = repoPath.toLowerCase();
+  if (lower.includes('node')) return 'node';
+  if (lower.includes('python')) return 'python';
+  if (lower.includes('golang')) return 'go';
+  if (lower.includes('dotnet')) return 'dotnet';
+  if (lower.includes('openjdk') || lower.includes('temurin') || lower.includes('jdk') || lower.includes('jre')) {
+    return 'java';
+  }
+  // Bare "go" only matches as an exact path segment — `.includes('go')` would
+  // false-positive on "django", "mongo", "gogs", etc.
+  if (lower.split('/').includes('go')) return 'go';
+  return null;
+}
+
+/** Leading dotted-number version from a tag, ignoring OS/variant suffixes (e.g. "20-slim" -> "20"). */
+function versionFromTag(tag: string): string | null {
+  return /^(\d+(?:\.\d+){0,3})/.exec(tag)?.[1] ?? null;
+}
+
+/**
+ * Recover a runtime + version pin from a Docker image tag, e.g. "node:20-slim" ->
+ * {runtime:"node", version:"20"}, "cimg/node:20.10" -> {runtime:"node", version:"20.10"}.
+ * Returns null for anything that doesn't cleanly parse — no tag at all, an unversioned
+ * tag ("latest"), or an unrecognized image — best-effort, matching every other CI parser
+ * in this codebase. The runtime vocabulary matches `SETUP_ACTIONS`'s keys so entries from
+ * either source merge into `insights.ciRuntimeVersions` without a naming mismatch.
+ */
+export function parseRuntimeFromImage(image: string): CiRuntimeVersion | null {
+  const trimmed = image.trim();
+  const lastColon = trimmed.lastIndexOf(':');
+  if (lastColon === -1) return null;
+
+  const runtime = runtimeFromImageName(trimmed.slice(0, lastColon));
+  if (runtime === null) return null;
+
+  const version = versionFromTag(trimmed.slice(lastColon + 1));
+  if (version === null) return null;
+
+  return { runtime, version };
+}
+
 /** Every `.yml`/`.yaml` under `.github/workflows`, or [] when the dir is absent. */
 async function workflowFiles(repoPath: string): Promise<string[]> {
   const dir = join(repoPath, '.github', 'workflows');
