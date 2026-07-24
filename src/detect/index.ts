@@ -17,9 +17,11 @@ import type { Runtime } from '../model/recipe.js';
 import { defaultRecipeRegistry } from '../model/recipes/index.js';
 import { DEFAULT_WALK_IGNORE, readFileIfExists } from '../utils/fs.js';
 import { OrcaError } from '../utils/errors.js';
+import { analyzeAzurePipelines } from './azurePipelines.js';
 import { analyzeCi } from './ci.js';
-import { detectComponentRole } from './componentRole.js';
+import { analyzeCircleCi } from './circleci.js';
 import { analyzeDockerfiles, runtimeFromBaseImage } from './dockerfile.js';
+import { analyzeGitlabCi } from './gitlabCi.js';
 import { defaultDetectorRegistry } from './detectors/index.js';
 import { detectEntrypoint } from './entrypoint.js';
 import { detectBackendFramework, detectFrontendFramework } from './framework.js';
@@ -516,32 +518,16 @@ async function gatherInsights(
     if (runtime !== 'unknown') runtimeSet.add(runtime);
   }
 
-  const [ci, readme, shellScripts] = await Promise.all([
+  const [ci, gitlabCi, azurePipelines, circleCi] = await Promise.all([
     analyzeCi(repoPath),
-    analyzeReadme(repoPath),
-    analyzeShellScripts(repoPath),
+    analyzeGitlabCi(repoPath),
+    analyzeAzurePipelines(repoPath),
+    analyzeCircleCi(repoPath),
   ]);
-
-  // README + shell scripts, kept as one list keyed by source. A README that parsed to
-  // nothing contributes no entry at all, so "no signal" and "no README" look identical
-  // to every consumer.
-  const scriptSources: RepoInsights['scriptSources'] = [
-    ...(readme.found
-      ? [
-          {
-            source: 'readme' as const,
-            file: readme.file,
-            commands: readme.commands.map((c) => ({ command: c.command, kind: c.kind })),
-            ports: readme.ports,
-          },
-        ]
-      : []),
-    ...shellScripts.scripts.map((s) => ({
-      source: 'shell-script' as const,
-      file: s.file,
-      commands: s.commands.map((c) => ({ command: c.command, kind: c.kind })),
-      ports: s.ports,
-    })),
+  const ciProviders: RepoInsights['ciProviders'] = [
+    ...gitlabCi.configs.map((c) => ({ provider: 'gitlab' as const, ...c })),
+    ...azurePipelines.configs.map((c) => ({ provider: 'azure' as const, ...c })),
+    ...circleCi.configs.map((c) => ({ provider: 'circleci' as const, ...c })),
   ];
 
   return {
@@ -550,7 +536,7 @@ async function gatherInsights(
     monorepoTools: monorepo.tools,
     ciCommands: ci.commands.map((c) => ({ command: c.command, kind: c.kind })),
     ciRuntimeVersions: ci.runtimeVersions,
-    scriptSources,
+    ciProviders,
     dockerfiles,
     taskCommands,
     ecosystemComponents,
