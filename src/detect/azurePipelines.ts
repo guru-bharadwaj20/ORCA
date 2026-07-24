@@ -50,7 +50,11 @@ async function configFiles(repoPath: string): Promise<string[]> {
 
 /** A `pool:` value's `vmImage`, the closest Azure equivalent of a base-image hint. */
 function vmImageOf(pool: unknown): string | null {
-  if (pool !== null && typeof pool === 'object' && typeof (pool as { vmImage?: unknown }).vmImage === 'string') {
+  if (
+    pool !== null &&
+    typeof pool === 'object' &&
+    typeof (pool as { vmImage?: unknown }).vmImage === 'string'
+  ) {
     return (pool as { vmImage: string }).vmImage;
   }
   return null;
@@ -102,9 +106,17 @@ interface JobLike {
   steps?: unknown;
 }
 
-function jobFrom(entry: JobLike, stage: string | null, fallbackImage: string | null): AzurePipelinesJob {
+function jobFrom(
+  entry: JobLike,
+  stage: string | null,
+  fallbackImage: string | null
+): AzurePipelinesJob {
   const name =
-    typeof entry.job === 'string' ? entry.job : typeof entry.deployment === 'string' ? entry.deployment : 'default';
+    typeof entry.job === 'string'
+      ? entry.job
+      : typeof entry.deployment === 'string'
+        ? entry.deployment
+        : 'default';
   const image = containerImage(entry.container) ?? vmImageOf(entry.pool) ?? fallbackImage;
   return { name, stage, commands: stepCommands(entry.steps), image };
 }
