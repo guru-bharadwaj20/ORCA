@@ -205,6 +205,115 @@ describe('recoverBuild across sources', () => {
   });
 });
 
+describe('rejecting commands that are not about the app', () => {
+  // Regression: real CI files are mostly infrastructure. `docker build -t app .` is the
+  // single most common "build" step in CI, and classifyCommand rightly calls it a build —
+  // but copying it into the generated Dockerfile emits `RUN docker build` INSIDE the
+  // image, which cannot work. This filter is what makes the feature safe on real repos.
+  const ci = (commands: { command: string; kind: string }[]): RepoInsights['ciProviders'] => [
+    {
+      provider: 'gitlab',
+      file: '.gitlab-ci.yml',
+      stages: [],
+      jobs: [{ name: 'j', stage: null, commands, image: null }],
+      image: null,
+    },
+  ];
+
+  it('drops container and deployment tooling, keeping the real app build', () => {
+    const claim = recoverBuild(
+      insights({
+        ciProviders: ci([
+          { command: 'docker build -t myapp:latest .', kind: 'build' },
+          { command: 'docker push myapp:latest', kind: 'build' },
+          { command: 'kubectl apply -f k8s/', kind: 'build' },
+          { command: 'helm upgrade app ./chart', kind: 'build' },
+          { command: 'go build -o bin/api ./cmd/api', kind: 'build' },
+        ]),
+      })
+    );
+    expect(claim?.value.buildCommands).toEqual(['go build -o bin/api ./cmd/api']);
+  });
+
+  it('drops commands referencing CI-only variables', () => {
+    // `$CI_COMMIT_SHA` / `${{ github.sha }}` / `$(Build.BuildId)` expand to nothing
+    // outside their runner, so the command would silently do the wrong thing.
+    for (const command of [
+      'make release VERSION=$CI_COMMIT_SHA',
+      'go build -ldflags "-X main.sha=${{ github.sha }}"',
+      'dotnet publish -p:Version=$(Build.BuildId)',
+    ]) {
+      expect(recoverBuild(insights({ ciProviders: ci([{ command, kind: 'build' }]) }))).toBeNull();
+    }
+  });
+
+  it('takes only the highest-priority family, not a concatenation of all three', () => {
+    // CI, a Makefile and a README are alternative expressions of one intent. Running all
+    // three in sequence inside the image is never what the maintainer meant.
+    const claim = recoverBuild(
+      insights({
+        ciProviders: ci([{ command: 'go build ./cmd/api', kind: 'build' }]),
+        taskCommands: [{ source: 'makefile', name: 'build', command: 'make build', kind: 'build' }],
+        scriptSources: [
+          {
+            source: 'readme',
+            file: 'README.md',
+            commands: [{ command: 'npm run build', kind: 'build' }],
+            ports: [],
+          },
+        ],
+      })
+    );
+    expect(claim?.value.buildCommands).toEqual(['go build ./cmd/api']);
+  });
+});
+
+describe('build and start move as a coupled pair', () => {
+  // Regression: a recipe's build produces the artifact its start command runs. Replacing
+  // one and keeping the other yields an image that builds and then dies at runtime —
+  // e.g. CI's `go build ./...` writes no binary, yet `CMD /app/server` still expects one.
+  const buildOnly = {
+    installCommands: [],
+    buildCommands: ['go build ./...'],
+    startCommand: null,
+    image: null,
+    commands: [
+      { command: 'go build ./...', kind: 'build', source: 'ci', origin: 'github-actions' },
+    ],
+    origins: ['github-actions'],
+    confidence: 0.2,
+    reasoning: ['ci declares the build'],
+  };
+
+  it('leaves a coherent recipe alone when only the build half was recovered', () => {
+    const { recipe, origins } = applyRecoveredBuild(goRecipe, buildOnly);
+    expect(recipe.buildCommands).toEqual(['go build -o /app/server ./...']);
+    expect(recipe.startCommand).toBe('/app/server');
+    expect(origins).toEqual([]);
+  });
+
+  it('still fills a genuine gap when the recipe has no build of its own', () => {
+    const noBuild = { ...goRecipe, buildCommands: [] };
+    const { recipe, origins } = applyRecoveredBuild(noBuild, buildOnly);
+    expect(recipe.buildCommands).toEqual(['go build ./...']);
+    expect(origins).toEqual(['github-actions']);
+  });
+
+  it('replaces both halves when both were recovered', () => {
+    const both = {
+      ...buildOnly,
+      startCommand: './bin/api',
+      commands: [
+        ...buildOnly.commands,
+        { command: './bin/api', kind: 'start', source: 'ci', origin: 'github-actions' },
+      ],
+    };
+    const { recipe } = applyRecoveredBuild(goRecipe, both);
+    expect(recipe.buildCommands).toEqual(['go build ./...']);
+    expect(recipe.startCommand).toBe('./bin/api');
+  });
+});
+
 describe('applyRecoveredBuild precedence', () => {
   const recovered = {
     installCommands: ['npm ci --omit=dev'],
