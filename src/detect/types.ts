@@ -199,6 +199,13 @@ export interface RepoInsights {
     file: string;
     commands: { command: string; kind: string }[];
     ports: number[];
+    /**
+     * The same `ports` as proper `DetectedPort` entries (source: 'readme'), origin-tagged
+     * for anything that wants the standard shape. Only ever set for a `'readme'` entry —
+     * `DetectedPort.source` has no `'shell-script'` member, so that source stays bare
+     * numbers here.
+     */
+    readmePorts?: DetectedPort[];
   }[];
   /**
    * Ecosystem components (Go/Rust/JVM/.NET) that matched a `BuildRecipe` but fall
