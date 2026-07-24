@@ -106,13 +106,15 @@ function launchLines(recipe: BuildRecipe, exposeLine: string, start: string): st
 /**
  * Synthesize a multi-stage Dockerfile from a recipe. When the recipe has no build
  * commands (interpreted runtimes), a single-stage image is emitted instead — a builder
- * stage would add no value. `EXPOSE` uses the recipe's first default port when present.
+ * stage would add no value. Emits one `EXPOSE` per port in the recipe's `defaultPorts`.
  */
 export function synthesizeDockerfile(recipe: BuildRecipe, options: SynthesisOptions = {}): string {
   const workdir = options.workdir ?? '/app';
   const start = resolveStart(recipe.startCommand, options.artifactName);
   const exposeLine =
-    recipe.defaultPorts[0] !== undefined ? `EXPOSE ${recipe.defaultPorts[0]}\n` : '';
+    recipe.defaultPorts.length > 0
+      ? `${recipe.defaultPorts.map((p) => `EXPOSE ${p}`).join('\n')}\n`
+      : '';
   const depFiles = recipe.dependencyFiles.length > 0 ? recipe.dependencyFiles.join(' ') : '.';
   const hasBuild = (recipe.buildCommands?.length ?? 0) > 0;
   const baseImages = resolveBaseImages(recipe);

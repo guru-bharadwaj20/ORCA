@@ -18,6 +18,6 @@ COPY . .
 RUN {{{buildCommand}}}
 {{/if}}
 
-EXPOSE {{port}}
+{{{exposeLines ports port}}}
 
 CMD {{{startCommand}}}
