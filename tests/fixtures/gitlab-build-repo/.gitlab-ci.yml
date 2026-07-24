@@ -1,0 +1,16 @@
+image: golang:1.23
+
+stages:
+  - build
+  - deploy
+
+compile:
+  stage: build
+  script:
+    - go build -o bin/apiservice ./cmd/api
+
+serve:
+  stage: deploy
+  image: golang:1.23-alpine
+  script:
+    - ./bin/apiservice --serve

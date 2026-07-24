@@ -11,13 +11,20 @@
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { bestClaim, combineConfidence, type Claim, type Evidence } from '../model/claim.js';
+import {
+  bestClaim,
+  combineConfidence,
+  reasoning,
+  type Claim,
+  type Evidence,
+} from '../model/claim.js';
 import type { RepoContext } from '../model/detector.js';
 import type { Runtime } from '../model/recipe.js';
 import { defaultRecipeRegistry } from '../model/recipes/index.js';
 import { DEFAULT_WALK_IGNORE, readFileIfExists } from '../utils/fs.js';
 import { OrcaError } from '../utils/errors.js';
 import { analyzeAzurePipelines } from './azurePipelines.js';
+import { recoverBuild } from './buildRecovery.js';
 import { analyzeCi } from './ci.js';
 import { analyzeCircleCi } from './circleci.js';
 import { detectComponentRole } from './componentRole.js';
@@ -579,7 +586,7 @@ async function gatherInsights(
     ...circleCi.configs.map((c) => ({ provider: 'circleci' as const, ...c })),
   ];
 
-  return {
+  const insights: RepoInsights = {
     frameworks: [...frameworkSet],
     runtimes: [...runtimeSet],
     monorepoTools: monorepo.tools,
@@ -590,7 +597,21 @@ async function gatherInsights(
     taskCommands,
     scriptSources,
     ecosystemComponents,
+    recoveredBuild: null,
   };
+
+  // Recovery reads the assembled insights (it spans CI, tasks, and scripts), so it runs
+  // last and folds its own answer back in. Projected to plain data here — the plan reads
+  // insights, not `Claim`s — keeping the claim's confidence and reasoning trail.
+  const recovered = recoverBuild(insights);
+  if (recovered !== null) {
+    insights.recoveredBuild = {
+      ...recovered.value,
+      confidence: recovered.confidence,
+      reasoning: reasoning(recovered),
+    };
+  }
+  return insights;
 }
 
 /**

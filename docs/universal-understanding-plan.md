@@ -345,16 +345,19 @@ _The tier-1/tier-2 signals that dramatically raise confidence and fill command g
 
 - [x] Repository-analysis detectors: `Makefile`, `Taskfile.yml`, `justfile`, package
       scripts, existing `Dockerfile`(s), shell scripts, README build sections.
-- [~] CI parsers: `.github/workflows/*` **only**. GitHub Actions is parsed
-  (`detect/ci.ts`) for build/test/start commands and `setup-*` runtime versions.
-  `.gitlab-ci.yml`, `azure-pipelines.yml`, and `circle.yml` are **NOT implemented on
-  this branch** — see §10. Env-var-name extraction is not implemented for any provider.
+- [x] CI parsers: `.github/workflows/*` (`detect/ci.ts`), plus `.gitlab-ci.yml`,
+      `azure-pipelines.yml`, and `.circleci/config.yml` feeding `insights.ciProviders` as
+      structured stages/jobs. Build/test/start commands and (for GitHub Actions) `setup-*`
+      runtime versions are recovered. Env-var-name extraction is still not implemented, and
+      the non-GitHub parsers have known depth gaps — see §10 and CONTRIBUTING.
 - [x] Wire cross-tier agreement into confidence (§4).
-- **Exit criterion (partially met):** the repo's own declared commands are recovered and
-  surfaced with the source file cited (`insights.taskCommands`, `ciCommands`,
-  `scriptSources`, `dockerfiles`), and they feed the confidence trail. But ORCA does not
-  yet _prefer_ them over recipe defaults when building — apart from the Dockerfile path,
-  which does drive the build. Wiring recovered commands into recipe selection is open (§10).
+- **Exit criterion (met):** for a repo with a Makefile, a CI config, or a README build
+  block, ORCA now _prefers_ the repo's own declared commands over the matched recipe's
+  defaults, and the plan node cites the file each command came from
+  (`ServiceSource.commandOrigins`). Precedence is explicit in `applyRecoveredBuild`: a
+  Dockerfile-derived recipe is never overridden (tier 1 outranks tier 2), build/start
+  commands are replaced, install commands are only filled in, and a recovered image fills
+  only a blank base image.
 
 ### Phase D — AI inference as the gap-filler (brief's Phase 5)
 
@@ -562,6 +565,19 @@ Landed on `feat/universal-understanding` (behind the full test suite):
   no Dockerfile and no CI already spoke, and it can never make an unsupported repo
   supported.
 
+- **Build recovery (landed, Phase C)** — `detect/buildRecovery.ts` is the consumer the
+  recovered-command fields never had. `ciCommands`, `ciProviders`, `taskCommands`, and
+  `scriptSources` were all previously read only by `logInsights`; they are now normalized
+  into ranked `RecoveredCommand`s that retain their ORIGIN, combined into an
+  evidence-backed `Claim` on `insights.recoveredBuild`, and overlaid onto the matched
+  recipe by the pipeline. The plan node carries `commandOrigins`, so a build command can
+  be traced back to `gitlab:.gitlab-ci.yml#compile` or `makefile:build`.
+
+  CI providers are handled as DATA: `ciProviders` is walked uniformly and the `provider`
+  field is a label inside the provenance string, never a branch — a fifth provider needs
+  a parser and no change here. Ranking is `ci` > `task` > `script`, reusing the weights
+  those families already carry in the confidence model.
+
 - **Component-role widening (landed, §2.3)** — `ComponentRole` now carries
   `worker | cli | library | job` alongside the original three, with `worker` and `cli`
   detected deterministically and `library`/`job` left as vocabulary. See §2.3 for the
@@ -614,17 +630,17 @@ Known follow-ups surfaced during integration:
 Collected here so §1–§8 can stay as the original design argument while remaining honest
 about the gap. Nothing below is implemented on this branch.
 
-| #   | Gap                                                                                                                                                                                                                               | Where the doc claims it   |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
-| 1   | **Multi-provider CI.** Only `.github/workflows/*` is parsed. `.gitlab-ci.yml`, `azure-pipelines.yml`, and `circle.yml` have no parser, and `insights` has no per-provider structure.                                              | §5 Phase C                |
-| 2   | **Graded `{ recipe, tier }` outcome.** `isSupported: boolean` is still the contract; the review gate shows no confidence tier.                                                                                                    | §4                        |
-| 3   | **A real confidence gate.** Tier-3 escalation triggers on `!isSupported`, not on a threshold or on recipe-field completeness — a placed-but-poorly-understood repo never escalates.                                               | §3, §5 Phase D            |
-| 4   | **Recovered commands don't drive the build.** `taskCommands` / `ciCommands` / `scriptSources` inform confidence and the log, but recipe selection ignores them. Only the Dockerfile path actually builds from recovered commands. | §5 Phase C exit criterion |
-| 5   | **`AI claims capped ≤0.7`** is asserted as a mechanism but is not enforced by a shared, tested cap in `claim.ts`.                                                                                                                 | §4, §6 row 5              |
-| 6   | **Correcting an AI-inferred plan at the gate.** The reviewer can approve or reject, not edit.                                                                                                                                     | §5 Phase D exit criterion |
-| 7   | **`cli`/`job` as one-shot services.** They become ordinary portless `'service'` nodes; there is no `restart: no` / "runnable, not long-lived" affordance.                                                                         | §2.3                      |
-| 8   | **`library` and `job` detection.** Vocabulary only, deliberately — see §2.3.                                                                                                                                                      | §2.3                      |
-| 9   | **Probing implementation.** Seam only, by decision #2. This one is a _choice_, not a gap.                                                                                                                                         | §5 Phase G                |
+| #   | Gap                                                                                                                                                                                                                                                                                                                                           | Where the doc claims it   |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| 1   | ~~**Multi-provider CI.**~~ **RESOLVED.** GitLab CI, Azure Pipelines, and CircleCI are parsed into `insights.ciProviders` and consumed by build recovery. Depth gaps remain (CircleCI `workflows`, reusable `commands`, `include:` expansion) — tracked in CONTRIBUTING.                                                                       | §5 Phase C                |
+| 2   | **Graded `{ recipe, tier }` outcome.** `isSupported: boolean` is still the contract; the review gate shows no confidence tier.                                                                                                                                                                                                                | §4                        |
+| 3   | **A real confidence gate.** Tier-3 escalation triggers on `!isSupported`, not on a threshold or on recipe-field completeness — a placed-but-poorly-understood repo never escalates.                                                                                                                                                           | §3, §5 Phase D            |
+| 4   | ~~**Recovered commands don't drive the build.**~~ **RESOLVED.** `detect/buildRecovery.ts` folds CI (GitHub Actions + every `ciProviders` entry), task runners, and README/scripts into a ranked `Claim` on `insights.recoveredBuild`; the pipeline overlays it onto the matched recipe and the plan node carries `commandOrigins` provenance. | §5 Phase C exit criterion |
+| 5   | **`AI claims capped ≤0.7`** is asserted as a mechanism but is not enforced by a shared, tested cap in `claim.ts`.                                                                                                                                                                                                                             | §4, §6 row 5              |
+| 6   | **Correcting an AI-inferred plan at the gate.** The reviewer can approve or reject, not edit.                                                                                                                                                                                                                                                 | §5 Phase D exit criterion |
+| 7   | **`cli`/`job` as one-shot services.** They become ordinary portless `'service'` nodes; there is no `restart: no` / "runnable, not long-lived" affordance.                                                                                                                                                                                     | §2.3                      |
+| 8   | **`library` and `job` detection.** Vocabulary only, deliberately — see §2.3.                                                                                                                                                                                                                                                                  | §2.3                      |
+| 9   | **Probing implementation.** Seam only, by decision #2. This one is a _choice_, not a gap.                                                                                                                                                                                                                                                     | §5 Phase G                |
 
 Two things the doc names that are **partly** true and worth stating precisely:
 
