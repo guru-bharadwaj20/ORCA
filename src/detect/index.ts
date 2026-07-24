@@ -658,6 +658,23 @@ function confidenceEvidence(
   if (backend?.entrypoint) {
     evidence.push({ detector: 'index', signal: 'backend entrypoint resolved', weight: 0.25 });
   }
+  // Ports recovered from a README are explained, not scored. `DetectedPort.source` exists
+  // so the log can say WHY a port was chosen, and a README-sourced port is the one case a
+  // user is most likely to want to double-check. Weight 0 keeps it in the reasoning trail
+  // without moving confidence — the README already contributes through `scriptSources`.
+  for (const [role, component] of [
+    ['frontend', frontend],
+    ['backend', backend],
+  ] as const) {
+    for (const port of component?.ports ?? []) {
+      if (port.source !== 'readme') continue;
+      evidence.push({
+        detector: 'ports',
+        signal: `${role} port ${port.port} read from the README`,
+        weight: 0,
+      });
+    }
+  }
   if (insights.dockerfiles.length > 0) {
     evidence.push({
       detector: 'dockerfile',
