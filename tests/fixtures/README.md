@@ -21,6 +21,47 @@ repos, so they belong in the regular sweep rather than in one-off tests.
 
 Each fixture should be the smallest tree that makes the relevant detector assertions meaningful.
 
+## README / shell-script fixtures
+
+These back `tests/detect/repo-scripts.test.ts`. Unlike most fixtures they are
+deliberately *wordy* — the thing under test is what the parser refuses to extract from
+prose and non-shell code blocks, so a minimal tree would not exercise it.
+
+| Fixture                 | What it pins                                                            |
+| ----------------------- | ----------------------------------------------------------------------- |
+| `readme-only-repo`      | clear run instructions, NO manifest — parses cleanly yet must stay unsupported |
+| `shell-script-repo`     | `start.sh` + `scripts/build.sh`, incl. a backslash-continued command     |
+| `readme-and-script-repo`| both sources on one (Express) repo — both must surface independently     |
+| `readme-ambiguous-repo` | prose + TOML/YAML blocks + a clone/cd/export block — must find NOTHING   |
+
+`readme-ambiguous-repo` is the important one: it is the false-positive guard. Its TOML
+and YAML blocks both declare `port = 7777`, and its only shell block holds nothing but
+`git clone` / `cd` / `export` / `source` / `curl`. A change that makes this fixture
+report any command or port has widened the parser too far — that repo is meant to fall
+through to tier-3 AI inference, not be guessed at.
+
+## Component-role fixtures (§2.3)
+
+These back `tests/detect/component-role.test.ts` and the CLI case in
+`tests/core/pipeline.test.ts`. Each one is a repo that is **not web-shaped** — the roles
+the model could not represent before `ComponentRole` widened.
+
+| Fixture              | Resolves to  | Why it exists                                                       |
+| -------------------- | ------------ | ------------------------------------------------------------------- |
+| `go-worker-repo`     | `worker`     | `go.mod` + `asynq`, no web framework, no port — the end-to-end case  |
+| `celery-worker-repo` | `worker`     | `Procfile` with `worker:` and no `web:` — the explicit-intent rule   |
+| `node-cli-repo`      | `cli`        | `package.json` `bin`, no server script, Dockerfile with no `EXPOSE`  |
+
+`go-worker-repo` carries the load: it proves a worker reaches the plan as a `'service'`
+node with **no published port**, even though its `go-mod` recipe declares
+`defaultPorts: [8080]`. If that assertion ever flips to publishing 8080, role-aware port
+suppression has regressed.
+
+The rule these fixtures exist to protect is the inverse one: a component that declares a
+port is NEVER reclassified. `component-role.test.ts` pins that directly (same worker
+dependency + a declared port → no reclassification), which is what stops a web app that
+merely enqueues background jobs from being demoted to a worker.
+
 ## Recipe fixtures (`.orca-golden/`)
 
 The framework fixtures below back `tests/generate/framework-golden.test.ts`. Each holds

@@ -62,7 +62,13 @@ async function portsFromCode(componentPath: string): Promise<number[]> {
   return found;
 }
 
-async function defaultPortFor(componentPath: string, role: ComponentRole): Promise<number> {
+/**
+ * The port to assume when nothing in the repo declares one — or null when the role does
+ * not listen at all. A worker, CLI, library, or job has no port to guess at, and
+ * inventing 3000 for one would put a bogus published port in the plan. Only the roles in
+ * `LISTENING_ROLES` get a default; frontend/backend behavior is unchanged.
+ */
+async function defaultPortFor(componentPath: string, role: ComponentRole): Promise<number | null> {
   if (role === 'backend') {
     const isDjango =
       (await readFileIfExists(join(componentPath, 'manage.py'))) !== null ||
@@ -74,13 +80,18 @@ async function defaultPortFor(componentPath: string, role: ComponentRole): Promi
     const usesVite = pkg !== null && pkg.includes('"vite"');
     return usesVite ? 5173 : 3000;
   }
-  return 3000;
+  return null;
 }
 
-export async function detectPorts(
-  componentPath: string,
-  role: ComponentRole
-): Promise<DetectedPort[]> {
+/**
+ * The ports a component GENUINELY declares — from a `.env`, a Dockerfile `EXPOSE`, or
+ * the source itself. No default is ever invented here.
+ *
+ * Split out from `detectPorts` because "does this component actually listen?" is the
+ * question role detection asks (`componentRole.ts`): a fabricated fallback port would
+ * make every component look like a server and no repo would ever resolve to a worker.
+ */
+export async function declaredPorts(componentPath: string): Promise<DetectedPort[]> {
   const ports: DetectedPort[] = [];
   const seen = new Set<number>();
   const add = (port: number, source: DetectedPort['source']): void => {
@@ -97,7 +108,16 @@ export async function detectPorts(
 
   for (const port of await portsFromCode(componentPath)) add(port, 'code');
 
-  if (ports.length === 0) add(await defaultPortFor(componentPath, role), 'default');
-
   return ports;
+}
+
+export async function detectPorts(
+  componentPath: string,
+  role: ComponentRole
+): Promise<DetectedPort[]> {
+  const ports = await declaredPorts(componentPath);
+  if (ports.length > 0) return ports;
+
+  const fallback = await defaultPortFor(componentPath, role);
+  return fallback === null ? [] : [{ port: fallback, protocol: 'tcp', source: 'default' }];
 }
