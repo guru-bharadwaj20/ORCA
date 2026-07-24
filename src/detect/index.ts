@@ -580,12 +580,30 @@ async function gatherInsights(
     ...circleCi.configs.map((c) => ({ provider: 'circleci' as const, ...c })),
   ];
 
+  // GitHub Actions first (stable ordering), then the image-derived providers. Deduped by
+  // the full runtime:version key, not by runtime alone — a genuine cross-source version
+  // difference (e.g. CI pins node:18, a GitLab image says node:20) is real information
+  // about the repo, not noise, so both entries are kept rather than one silently winning.
+  const ciRuntimeVersions: RepoInsights['ciRuntimeVersions'] = [];
+  const seenCiVer = new Set<string>();
+  for (const v of [
+    ...ci.runtimeVersions,
+    ...gitlabCi.runtimeVersions,
+    ...azurePipelines.runtimeVersions,
+    ...circleCi.runtimeVersions,
+  ]) {
+    const key = `${v.runtime}:${v.version}`;
+    if (seenCiVer.has(key)) continue;
+    seenCiVer.add(key);
+    ciRuntimeVersions.push(v);
+  }
+
   return {
     frameworks: [...frameworkSet],
     runtimes: [...runtimeSet],
     monorepoTools: monorepo.tools,
     ciCommands: ci.commands.map((c) => ({ command: c.command, kind: c.kind })),
-    ciRuntimeVersions: ci.runtimeVersions,
+    ciRuntimeVersions,
     ciProviders,
     dockerfiles,
     taskCommands,
