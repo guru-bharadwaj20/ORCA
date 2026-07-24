@@ -62,7 +62,11 @@ async function configFiles(repoPath: string): Promise<string[]> {
 /** A GitLab `image:` value is either a bare string or `{ name: ... }`. */
 function imageName(value: unknown): string | null {
   if (typeof value === 'string') return value;
-  if (value !== null && typeof value === 'object' && typeof (value as { name?: unknown }).name === 'string') {
+  if (
+    value !== null &&
+    typeof value === 'object' &&
+    typeof (value as { name?: unknown }).name === 'string'
+  ) {
     return (value as { name: string }).name;
   }
   return null;
