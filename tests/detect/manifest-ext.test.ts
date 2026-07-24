@@ -9,6 +9,7 @@ import { join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { detectLanguages } from '../../src/detect/language.js';
 import {
   readDotnetDependencies,
   readGoDependencies,
@@ -177,5 +178,16 @@ describe('readRubyDependencies', () => {
 
   it('returns [] when the Gemfile is absent', async () => {
     expect(await readRubyDependencies(dir)).toEqual([]);
+  });
+});
+
+describe('detectLanguages — JVM build files', () => {
+  it('classifies a Kotlin-DSL Gradle project (build.gradle.kts) as java', async () => {
+    // A Kotlin-DSL Gradle module can carry only `.kts` build scripts (no `.java`/`.kt` at
+    // the scanned root). The build file itself must be a language signal, on par with the
+    // Groovy `build.gradle` — every other detector already recognizes `.kts`.
+    await writeFile(join(dir, 'build.gradle.kts'), 'plugins { java }\n');
+    await writeFile(join(dir, 'settings.gradle.kts'), 'rootProject.name = "svc"\n');
+    expect(await detectLanguages(dir)).toEqual(['java']);
   });
 });
