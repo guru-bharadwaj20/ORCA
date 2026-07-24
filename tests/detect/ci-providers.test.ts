@@ -307,9 +307,22 @@ describe('analyzeGitlabCi: include: resolution', () => {
 
     // Documented precedence (see collectJobs's docstring): a file's own jobs are merged
     // before its includes', so a name collision resolves in the root's favor - not
-    // "whichever happened to be read last."
+    // "whichever happened to be read last." Content-level check, not just a count: the
+    // root's build job is image node:20 / `npm run build`; the included ci/shared.yml's
+    // same-named job is image python:3.12-slim / `pip install -r requirements.txt`. If
+    // precedence were reversed (or merge logic picked the wrong one silently), this
+    // would fail on the image/commands values even though the count would still be 1.
     expect(config.jobs).toHaveLength(1);
-    expect(config.jobs[0]).toMatchObject({ name: 'build', image: 'node:20' });
+    expect(config.jobs[0]).toEqual({
+      name: 'build',
+      stage: 'build',
+      image: 'node:20',
+      commands: [{ command: 'npm run build', kind: 'build' }],
+    });
+    // The losing (included) job's data must not leak in anywhere - not as a second job,
+    // not merged into the winner.
+    expect(analysis.runtimeVersions).not.toContainEqual({ runtime: 'python', version: '3.12' });
+    expect(analysis.runtimeVersions).toContainEqual({ runtime: 'node', version: '20' });
   });
 });
 
