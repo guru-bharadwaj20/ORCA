@@ -17,8 +17,11 @@ import type { Runtime } from '../model/recipe.js';
 import { defaultRecipeRegistry } from '../model/recipes/index.js';
 import { DEFAULT_WALK_IGNORE, readFileIfExists } from '../utils/fs.js';
 import { OrcaError } from '../utils/errors.js';
+import { analyzeAzurePipelines } from './azurePipelines.js';
 import { analyzeCi } from './ci.js';
+import { analyzeCircleCi } from './circleci.js';
 import { analyzeDockerfiles, runtimeFromBaseImage } from './dockerfile.js';
+import { analyzeGitlabCi } from './gitlabCi.js';
 import { defaultDetectorRegistry } from './detectors/index.js';
 import { detectEntrypoint } from './entrypoint.js';
 import { detectBackendFramework, detectFrontendFramework } from './framework.js';
@@ -491,7 +494,17 @@ async function gatherInsights(
     if (runtime !== 'unknown') runtimeSet.add(runtime);
   }
 
-  const ci = await analyzeCi(repoPath);
+  const [ci, gitlabCi, azurePipelines, circleCi] = await Promise.all([
+    analyzeCi(repoPath),
+    analyzeGitlabCi(repoPath),
+    analyzeAzurePipelines(repoPath),
+    analyzeCircleCi(repoPath),
+  ]);
+  const ciProviders: RepoInsights['ciProviders'] = [
+    ...gitlabCi.configs.map((c) => ({ provider: 'gitlab' as const, ...c })),
+    ...azurePipelines.configs.map((c) => ({ provider: 'azure' as const, ...c })),
+    ...circleCi.configs.map((c) => ({ provider: 'circleci' as const, ...c })),
+  ];
 
   return {
     frameworks: [...frameworkSet],
@@ -499,6 +512,7 @@ async function gatherInsights(
     monorepoTools: monorepo.tools,
     ciCommands: ci.commands.map((c) => ({ command: c.command, kind: c.kind })),
     ciRuntimeVersions: ci.runtimeVersions,
+    ciProviders,
     dockerfiles,
     taskCommands,
     ecosystemComponents,
