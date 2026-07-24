@@ -1,0 +1,14 @@
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+  - stage: Build
+    jobs:
+      - job: CompileJob
+        steps:
+          - script: go build -o bin/apiservice ./cmd/api
+  - stage: Run
+    jobs:
+      - job: ServeJob
+        steps:
+          - script: ./bin/apiservice --serve
