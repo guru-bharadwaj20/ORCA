@@ -65,7 +65,12 @@ function runtimeFromImageName(repoPath: string): string | null {
   if (lower.includes('python')) return 'python';
   if (lower.includes('golang')) return 'go';
   if (lower.includes('dotnet')) return 'dotnet';
-  if (lower.includes('openjdk') || lower.includes('temurin') || lower.includes('jdk') || lower.includes('jre')) {
+  if (
+    lower.includes('openjdk') ||
+    lower.includes('temurin') ||
+    lower.includes('jdk') ||
+    lower.includes('jre')
+  ) {
     return 'java';
   }
   // Bare "go" only matches as an exact path segment — `.includes('go')` would
