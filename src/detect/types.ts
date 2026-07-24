@@ -131,6 +131,23 @@ export interface RepoInsights {
   ciCommands: { command: string; kind: string }[];
   /** Runtime versions pinned in CI, e.g. [{ runtime: "node", version: "20" }]. */
   ciRuntimeVersions: { runtime: string; version: string }[];
+  /**
+   * CI configs recovered from non-GitHub-Actions providers (GitLab CI, Azure
+   * Pipelines, CircleCI), kept as structured stages/jobs rather than flattened
+   * like `ciCommands` above, since job/stage grouping is what was asked for.
+   */
+  ciProviders: {
+    provider: 'gitlab' | 'azure' | 'circleci';
+    file: string;
+    stages: string[];
+    jobs: {
+      name: string;
+      stage: string | null;
+      commands: { command: string; kind: string }[];
+      image: string | null;
+    }[];
+    image: string | null;
+  }[];
   /** Dockerfiles parsed from the repo, with their extracted build/run signals. */
   dockerfiles: {
     rootDir: string;
