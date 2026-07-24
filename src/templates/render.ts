@@ -23,6 +23,14 @@ function createEnv(): typeof Handlebars {
     return false;
   });
 
+  // One `EXPOSE` line per port. `ports` is optional on `DockerfileVars` (hand-built
+  // vars from older call sites may omit it), so this falls back to the single primary
+  // `port` — same one-line output the template used to hardcode.
+  hb.registerHelper('exposeLines', (ports: unknown, port: unknown) => {
+    const list = Array.isArray(ports) && ports.length > 0 ? ports : [port];
+    return list.map((p) => `EXPOSE ${p}`).join('\n');
+  });
+
   return hb;
 }
 

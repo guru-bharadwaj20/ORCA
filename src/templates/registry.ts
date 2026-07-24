@@ -84,7 +84,12 @@ function startCommandFor(framework: DetectedComponent['framework'], python: bool
 export function defaultDockerfileVars(component: DetectedComponent): DockerfileVars {
   const python = isPython(component);
   const pm = resolvePackageManager(component.packageManager, python);
-  const port = component.ports[0]?.port ?? defaultPortFor(component.framework);
+  // Every port detectPorts found (deduped, detection order preserved), not just the
+  // first — the first stays `port`, the primary used for PORT/health/inter-service URLs.
+  const ports =
+    component.ports.length > 0
+      ? [...new Set(component.ports.map((p) => p.port))]
+      : [defaultPortFor(component.framework)];
 
   const vars: DockerfileVars = {
     baseImage: python ? 'python:3.12-slim' : 'node:20-slim',
@@ -93,7 +98,8 @@ export function defaultDockerfileVars(component: DetectedComponent): DockerfileV
     dependencyFiles: dependencyFilesFor(pm),
     installCommand: installCommandFor(pm),
     startCommand: startCommandFor(component.framework, python),
-    port,
+    port: ports[0]!,
+    ports,
   };
 
   if (component.framework === 'django') {
