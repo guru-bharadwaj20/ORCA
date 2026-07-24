@@ -16,7 +16,7 @@ RUN {{{installCommand}}}
 
 COPY . .
 
-EXPOSE {{port}}
+{{{exposeLines ports port}}}
 
 {{#if entrypointScript}}
 COPY {{entrypointScript}} /usr/local/bin/orca-entrypoint
