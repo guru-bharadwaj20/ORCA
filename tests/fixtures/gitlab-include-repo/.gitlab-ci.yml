@@ -1,0 +1,11 @@
+stages:
+  - build
+
+include:
+  - local: 'ci/build.yml'
+
+lint:
+  stage: build
+  image: node:20
+  script:
+    - npm run lint

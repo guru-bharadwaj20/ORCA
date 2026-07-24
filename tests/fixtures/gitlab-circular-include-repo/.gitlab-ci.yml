@@ -1,0 +1,11 @@
+stages:
+  - test
+
+include:
+  - local: 'ci/a.yml'
+
+root_job:
+  stage: test
+  image: node:20
+  script:
+    - npm test

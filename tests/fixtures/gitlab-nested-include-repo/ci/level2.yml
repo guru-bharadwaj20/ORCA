@@ -1,0 +1,5 @@
+level2_job:
+  stage: test
+  image: golang:1.22-alpine
+  script:
+    - go build ./...
