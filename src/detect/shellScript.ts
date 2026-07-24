@@ -124,6 +124,24 @@ const HOST_PORT = /\b(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{1,5})\b/g;
 /** Django's `manage.py runserver [0.0.0.0:]8000`. */
 const RUNSERVER = /\brunserver\s+(?:\S+:)?(\d{1,5})\b/g;
 
+/**
+ * A `PORT=3000` env assignment, as in `PORT=3000 npm start` or `export PORT=8080`.
+ *
+ * CASE-SENSITIVE on purpose. Uppercase `PORT=` is the shell/12-factor convention, while
+ * lowercase `port = 3000` / `port: 3000` is how TOML and YAML config blocks spell it —
+ * and those are exactly the non-shell blocks this parser must keep ignoring. Matching
+ * case-insensitively here would resurrect the false positives
+ * `tests/fixtures/readme-ambiguous-repo` exists to prevent. `\bPORT` also means
+ * `POSTGRES_PORT=5432` cannot match, since `_` is a word character.
+ */
+const PORT_ENV = /\bPORT\s*=\s*(\d{1,5})\b/g;
+
+/** A Dockerfile `EXPOSE 8080` line pasted into a fenced block. Uppercase by convention. */
+const EXPOSE_PORT = /^\s*EXPOSE\s+(\d{1,5})\b/;
+
+/** Leading `VAR=value` assignments, which precede the real command in a shell line. */
+const ENV_ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=\S*\s+/;
+
 /** Root-level scripts a repo conventionally uses as its entrypoint. */
 const ROOT_SCRIPTS = ['start.sh', 'run.sh', 'dev.sh'];
 
@@ -277,10 +295,27 @@ export function extractShellCommands(lines: readonly string[]): ScriptExtraction
     const command = stripPrompt(raw.trim());
     if (command === '' || command.startsWith('#')) continue;
 
-    const tokens = command.split(/\s+/);
+    // `PORT=3000` and `EXPOSE 8080` are structured, unambiguous declarations of the port
+    // the app serves on, so they count even on a line that is not itself a recognized
+    // command (`export PORT=3000`, a bare `EXPOSE` pasted from a Dockerfile). Flag-style
+    // ports stay tied to recognized commands, where a number can't be mistaken for one.
+    for (const match of command.matchAll(PORT_ENV)) {
+      const port = Number(match[1]);
+      if (isValidPort(port)) ports.push(port);
+    }
+    const exposed = EXPOSE_PORT.exec(command);
+    if (exposed?.[1] !== undefined && isValidPort(Number(exposed[1]))) {
+      ports.push(Number(exposed[1]));
+    }
+
+    // Leading env assignments are shell prefix, not the command — `PORT=3000 npm start`
+    // is an `npm start`. Strip them before deciding whether the tool is recognized.
+    let bare = command;
+    while (ENV_ASSIGNMENT.test(bare)) bare = bare.replace(ENV_ASSIGNMENT, '');
+    const tokens = bare.split(/\s+/);
     if (!isRecognized(tokens)) continue;
 
-    const classified = classifyCommand(command);
+    const classified = classifyCommand(bare);
     const kind = classified === 'other' ? supplementalKind(tokens) : classified;
     if (kind === null) continue;
 
