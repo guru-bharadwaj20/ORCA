@@ -158,19 +158,21 @@ export interface RepoInsights {
   /** Runtime versions pinned in CI, e.g. [{ runtime: "node", version: "20" }]. */
   ciRuntimeVersions: { runtime: string; version: string }[];
   /**
-   * Build/run commands the repo states in its own README code blocks and shell scripts
-   * (`start.sh`, `scripts/*.sh`, `bin/*.sh`), plus any ports they advertise. Tier-1 like
-   * the task runners, but the weakest deterministic source here — strictly gap-filling,
-   * it never overrides a Dockerfile, a CI config, or a matched recipe (see
-   * `confidenceEvidence` in `detect/index.ts`, which only counts it when no more
-   * authoritative source spoke).
+   * CI configs recovered from non-GitHub-Actions providers (GitLab CI, Azure
+   * Pipelines, CircleCI), kept as structured stages/jobs rather than flattened
+   * like `ciCommands` above, since job/stage grouping is what was asked for.
    */
-  scriptSources: {
-    source: 'readme' | 'shell-script';
-    /** Repo-relative path of the file the commands came from. */
+  ciProviders: {
+    provider: 'gitlab' | 'azure' | 'circleci';
     file: string;
-    commands: { command: string; kind: string }[];
-    ports: number[];
+    stages: string[];
+    jobs: {
+      name: string;
+      stage: string | null;
+      commands: { command: string; kind: string }[];
+      image: string | null;
+    }[];
+    image: string | null;
   }[];
   /** Dockerfiles parsed from the repo, with their extracted build/run signals. */
   dockerfiles: {
