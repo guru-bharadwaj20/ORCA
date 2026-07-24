@@ -191,6 +191,16 @@ export interface RepoInsights {
    */
   taskCommands: { source: string; name: string; command: string; kind: string }[];
   /**
+   * Build/run commands and ports recovered from repo-authored shell snippets
+   * (README fenced shell blocks and shipped shell scripts).
+   */
+  scriptSources: {
+    source: 'readme' | 'shell-script';
+    file: string;
+    commands: { command: string; kind: string }[];
+    ports: number[];
+  }[];
+  /**
    * Ecosystem components (Go/Rust/JVM/.NET) that matched a `BuildRecipe` but fall
    * outside the seed-stack frontend/backend split. Each pairs a repo-relative root with
    * the id of its matched recipe, so the pipeline can place them as open `'service'`
