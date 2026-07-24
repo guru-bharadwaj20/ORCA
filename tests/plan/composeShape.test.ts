@@ -15,6 +15,7 @@ const SUPPORTED_FIXTURES = [
   'django-postgres-repo',
   'express-dbconfig-repo',
   'react-express-nodb-repo',
+  'multiport-express-repo',
 ];
 
 interface ComposeDoc {
