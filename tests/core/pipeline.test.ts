@@ -217,6 +217,23 @@ describe('runPipeline (walking skeleton)', () => {
     expect(out).toContain('npm start');
   });
 
+  it('plans a CLI package as a portless service (§2.3 role widening)', async () => {
+    // A `bin` package with no react/express never becomes an ecosystem component, so it
+    // reaches the plan through the Dockerfile-derived path. Its image EXPOSEs nothing,
+    // so the role detector calls it a `cli` — and a cli publishes no port, where the old
+    // hardcoded 'backend' would have made it a service with whatever port turned up.
+    const { ctx, result } = startRun(
+      fixture('node-cli-repo'),
+      { dryRun: true, autoApprove: true },
+      null
+    );
+    await result;
+
+    const svc = ctx.plan?.services.find((s) => s.kind === 'service');
+    expect(svc).toBeDefined();
+    expect(svc?.ports).toEqual([]);
+  });
+
   it('builds a deterministically-unsupported repo via an AI-inferred recipe (with a key)', async () => {
     // No manifest → deterministic detection can't place it, but tier-3 inference yields
     // a recipe, so the repo now containerizes through the open-role synthesis path

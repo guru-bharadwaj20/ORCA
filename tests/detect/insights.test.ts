@@ -66,6 +66,7 @@ describe('detectStack insights integration', () => {
       rootDir: 'services/api',
       runtime: 'go',
       recipeId: 'go-mod',
+      role: 'backend',
     });
   });
 });

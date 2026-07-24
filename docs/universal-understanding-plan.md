@@ -39,7 +39,9 @@ What's genuinely good and worth preserving:
   `packageManager`, `manifest`). The header comment even says each "could later
   become its own agent." The plugin architecture is _latent_ here already.
 - **Confidence scoring already exists** — `scoreConfidence()` returns a 0..1 number,
-  though today it's a single hardcoded heuristic in `index.ts`.
+  though at time of writing it was a single hardcoded heuristic in `index.ts`.
+  (Since replaced by the evidence-combination model of §4: `confidenceEvidence()` emits
+  weighted `Evidence`, and `combineConfidence()` folds it into the score.)
 - **AI already only refines, never originates.** `registry.ts` produces deterministic
   default `DockerfileVars`; the AI layer (`ai/fillTemplate.ts`) overrides fields on
   top. This is exactly the "AI as fallback" philosophy — it just needs generalizing.
@@ -47,25 +49,47 @@ What's genuinely good and worth preserving:
   compose-shaped IR that the diagram, review gate, config writer, and build loop all
   read. It is a good target for a generic synthesizer to emit into.
 
-What blocks the vision (the real constraints, with file references):
+What blocked the vision when this document was written (the real constraints, with file
+references). **These are kept verbatim as the original diagnosis**; each now carries its
+current status, so the reasoning that motivated the roadmap is not lost:
 
 - **Closed union types.** `src/detect/types.ts` hardcodes the entire supported world:
   `Language = 'javascript'|'typescript'|'python'|'unknown'`,
   `FrontendFramework = 'react'|'unknown'`,
   `BackendFramework = 'express'|'django'|'unknown'`. Every new ecosystem today means
   editing these unions — the opposite of extensible.
+  → **Resolved (Phase A/B).** `Runtime` and `PackageManager` are open (known-set + string);
+  `Language` covers 9 ecosystems. `FrontendFramework`/`BackendFramework` remain closed but
+  are no longer load-bearing — framework identification runs through the data-driven
+  signature table in `detect/frameworkSignatures.ts`, and build behavior comes from
+  `BuildRecipe`s, not from these unions.
 - **Roles are hardcoded to frontend/backend/database.** `detect/index.ts` and the
   pipeline's `COMPONENT_ROLES` assume a web-app shape. A Rust CLI, a Go worker, or a
   Java batch job has no "frontend"; the model can't represent them.
+  → **Resolved (§2.3).** `ComponentRole` is now
+  `frontend|backend|database|worker|cli|library|job`, and `worker`/`cli` have real
+  deterministic detectors (`detect/componentRole.ts`).
 - **`registry.ts` is a `switch` statement**, not data. `selectDockerfileTemplate`,
   `installCommandFor`, `startCommandFor`, `defaultPortFor` are all hardcoded control
   flow over the closed enums.
+  → **Largely resolved (Phase A/E).** 19 recipes are data behind `RecipeRegistry.match()`,
+  and `synthesizeDockerfile` emits images from them. `templates/registry.ts` still serves
+  the three seed stacks through their hand-tuned Handlebars templates — deliberate, not
+  pending: they are hand-verified goldens and the generic path does not improve them.
 - **Detection is single-pass and static-only.** There is no notion of CI parsing,
   README understanding as a _detection source_, or an inference ladder that escalates
   when deterministic signals run out.
+  → **Resolved (Phase C/D).** GitHub Actions parsing, task-runner recovery, Dockerfile
+  parsing, README/shell-script parsing, and a tier-3 AI rung all exist and are wired into
+  `insights` + the confidence trail.
 - **`isSupported: boolean` is binary.** The pipeline hard-throws `UnsupportedStackError`
   when false. There's no "I'm 60% sure this is a Go/Gin service, here's my reasoning,
   approve to proceed" middle ground — which is the entire point of universal support.
+  → **Partially resolved.** `isSupported` is still a boolean on `DetectionResult`, but it
+  is no longer the end of the line: when it is false and an API key is present, the
+  pipeline runs tier-3 inference and promotes a confident result into a buildable
+  component, hard-stopping only when even inference fails. The graded
+  `{ recipe, tier }` outcome described in §4 is **not** implemented — see §10.
 
 ---
 
@@ -138,13 +162,49 @@ Crucially, the plan approval gate now shows the **recipe** (build/run commands,
 base images, ports) — so "reviewable, explainable" holds even for a repo ORCA has
 never seen, because the user reviews the concrete commands before anything runs.
 
-### 2.3 Component roles become open
+### 2.3 Component roles become open — **LANDED**
 
-`ComponentRole` widens beyond `frontend|backend|database`. A component is
-`{ rootDir, runtime, recipe: Claim<BuildRecipe>, role: ComponentRole }` where role
-grows to include `service | worker | cli | library | job`. The `ServicePlan`
-synthesizer maps these onto compose services (a `cli`/`job` becomes a one-shot
-service or is surfaced as "runnable but not a long-lived service").
+`ComponentRole` widens beyond `frontend|backend|database`. As shipped, the union is:
+
+```ts
+type ComponentRole = 'frontend' | 'backend' | 'database' | 'worker' | 'cli' | 'library' | 'job';
+```
+
+The widening is **additive** — `frontend`/`backend`/`database` behave exactly as before,
+and no existing repo was reclassified. What changed downstream:
+
+- **Only `frontend`/`backend` are assumed to listen** (`LISTENING_ROLES` in
+  `detect/types.ts`). `defaultPortFor` returns `null` for every other role instead of
+  fabricating 3000, and `ecosystemServiceNode` publishes no port for them — necessary
+  because every shipped ecosystem recipe carries `defaultPorts: [8080]`, written for web
+  services, which a worker would otherwise advertise with nothing bound to it.
+- **`detect/componentRole.ts`** assigns a role from deterministic evidence. Its master
+  gate is "does it listen?": a component declaring a port in `.env`, a Dockerfile
+  `EXPOSE`, or its own source is a service regardless of anything else. That is what stops
+  a Django app which merely depends on Celery from being demoted to a worker.
+- The role rides on `insights.ecosystemComponents[].role` and is propagated by
+  `ecosystemComponentsFrom` into the plan.
+
+Which roles have detectors, and which are vocabulary only:
+
+| Role      | Status        | Signal                                                                                                                                                             |
+| --------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `worker`  | **detected**  | Procfile `worker:` with no `web:`; a worker start command; or a queue library (Celery/Sidekiq/BullMQ/asynq…) with no web framework — all gated on no declared port |
+| `cli`     | **detected**  | `package.json` `bin` with no `start`/`dev`/`serve` script and no port                                                                                              |
+| `library` | **type only** | Identifiable only by _absence_ of an entrypoint — negative evidence, which belongs to tier-3, and a library has no meaningful compose node anyway                  |
+| `job`     | **type only** | Not separable from `worker` without a scheduler signal (cron config, `Procfile release:`)                                                                          |
+
+`library` and `job` are deliberately undetected rather than guessed at, per decision #3.
+
+The `ServicePlan` synthesizer maps roles onto compose services. A `cli`/`job` currently
+becomes an ordinary (portless) `'service'` node; surfacing it as "runnable but not a
+long-lived service" — a one-shot `restart: no` node, or a distinct plan affordance — is
+**not** implemented (see §10).
+
+> NOTE: `core/pipeline.ts` has its own local `ComponentRole` that shadows this one. It is
+> intentionally narrower — the two seed-stack slots (`.frontend`/`.backend`) that get an
+> AI template fill and a rendered Dockerfile — and must NOT be widened alongside the
+> shared type. Worker/CLI components never flow through it.
 
 ---
 
@@ -158,24 +218,35 @@ fill the gaps.
 ```
 Clone
   ↓
-Manifest Detection      ── deterministic, tier 1  (Phase 1)  — always runs
+Manifest Detection      ── deterministic, tier 1  (Phase 1)  — always runs            [LANDED]
   ↓
-Repository Analysis     ── deterministic, tier 1  (Phase 3)  — README/Makefile/justfile/scripts
-  ↓
+Repository Analysis     ── deterministic, tier 1  (Phase 3)  — README/Makefile/justfile/scripts/Dockerfile
+  ↓                                                                                    [LANDED]
 CI Analysis             ── deterministic, tier 2  (Phase 4)  — often the ground truth for commands
-  ↓
+  ↓                                                                       [LANDED: GitHub Actions only]
 ────────── confidence gate: is the recipe complete & above threshold? ──────────
-  ↓ (only if gaps remain)
+  ↓ (only if gaps remain)                                        [PARTIAL — see §4 note]
 AI Inference            ── fallback, tier 3       (Phase 5)  — proposes claims, schema-validated
-  ↓
+  ↓                                                                                    [LANDED]
 [Dynamic Probing]       ── tier 4, DESIGNED, DEFERRED (Phase 6) — seam only, not built now
+  ↓                                                                               [SEAM ONLY]
+Docker Synthesis        ── generic, recipe-driven (Phase 7)                            [LANDED]
   ↓
-Docker Synthesis        ── generic, recipe-driven (Phase 7)
-  ↓
-Build → Observe → Self-Heal (Phase 8, recipe-aware)
+Build → Observe → Self-Heal (Phase 8, recipe-aware)                                    [LANDED]
   ↓
 Final Plan (already exists as ServicePlan + review gate)
 ```
+
+Tier-1 repository analysis is the broadest rung as shipped. It covers, in
+`src/detect/`: `dockerfile.ts` (existing Dockerfiles as ground-truth recipes),
+`taskRunners.ts` (Makefile / Taskfile / justfile / package scripts), and
+`readme.ts` + `shellScript.ts` (fenced shell blocks in a README; `start.sh`, `run.sh`,
+`dev.sh`, `scripts/*.sh`, `bin/*.sh`).
+
+The README/shell rung is deliberately the **weakest** member of tier 1: it is strictly
+gap-filling, contributing confidence only when neither a Dockerfile nor CI already spoke,
+and it can never promote an unsupported repo. Placement is by ladder rung (when a source
+runs); reliability is expressed separately through `Evidence.weight` (§4).
 
 Every rung writes `Claim`s into a shared `RepoModel`; it never mutates another
 detector's output. The aggregator (§4) merges and ranks. This is the plugin
@@ -221,6 +292,18 @@ The pipeline stops hard-throwing; instead the review gate communicates uncertain
 decide. That single change is what turns "3 supported frameworks" into "attempt any
 repo, honestly."
 
+> **STATUS: not implemented — this paragraph remains aspirational.** `DetectionResult`
+> still carries `isSupported: boolean` and `confidence: number`, and the review gate does
+> not surface a confidence tier. What _did_ land is the escape hatch beneath it: an
+> unsupported repo with an API key goes to tier-3 inference and builds from the inferred
+> recipe rather than hard-stopping, and `reasoning[]` is populated and logged on every
+> run. The typed graded outcome is tracked in §10.
+
+The explicit **confidence gate** in §3 ("only if gaps remain") is also only partly real:
+tier-3 inference is gated on `!detection.isSupported`, i.e. a binary did-we-place-it
+check, not on a confidence threshold or on per-field recipe completeness. A repo that is
+placed but poorly understood never escalates.
+
 ---
 
 ## 5. Phased roadmap
@@ -232,64 +315,72 @@ shippable and leaves the product working.
 
 _The enabling work everything else depends on._
 
-- [ ] Introduce `Claim<T>` / `Evidence` / `Detector` contracts in a new `src/model/`.
-- [ ] Refactor the existing 7 detectors to emit `Claim`s (behavior-preserving).
-- [ ] Replace `scoreConfidence()` with the evidence-combination model (§4).
-- [ ] Convert `registry.ts`'s switch into 3 seed **recipes as data** (react, express,
+- [x] Introduce `Claim<T>` / `Evidence` / `Detector` contracts in a new `src/model/`.
+- [x] Refactor the existing 7 detectors to emit `Claim`s (behavior-preserving).
+- [x] Replace `scoreConfidence()` with the evidence-combination model (§4).
+- [x] Convert `registry.ts`'s switch into 3 seed **recipes as data** (react, express,
       django) behind a `RecipeRegistry.match()` — proving decision #1 with zero
-      capability change. Existing 115 tests must stay green.
-- **Exit criterion:** the three current stacks run identically, but now through the
+      capability change. Existing tests must stay green (115 when this was
+      written; 410 today).
+- **Exit criterion (met):** the three current stacks run identically, but now through the
   generic engine. Pure refactor, fully covered by the existing hermetic suite.
 
 ### Phase B — Widen deterministic detection (brief's Phase 1 + 2)
 
 _Now that adding a stack = adding data, not editing enums._
 
-- [ ] Open the taxonomy (`Runtime`, `PackageManager` become open strings + a known-set).
-- [ ] Add manifest detectors + recipes per ecosystem, in ROI order:
+- [x] Open the taxonomy (`Runtime`, `PackageManager` become open strings + a known-set).
+- [x] Add manifest detectors + recipes per ecosystem, in ROI order:
       **Node ecosystem** (Next/Vite/Nest/Angular/monorepos via `turbo.json`/`nx.json`/
       `pnpm-workspace.yaml`) → **Python** (FastAPI/Flask/Poetry/uv) → **Go** → **Rust**
       → **Java** (Maven/Gradle/Spring) → **C#/PHP/Ruby**.
-- [ ] Each ecosystem ships with: a manifest detector, ≥1 recipe, a golden-file test,
+- [x] Each ecosystem ships with: a manifest detector, ≥1 recipe, a golden-file test,
       and an example repo under `examples/`.
-- **Exit criterion:** deterministic-only coverage of the listed frameworks, each with
-  a passing golden test. No AI required for these.
+- **Exit criterion (met):** deterministic-only coverage of the listed frameworks, each with
+  a passing golden test. No AI required for these. 19 recipes ship today.
 
 ### Phase C — Repository & CI analysis (brief's Phase 3 + 4)
 
 _The tier-1/tier-2 signals that dramatically raise confidence and fill command gaps._
 
-- [ ] Repository-analysis detectors: `Makefile`, `Taskfile.yml`, `justfile`, package
+- [x] Repository-analysis detectors: `Makefile`, `Taskfile.yml`, `justfile`, package
       scripts, existing `Dockerfile`(s), shell scripts, README build sections.
-- [ ] CI parsers: `.github/workflows/*`, `.gitlab-ci.yml`, `azure-pipelines.yml`,
-      `circle.yml`. Extract build/test/start commands, runtime versions, env var names.
-- [ ] Wire cross-tier agreement into confidence (§4).
-- **Exit criterion:** for a repo with a Makefile or CI, ORCA prefers the repo's own
-  declared commands over recipe defaults, with evidence citing the source file.
+- [~] CI parsers: `.github/workflows/*` **only**. GitHub Actions is parsed
+  (`detect/ci.ts`) for build/test/start commands and `setup-*` runtime versions.
+  `.gitlab-ci.yml`, `azure-pipelines.yml`, and `circle.yml` are **NOT implemented on
+  this branch** — see §10. Env-var-name extraction is not implemented for any provider.
+- [x] Wire cross-tier agreement into confidence (§4).
+- **Exit criterion (partially met):** the repo's own declared commands are recovered and
+  surfaced with the source file cited (`insights.taskCommands`, `ciCommands`,
+  `scriptSources`, `dockerfiles`), and they feed the confidence trail. But ORCA does not
+  yet _prefer_ them over recipe defaults when building — apart from the Dockerfile path,
+  which does drive the build. Wiring recovered commands into recipe selection is open (§10).
 
 ### Phase D — AI inference as the gap-filler (brief's Phase 5)
 
 _Only runs when the ladder above leaves the recipe incomplete/low-confidence._
 
-- [ ] A `synthesizeRecipe` AI task: given the repo tree + manifests + README + CI +
+- [x] A `synthesizeRecipe` AI task: given the repo tree + manifests + README + CI +
       the partial `RepoModel`, propose the missing recipe fields.
-- [ ] Reuse the existing router/schema machinery (`ai/router.ts`, `ai/schema.ts`) —
+- [x] Reuse the existing router/schema machinery (`ai/router.ts`, `ai/schema.ts`) —
       every field zod-validated, confidence-capped (§4), shown with reasoning.
-- [ ] Extend the existing `ai/fillTemplate.ts` pattern; do not build a parallel AI stack.
-- **Exit criterion:** a repo that matches no recipe still produces a reviewable plan,
-  clearly labelled as AI-inferred, that a human can approve or correct.
+- [x] Extend the existing `ai/fillTemplate.ts` pattern; do not build a parallel AI stack.
+- **Exit criterion (met, with a caveat):** a repo that matches no recipe still produces a
+  reviewable plan built from the inferred recipe, logged as AI-inferred with its reasoning.
+  The human can approve or reject it; _correcting_ it at the gate is not supported.
 
 ### Phase E — Generic Docker synthesis (brief's Phase 7)
 
 _Dockerfiles generated from the recipe, not from `.hbs` templates keyed on framework._
 
-- [ ] A synthesizer that turns a `BuildRecipe` into a multi-stage Dockerfile
+- [x] A synthesizer that turns a `BuildRecipe` into a multi-stage Dockerfile
       (builder stage → slim runtime stage copying `artifacts`), inferring base image,
       package-manager install, system packages, ports, and a healthcheck.
-- [ ] Keep the handful of hand-tuned `.hbs` templates only where a recipe explicitly
+- [x] Keep the handful of hand-tuned `.hbs` templates only where a recipe explicitly
       references one; default path is synthesis.
-- **Exit criterion:** the Go/Rust/Java recipes from Phase B produce working multi-stage
-  images with no per-framework template file.
+- **Exit criterion (met):** the Go/Rust/Java recipes from Phase B produce working multi-stage
+  images with no per-framework template file, pinned byte-for-byte by
+  `tests/examples/ecosystem-golden.test.ts`.
 
 ### Phase F — Recipe-aware self-healing (brief's Phase 8)
 
@@ -354,7 +445,7 @@ _Per decision #2: design the interface, do not build execution now._
 
 **Phase A, the foundation refactor** — introduce `Claim`/`Evidence`/`Detector`, port the
 existing detectors onto it, and re-express the three current stacks as data recipes,
-all behind the existing 115-test suite so nothing regresses. It changes no user-visible
+all behind the then-115-test suite so nothing regresses. It changes no user-visible
 behavior, but it converts "add a framework = edit closed enums + a switch" into "add a
 framework = add a detector + a recipe," which is the unlock for every later phase.
 
@@ -434,6 +525,15 @@ Landed on `feat/universal-understanding` (behind the full test suite):
   next run (lookup → apply → evict-on-failure → save-on-success), so a missing-`libpq-dev`
   correction survives across runs for that repo shape.
 
+  Concretely, the persistence layer is: a single `heal-overrides.json` under ORCA's home
+  dir — `$ORCA_HOME` when set, else `~/.orca` — keyed by `signatureFor(repoId)`, where
+  `normalizeRepoId` canonicalizes the repo URL so the same repo cloned over SSH or HTTPS
+  shares one entry. Each record carries a `recipeFingerprint` (`repoShapeFrom` +
+  `recipeFingerprint`); on lookup the pipeline compares it against the freshly-detected
+  shape and **evicts rather than applies** when it has drifted, so a repo that changed its
+  stack starts clean instead of replaying a stale fix. An override that is applied and
+  still fails to produce a healthy stack is also evicted.
+
 - **Dynamic-probing seam (Phase G, landed — seam only)** — the tier-4 `Prober` contract
   (`src/model/prober.ts`) gives probing a home on the ladder: `Prober`/`ProbeContext`/
   `ProbeObservation` mirror the `Detector` seam and emit ordinary evidence-backed
@@ -442,6 +542,31 @@ Landed on `feat/universal-understanding` (behind the full test suite):
   (`tier: 4`; a disabled context yields no claims). No prober implementation and no runner
   ship — per decision #2 this is the interface, not execution.
 
+- **README / shell-script parsing (landed, Phase 3 / tier 1)** — `detect/readme.ts` and
+  `detect/shellScript.ts` recover build/run commands and advertised ports from the two
+  places a maintainer states them in plain sight: fenced shell blocks in `README.md`, and
+  the repo's own `start.sh` / `run.sh` / `dev.sh` / `scripts/*.sh` / `bin/*.sh`. Both share
+  one extraction core and reuse `ci.ts`'s `classifyCommand`, supplemented locally for the
+  run-shaped forms that classifier has no keyword for (`python app.py`, `docker run`,
+  `docker-compose up`, `go run`, `rails server`) — `classifyCommand` itself is untouched so
+  commands already recovered from CI, Dockerfiles, and task runners are unaffected.
+  Results land in `insights.scriptSources`.
+
+  The parser is **conservative by construction**: a line survives only if its leading token
+  is on a known-tool allowlist AND an intent can be classified: `git clone`, `cd`, `export`,
+  `curl`, `sudo` and friends are dropped, non-shell fenced blocks (`json`, `js`, `toml`,
+  `yaml`) are rejected wholesale including any ports inside them, and prose is never parsed.
+  A README that states nothing parseable yields nothing — that repo is left to tier-3 rather
+  than guessed at, which `tests/fixtures/readme-ambiguous-repo` pins as a false-positive
+  guard. This source is also strictly **gap-filling**: it contributes confidence only when
+  no Dockerfile and no CI already spoke, and it can never make an unsupported repo
+  supported.
+
+- **Component-role widening (landed, §2.3)** — `ComponentRole` now carries
+  `worker | cli | library | job` alongside the original three, with `worker` and `cli`
+  detected deterministically and `library`/`job` left as vocabulary. See §2.3 for the
+  detection rules, the "does it listen?" master gate, and the port consequences.
+
 Since then, the deterministic surface widened further: **19 recipes** across Node
 (react/express/next/nest/angular/vite), Python (django/fastapi/flask × uv/poetry/pip),
 PHP (composer/laravel), Ruby (bundler/rails/sinatra), Go, Rust, JVM (maven/gradle) and
@@ -449,13 +574,20 @@ PHP (composer/laravel), Ruby (bundler/rails/sinatra), Go, Rust, JVM (maven/gradl
 known-set (mirroring `Runtime`); and runnable **ecosystem example repos** under
 `examples/` (go/rust/jvm/dotnet) pinned by synthesizer golden tests.
 
+Note on the Node recipes: `node-next` runs the maintainer's own `npm run build` /
+`npm run start` and publishes **3000**, matching what `next start` actually binds — the
+Next.js port correction. `node-vite` is registered last among the Node entries so a
+React + Vite repo still resolves to `node-react`, while Vue/Svelte/Solid/vanilla Vite
+repos get a recipe instead of nothing.
+
 Remaining toward "build any repo": a probing _implementation_ (deferred by decision #2 —
 the seam exists, execution is a separate later call), and per-ecosystem entrypoint scripts
 (e.g. a JVM/.NET migrate-then-run analogue to the Django entrypoint) — deferred until a
 recipe actually needs one, to avoid unused machinery.
 
-Test coverage across these: **333 tests** (was 115 at the start of the branch), all
-hermetic (temp-dir fixtures, injected AI facade, no network, no Docker, no VS Code).
+Test coverage across these: **410 tests** (407 passing + 3 skipped) across 54 files — was
+115 at the start of the branch — all hermetic (temp-dir fixtures, injected AI facade, no
+network, no Docker, no VS Code).
 
 Known follow-ups surfaced during integration:
 
@@ -470,3 +602,37 @@ Known follow-ups surfaced during integration:
   synthesized Dockerfile byte-for-byte.
 - **`PackageManager` opened (resolved).** Now a known-set + open string in
   `templates/types.ts`, mirroring `Runtime`; detection layers `'unknown'` on top.
+- **`cli` role was initially unreachable (resolved during §2.3).** Node roots never become
+  ecosystem components, so a `bin` package would have carried a role nothing ever read.
+  Role detection therefore also runs on the Dockerfile-derived path in
+  `ecosystemComponentsFrom`, which is the route such a repo actually takes.
+
+---
+
+## 10. Still open — what this document describes but the code does not do
+
+Collected here so §1–§8 can stay as the original design argument while remaining honest
+about the gap. Nothing below is implemented on this branch.
+
+| #   | Gap                                                                                                                                                                                                                               | Where the doc claims it   |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| 1   | **Multi-provider CI.** Only `.github/workflows/*` is parsed. `.gitlab-ci.yml`, `azure-pipelines.yml`, and `circle.yml` have no parser, and `insights` has no per-provider structure.                                              | §5 Phase C                |
+| 2   | **Graded `{ recipe, tier }` outcome.** `isSupported: boolean` is still the contract; the review gate shows no confidence tier.                                                                                                    | §4                        |
+| 3   | **A real confidence gate.** Tier-3 escalation triggers on `!isSupported`, not on a threshold or on recipe-field completeness — a placed-but-poorly-understood repo never escalates.                                               | §3, §5 Phase D            |
+| 4   | **Recovered commands don't drive the build.** `taskCommands` / `ciCommands` / `scriptSources` inform confidence and the log, but recipe selection ignores them. Only the Dockerfile path actually builds from recovered commands. | §5 Phase C exit criterion |
+| 5   | **`AI claims capped ≤0.7`** is asserted as a mechanism but is not enforced by a shared, tested cap in `claim.ts`.                                                                                                                 | §4, §6 row 5              |
+| 6   | **Correcting an AI-inferred plan at the gate.** The reviewer can approve or reject, not edit.                                                                                                                                     | §5 Phase D exit criterion |
+| 7   | **`cli`/`job` as one-shot services.** They become ordinary portless `'service'` nodes; there is no `restart: no` / "runnable, not long-lived" affordance.                                                                         | §2.3                      |
+| 8   | **`library` and `job` detection.** Vocabulary only, deliberately — see §2.3.                                                                                                                                                      | §2.3                      |
+| 9   | **Probing implementation.** Seam only, by decision #2. This one is a _choice_, not a gap.                                                                                                                                         | §5 Phase G                |
+
+Two things the doc names that are **partly** true and worth stating precisely:
+
+- **PHP framework coverage.** `php-laravel` and `php-composer` ship as recipes. There is
+  **no `php-symfony` recipe** — Symfony exists only as a row in the framework _signature_
+  table (`detect/frameworkSignatures.ts`), so a Symfony repo is identified but builds
+  through the generic `php-composer` recipe.
+- **`FrontendFramework`/`BackendFramework` are still closed unions.** They no longer gate
+  what ORCA can build, but they do still gate what the seed frontend/backend detector will
+  place, which is why a Node CLI or a Vue app reaches the plan through the ecosystem/
+  Dockerfile paths rather than as a first-class component.
