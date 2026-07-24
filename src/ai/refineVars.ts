@@ -17,7 +17,14 @@ export function refineDockerfileVars(
   if (v.installCommand !== undefined) out.installCommand = v.installCommand;
   if (v.buildCommand !== undefined) out.buildCommand = v.buildCommand;
   if (v.startCommand !== undefined) out.startCommand = v.startCommand;
-  if (v.port !== undefined) out.port = v.port;
+  if (v.port !== undefined) {
+    out.port = v.port;
+    // Keep the primary in sync with the full list when the defaults had one — replace
+    // index 0 (the old primary), keep any other detected ports (e.g. a Dockerfile
+    // sidecar port) as-is. Vars with no `ports` at all (older/hand-built call sites)
+    // stay that way; the render fallback (`[port]`) still applies.
+    if (defaults.ports !== undefined) out.ports = [v.port, ...defaults.ports.slice(1)];
+  }
   if (v.systemPackages !== undefined) out.systemPackages = v.systemPackages;
   if (v.entrypointScript !== undefined) out.entrypointScript = v.entrypointScript;
 

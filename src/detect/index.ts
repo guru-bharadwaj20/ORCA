@@ -348,7 +348,7 @@ async function hasFile(dir: string, ...names: string[]): Promise<boolean> {
   return false;
 }
 
-/** Basenames present at a directory, for file-marker matching. */
+/** Marker files present at a directory (mostly basenames, one nested path), for file-marker matching. */
 async function filesAt(dir: string): Promise<string[]> {
   const markers = [
     'go.mod',
@@ -369,6 +369,10 @@ async function filesAt(dir: string): Promise<string[]> {
     'Directory.Build.props',
     'composer.json',
     'Gemfile',
+    // Symfony's CLI entrypoint, one directory down — corroborates the framework-bundle
+    // dependency for the php-symfony recipe's matcher. Not a basename like the rest of
+    // this list, but `join(dir, m)` handles the subpath the same way.
+    'bin/console',
   ];
   const present: string[] = [];
   for (const m of markers) {
@@ -473,8 +477,10 @@ async function gatherInsights(
     const rootPorts = await declaredPorts(absDir);
 
     // A non-seed ecosystem root (Go/Rust/JVM/.NET) with a matched recipe becomes an
-    // open 'service' component. node/python roots stay on the seed frontend/backend
-    // path, so they're excluded here to avoid double-placing the same directory.
+    // open 'service' component. Plain-react/plain-express node roots and Django python
+    // roots stay on the seed frontend/backend path, so they're excluded below (by
+    // runtime here, by recipe id further down) to avoid double-placing the same
+    // directory.
     if (runtimeClaim && runtimeClaim.value !== 'node' && runtimeClaim.value !== 'python') {
       const recipe = recipes.match({ runtime: runtimeClaim.value, dependencies, files });
       if (recipe) {
@@ -507,6 +513,29 @@ async function gatherInsights(
         ecosystemComponents.push({
           rootDir,
           runtime: 'python',
+          recipeId: recipe.id,
+          role: detected?.role ?? 'backend',
+        });
+      }
+    }
+
+    // A Node root whose framework the seed frontend/backend path can't place (plain
+    // react/express are the only seed Node frameworks) but which matches a more
+    // specific Node framework recipe — Next.js/NestJS/Angular, or a non-React Vite app
+    // — becomes an open 'service' too, mirroring the Python handling above. Plain
+    // react/express are excluded by id so they stay on the seed path, keeping the two
+    // paths disjoint (framework.ts already defers those roots out of 'react'/'express').
+    if (hasNode) {
+      const recipe = recipes.match({ runtime: 'node', dependencies, files });
+      if (recipe && recipe.id !== 'node-react' && recipe.id !== 'node-express') {
+        const detected = await detectComponentRole(absDir, {
+          dependencies,
+          declaredPorts: rootPorts.map((p) => p.port),
+          startCommand: recipe.startCommand,
+        });
+        ecosystemComponents.push({
+          rootDir,
+          runtime: 'node',
           recipeId: recipe.id,
           role: detected?.role ?? 'backend',
         });

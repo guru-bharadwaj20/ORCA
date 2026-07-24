@@ -27,7 +27,10 @@ export interface DockerfileVars {
   installCommand: string;
   buildCommand?: string;
   startCommand: string;
+  /** Primary port: PORT env var, health/default-routing, and inter-service URLs all use this one. */
   port: number;
+  /** Every port to publish (EXPOSE/compose `ports:`). Falls back to `[port]` when absent. */
+  ports?: number[];
   systemPackages?: string[];
   entrypointScript?: string;
 }

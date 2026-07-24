@@ -37,6 +37,7 @@ interface Case {
 
 const CASES: readonly Case[] = [
   { repo: 'php-laravel-repo', runtime: 'php', recipeId: 'php-laravel' },
+  { repo: 'php-symfony-repo', runtime: 'php', recipeId: 'php-symfony' },
   { repo: 'php-plain-repo', runtime: 'php', recipeId: 'php-composer' },
   { repo: 'rails-repo', runtime: 'ruby', recipeId: 'ruby-rails' },
   { repo: 'sinatra-repo', runtime: 'ruby', recipeId: 'ruby-sinatra' },
@@ -76,6 +77,18 @@ describe('PHP/Ruby detection signals', () => {
     expect(detection.languages).toContain('php');
     expect(detection.insights.runtimes).toContain('php');
     expect(detection.insights.frameworks).toContain('laravel');
+  });
+
+  it('surfaces the language and a framework insight for a Symfony repo', async () => {
+    const detection = await detectStack(fixture('php-symfony-repo'));
+    expect(detection.languages).toContain('php');
+    expect(detection.insights.runtimes).toContain('php');
+    expect(detection.insights.frameworks).toContain('symfony');
+  });
+
+  it('does not surface a Symfony insight for a plain Composer repo', async () => {
+    const detection = await detectStack(fixture('php-plain-repo'));
+    expect(detection.insights.frameworks).not.toContain('symfony');
   });
 
   it('surfaces the language and a framework insight for a Rails repo', async () => {
