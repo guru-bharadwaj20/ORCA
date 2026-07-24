@@ -345,7 +345,7 @@ async function hasFile(dir: string, ...names: string[]): Promise<boolean> {
   return false;
 }
 
-/** Basenames present at a directory, for file-marker matching. */
+/** Marker files present at a directory (mostly basenames, one nested path), for file-marker matching. */
 async function filesAt(dir: string): Promise<string[]> {
   const markers = [
     'go.mod',
@@ -366,6 +366,10 @@ async function filesAt(dir: string): Promise<string[]> {
     'Directory.Build.props',
     'composer.json',
     'Gemfile',
+    // Symfony's CLI entrypoint, one directory down — corroborates the framework-bundle
+    // dependency for the php-symfony recipe's matcher. Not a basename like the rest of
+    // this list, but `join(dir, m)` handles the subpath the same way.
+    'bin/console',
   ];
   const present: string[] = [];
   for (const m of markers) {
