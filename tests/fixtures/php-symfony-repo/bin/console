@@ -1,0 +1,6 @@
+#!/usr/bin/env php
+<?php
+
+// Minimal fixture entrypoint — not a runnable Symfony console, just enough of the
+// shape (bin/console) for detection assertions.
+echo 'ok';
