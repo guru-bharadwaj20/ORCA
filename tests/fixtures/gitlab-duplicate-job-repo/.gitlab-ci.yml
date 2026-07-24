@@ -1,0 +1,11 @@
+stages:
+  - build
+
+include:
+  - local: 'ci/shared.yml'
+
+build:
+  stage: build
+  image: node:20
+  script:
+    - npm run build

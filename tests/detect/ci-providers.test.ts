@@ -240,3 +240,68 @@ describe('insights.ciRuntimeVersions merges across all CI sources', () => {
     expect(result.insights.ciRuntimeVersions).toEqual([]);
   });
 });
+
+describe('analyzeGitlabCi: include: resolution', () => {
+  it('merges a one-level local include into the job list', async () => {
+    const analysis = await analyzeGitlabCi(fixture('gitlab-include-repo'));
+    expect(analysis.found).toBe(true);
+    const config = analysis.configs[0]!;
+
+    expect(config.jobs.map((j) => j.name).sort()).toEqual(['build', 'lint']);
+    const build = config.jobs.find((j) => j.name === 'build');
+    expect(build).toMatchObject({ image: 'python:3.12-slim' });
+    expect(analysis.runtimeVersions).toEqual(
+      expect.arrayContaining([
+        { runtime: 'node', version: '20' },
+        { runtime: 'python', version: '3.12' },
+      ])
+    );
+  });
+
+  it('follows a nested include (root -> level1 -> level2)', async () => {
+    const analysis = await analyzeGitlabCi(fixture('gitlab-nested-include-repo'));
+    const config = analysis.configs[0]!;
+
+    expect(config.jobs.map((j) => j.name).sort()).toEqual([
+      'level1_job',
+      'level2_job',
+      'root_job',
+    ]);
+    expect(analysis.runtimeVersions).toEqual(
+      expect.arrayContaining([
+        { runtime: 'node', version: '20' },
+        { runtime: 'python', version: '3.12' },
+        { runtime: 'go', version: '1.22' },
+      ])
+    );
+  });
+
+  it('catches a circular include (a -> b -> a) without hanging or crashing', async () => {
+    const analysis = await analyzeGitlabCi(fixture('gitlab-circular-include-repo'));
+    const config = analysis.configs[0]!;
+
+    // Each file's own job is resolved exactly once - the cycle is refused, not
+    // silently re-expanded into duplicates.
+    expect(config.jobs.map((j) => j.name).sort()).toEqual(['a_job', 'b_job', 'root_job']);
+    expect(analysis.runtimeVersions).toHaveLength(3);
+  });
+
+  it('skips a missing/unresolvable include path gracefully', async () => {
+    const analysis = await analyzeGitlabCi(fixture('gitlab-missing-include-repo'));
+    const config = analysis.configs[0]!;
+
+    // The root's own job still surfaces - a bad include doesn't take down the whole file.
+    expect(config.jobs.map((j) => j.name)).toEqual(['root_job']);
+  });
+
+  it('a job name declared in both the root file and an include: the root wins', async () => {
+    const analysis = await analyzeGitlabCi(fixture('gitlab-duplicate-job-repo'));
+    const config = analysis.configs[0]!;
+
+    // Documented precedence (see collectJobs's docstring): a file's own jobs are merged
+    // before its includes', so a name collision resolves in the root's favor - not
+    // "whichever happened to be read last."
+    expect(config.jobs).toHaveLength(1);
+    expect(config.jobs[0]).toMatchObject({ name: 'build', image: 'node:20' });
+  });
+});
