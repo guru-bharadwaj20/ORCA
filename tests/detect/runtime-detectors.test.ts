@@ -34,7 +34,7 @@ describe('runtime detectors', () => {
     const claims = await goDetector.detect(ctx());
 
     expect(claims).toHaveLength(1);
-    expect(claims[0]?.value).toBe('go');
+    expect(claims[0]?.value).toEqual({ kind: 'runtime', runtime: 'go' });
     expect(claims[0]?.source).toBe('deterministic');
     expect(claims[0]?.confidence).toBeGreaterThan(0.8);
     expect(claims[0]?.evidence[0]?.signal).toBe('go.mod present');
@@ -58,7 +58,7 @@ describe('runtime detectors', () => {
 
   it('jvmDetector recognizes both Maven and Gradle layouts', async () => {
     await writeFile(join(dir, 'pom.xml'), '<project/>');
-    expect((await jvmDetector.detect(ctx()))[0]?.value).toBe('jvm');
+    expect((await jvmDetector.detect(ctx()))[0]?.value.runtime).toBe('jvm');
   });
 
   it('defaultDetectorRegistry exposes only tier-1 detectors so far', () => {
