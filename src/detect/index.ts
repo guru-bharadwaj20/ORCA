@@ -21,8 +21,8 @@ import {
 import type { RepoContext } from '../model/detector.js';
 import type { Runtime } from '../model/recipe.js';
 import { defaultRecipeRegistry } from '../model/recipes/index.js';
-import { DEFAULT_WALK_IGNORE, readFileIfExists } from '../utils/fs.js';
-import { FsCache } from '../utils/fsCache.js';
+import { activeFsReadScope, DEFAULT_WALK_IGNORE, readFileIfExists } from '../utils/fs.js';
+import { withFsCache } from '../utils/fsCache.js';
 import { OrcaError } from '../utils/errors.js';
 import { analyzeAzurePipelines } from './azurePipelines.js';
 import { recoverBuild } from './buildRecovery.js';
@@ -229,6 +229,20 @@ async function buildComponent(
  * `isSupported` + `confidence`, and collect warnings.
  */
 export async function detectStack(repoPath: string): Promise<DetectionResult> {
+  // One read scope for the whole pass. Detection's ~60 read sites are spread across 19
+  // modules and several run once per candidate root, so the same manifests are otherwise
+  // re-read many times over. The scope memoizes them without any detector taking a cache
+  // argument, and is discarded when this settles.
+  //
+  // An enclosing scope is REUSED rather than shadowed, so a caller that wraps several
+  // detection passes gets one cache across all of them (and can read its stats) instead of
+  // each pass starting cold behind a scope the caller cannot see.
+  if (activeFsReadScope() !== undefined) return detectStackScoped(repoPath);
+  const { result } = await withFsCache(() => detectStackScoped(repoPath));
+  return result;
+}
+
+async function detectStackScoped(repoPath: string): Promise<DetectionResult> {
   const warnings: DetectionWarning[] = [];
 
   // Monorepo topology is resolved first so its workspace globs can promote nested
@@ -361,18 +375,18 @@ async function allEcosystemDependencies(dir: string): Promise<string[]> {
 }
 
 /** True when any of the named files exists at `dir`. */
-async function hasFile(cache: FsCache, dir: string, ...names: string[]): Promise<boolean> {
+async function hasFile(dir: string, ...names: string[]): Promise<boolean> {
   // Probed together: the names are independent and a serial chain here is paid once per
-  // candidate root. The run-scoped cache collapses repeats, so a name another helper already
+  // candidate root. The run-scoped read cache collapses repeats, so a name another helper already
   // looked at costs nothing the second time.
   const found = await Promise.all(
-    names.map(async (name) => (await cache.readFile(join(dir, name))) !== null)
+    names.map(async (name) => (await readFileIfExists(join(dir, name))) !== null)
   );
   return found.some(Boolean);
 }
 
 /** Marker files present at a directory (mostly basenames, one nested path), for file-marker matching. */
-async function filesAt(cache: FsCache, dir: string): Promise<string[]> {
+async function filesAt(dir: string): Promise<string[]> {
   const markers = [
     'go.mod',
     'Cargo.toml',
@@ -400,7 +414,7 @@ async function filesAt(cache: FsCache, dir: string): Promise<string[]> {
   // Marker probes are independent; issue them together and keep `markers` order so the
   // matcher sees a stable list.
   const hits = await Promise.all(
-    markers.map(async (m) => ((await cache.readFile(join(dir, m))) !== null ? m : null))
+    markers.map(async (m) => ((await readFileIfExists(join(dir, m))) !== null ? m : null))
   );
   const present: string[] = hits.filter((m): m is string => m !== null);
   // .NET project/solution files have arbitrary names, so surface them by extension —
@@ -429,11 +443,6 @@ async function gatherInsights(
 ): Promise<RepoInsights> {
   const registry = defaultDetectorRegistry();
   const recipes = defaultRecipeRegistry();
-  // Scoped to this insight pass, then discarded. Detection reads a STATIC checkout, so
-  // within one pass a file cannot change — which is what makes memoizing safe here and
-  // why the cache must not outlive the run (a module-level singleton would leak state
-  // between runs and break test hermeticity).
-  const cache = new FsCache();
   const runtimeSet = new Set<Runtime>();
   const frameworkSet = new Set<string>();
   const taskCommands: RepoInsights['taskCommands'] = [];
@@ -457,9 +466,9 @@ async function gatherInsights(
         analyzeDockerfiles(absDir),
         registry.collectAtTier(1, ctx),
         allEcosystemDependencies(absDir),
-        filesAt(cache, absDir),
-        hasFile(cache, absDir, 'package.json'),
-        hasFile(cache, absDir, 'requirements.txt', 'pyproject.toml', 'manage.py'),
+        filesAt(absDir),
+        hasFile(absDir, 'package.json'),
+        hasFile(absDir, 'requirements.txt', 'pyproject.toml', 'manage.py'),
       ]);
 
     // Maintainer-declared tasks (Makefile/Taskfile/justfile/package scripts), deduped

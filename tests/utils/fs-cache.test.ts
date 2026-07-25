@@ -4,7 +4,8 @@ import { join } from 'node:path';
 
 import { describe, it, expect } from 'vitest';
 
-import { FsCache } from '../../src/utils/fsCache.js';
+import { FsCache, withFsCache } from '../../src/utils/fsCache.js';
+import { readFileIfExists, walk } from '../../src/utils/fs.js';
 
 async function fixture(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'orca-fscache-'));
@@ -116,5 +117,71 @@ describe('FsCache', () => {
     await cache.readFile(path);
 
     expect(cache.stats()).toEqual({ hits: 0, misses: 1 });
+  });
+});
+
+describe('ambient read scope', () => {
+  it('serves reads made without any cache argument', async () => {
+    const root = await fixture();
+    const path = join(root, 'package.json');
+
+    const { cache } = await withFsCache(async () => {
+      // Plain module-level helpers — no cache threaded in.
+      await readFileIfExists(path);
+      await readFileIfExists(path);
+      await readFileIfExists(path);
+    });
+
+    expect(cache.stats()).toEqual({ hits: 2, misses: 1 });
+  });
+
+  it('memoizes walks made through the plain helper', async () => {
+    const root = await fixture();
+
+    const { cache } = await withFsCache(async () => {
+      await walk(root);
+      await walk(root);
+    });
+
+    expect(cache.stats().hits).toBe(1);
+  });
+
+  it('leaves reads outside a scope completely unaffected', async () => {
+    const root = await fixture();
+    const path = join(root, 'package.json');
+
+    // No scope: identical behavior to before the cache existed.
+    await expect(readFileIfExists(path)).resolves.toBe('{"name":"x"}');
+    await expect(readFileIfExists(join(root, 'missing.json'))).resolves.toBeNull();
+  });
+
+  it('does not leak between two sequential scopes', async () => {
+    const root = await fixture();
+    const path = join(root, 'package.json');
+
+    const first = await withFsCache(() => readFileIfExists(path));
+    const second = await withFsCache(() => readFileIfExists(path));
+
+    // Each run starts cold — that is what keeps two tests in one process hermetic.
+    expect(first.cache.stats().misses).toBe(1);
+    expect(second.cache.stats().misses).toBe(1);
+  });
+
+  it('keeps concurrent scopes isolated from each other', async () => {
+    const a = await fixture();
+    const b = await fixture();
+
+    const [ra, rb] = await Promise.all([
+      withFsCache(async () => {
+        await readFileIfExists(join(a, 'package.json'));
+        await readFileIfExists(join(a, 'package.json'));
+      }),
+      withFsCache(async () => {
+        await readFileIfExists(join(b, 'package.json'));
+      }),
+    ]);
+
+    expect(ra.cache.stats()).toEqual({ hits: 1, misses: 1 });
+    expect(rb.cache.stats()).toEqual({ hits: 0, misses: 1 });
   });
 });

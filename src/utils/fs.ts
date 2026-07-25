@@ -1,5 +1,49 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+
+/**
+ * What an active read scope must provide. Declared here (rather than importing `FsCache`)
+ * so this module stays dependency-free and there is no import cycle with `fsCache.ts`.
+ */
+export interface FsReadScope {
+  readFile(path: string): Promise<string | null>;
+  walk(dir: string, options?: string[] | WalkOptions): Promise<string[]>;
+}
+
+/**
+ * The read scope in effect for the current async execution, if any.
+ *
+ * WHY AMBIENT RATHER THAN A PARAMETER. Detection has ~60 read sites spread over 19
+ * modules, and each detector is deliberately self-sufficient — it reads whatever it needs,
+ * whenever it needs it. Threading a cache argument through all of them would change every
+ * signature (and every caller and test) purely to pass a performance concern through code
+ * that has no business knowing about it.
+ *
+ * WHY THIS IS NOT A GLOBAL. `AsyncLocalStorage` binds the scope to one async execution
+ * tree, so it is established by `withFsReadScope` for the duration of a single detection
+ * run and is invisible outside it. Two concurrent runs — including two tests in the same
+ * process — each see their own scope or none at all, which is what keeps the suite
+ * hermetic. Absent a scope, reads behave exactly as they always did.
+ */
+const readScope = new AsyncLocalStorage<FsReadScope>();
+
+/** The scope for the current execution, or `undefined` when running unscoped. */
+export function activeFsReadScope(): FsReadScope | undefined {
+  return readScope.getStore();
+}
+
+/**
+ * Run `fn` with `scope` serving reads made anywhere beneath it.
+ *
+ * Safe to memoize inside because detection reads a STATIC checkout: nothing ORCA does
+ * mutates the repo between the first detector and the last, so a file cannot change
+ * within one scope. The scope ends when `fn` settles, which is what makes invalidation a
+ * non-problem — a cache never outlives the snapshot it described.
+ */
+export function withFsReadScope<T>(scope: FsReadScope, fn: () => Promise<T>): Promise<T> {
+  return readScope.run(scope, fn);
+}
 
 export const DEFAULT_WALK_IGNORE: string[] = [
   'node_modules',
@@ -14,7 +58,8 @@ export const DEFAULT_WALK_IGNORE: string[] = [
   '.orca-golden',
 ];
 
-export async function readFileIfExists(path: string): Promise<string | null> {
+/** Read a file, returning null when it is absent — bypassing any active scope. */
+export async function readFileUncached(path: string): Promise<string | null> {
   try {
     return await readFile(path, 'utf8');
   } catch (err) {
@@ -22,6 +67,18 @@ export async function readFileIfExists(path: string): Promise<string | null> {
     if (code === 'ENOENT' || code === 'EISDIR') return null;
     throw err;
   }
+}
+
+/**
+ * Read a file, returning null when it is absent.
+ *
+ * Served from the active read scope when there is one, so the same manifest read by five
+ * detectors costs one syscall. Identical behavior either way — the scope only removes
+ * repeat work.
+ */
+export async function readFileIfExists(path: string): Promise<string | null> {
+  const scope = activeFsReadScope();
+  return scope === undefined ? readFileUncached(path) : scope.readFile(path);
 }
 
 /**
@@ -62,6 +119,16 @@ export interface WalkOptions {
  * the caps truncate reproducibly instead of arbitrarily.
  */
 export async function walk(
+  dir: string,
+  options: string[] | WalkOptions = DEFAULT_WALK_IGNORE
+): Promise<string[]> {
+  const scope = activeFsReadScope();
+  if (scope !== undefined) return scope.walk(dir, options);
+  return walkUncached(dir, options);
+}
+
+/** `walk`, bypassing any active read scope. The scope itself calls this on a miss. */
+export async function walkUncached(
   dir: string,
   options: string[] | WalkOptions = DEFAULT_WALK_IGNORE
 ): Promise<string[]> {

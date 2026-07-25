@@ -25,7 +25,14 @@
  * STAGE: 2 (detect) — REAL code. Pure memoization, no behavior change.
  */
 
-import { readFileIfExists, walk, type WalkOptions, DEFAULT_WALK_IGNORE } from './fs.js';
+import {
+  readFileUncached,
+  walkUncached,
+  withFsReadScope,
+  type FsReadScope,
+  type WalkOptions,
+  DEFAULT_WALK_IGNORE,
+} from './fs.js';
 
 /** Cache-key a walk by its directory *and* the options that change its result. */
 function walkKey(dir: string, options: string[] | WalkOptions): string {
@@ -41,7 +48,7 @@ function walkKey(dir: string, options: string[] | WalkOptions): string {
  * delegate to the plain `fs.ts` helpers, so behavior is identical to calling them directly
  * — this only removes repeat work.
  */
-export class FsCache {
+export class FsCache implements FsReadScope {
   private readonly files = new Map<string, Promise<string | null>>();
   private readonly walks = new Map<string, Promise<string[]>>();
 
@@ -58,7 +65,9 @@ export class FsCache {
       return cached;
     }
     this.missCount++;
-    const pending = readFileIfExists(path);
+    // Must call the UNCACHED primitive: when this cache is the active scope, the public
+    // `readFileIfExists` would route straight back here and recurse forever.
+    const pending = readFileUncached(path);
     this.files.set(path, pending);
     return pending;
   }
@@ -75,7 +84,7 @@ export class FsCache {
       return cached;
     }
     this.missCount++;
-    const pending = walk(dir, options);
+    const pending = walkUncached(dir, options);
     this.walks.set(key, pending);
     return pending;
   }
@@ -92,4 +101,18 @@ export class FsCache {
     this.hitCount = 0;
     this.missCount = 0;
   }
+}
+
+/**
+ * Run `fn` with a fresh `FsCache` serving every read beneath it, then discard it.
+ *
+ * This is the intended entry point: one call wraps a whole detection pass, and the ~60
+ * scattered `readFileIfExists`/`walk` sites underneath are memoized without any of them
+ * taking a cache argument. The cache is returned alongside the result so a caller can log
+ * how much repeat I/O was avoided.
+ */
+export async function withFsCache<T>(fn: () => Promise<T>): Promise<{ result: T; cache: FsCache }> {
+  const cache = new FsCache();
+  const result = await withFsReadScope(cache, fn);
+  return { result, cache };
 }
