@@ -60,3 +60,23 @@ describe('detectPorts', () => {
     expect(ports).toEqual([{ port: 3000, protocol: 'tcp', source: 'default' }]);
   });
 });
+
+describe('port literal boundaries', () => {
+  it('ignores an over-long number instead of truncating it to a valid port', async () => {
+    // Without a trailing (?!\d), \d{2,5} would clip this to 12345 and publish a port the
+    // app never binds.
+    await writeFile(join(dir, 'server.js'), 'app.listen(123456);\n');
+
+    const ports = await detectPorts(dir, 'backend');
+
+    expect(ports.map((p) => p.port)).not.toContain(12345);
+  });
+
+  it('still detects an ordinary port literal', async () => {
+    await writeFile(join(dir, 'server.js'), 'app.listen(8080);\n');
+
+    const ports = await detectPorts(dir, 'backend');
+
+    expect(ports.map((p) => p.port)).toContain(8080);
+  });
+});
