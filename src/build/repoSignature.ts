@@ -85,11 +85,34 @@ export function recipeFingerprint(ctx: RunContext): string[] {
   return [...tokens].sort();
 }
 
+/**
+ * Every detected seed component, preferring the authoritative `components[]` list and
+ * falling back to the two legacy `frontend`/`backend` slots.
+ *
+ * WHY THE FALLBACK. `components[]` is the N-component list that replaces the two nullable
+ * slots; `frontend`/`backend` become derived views that each surface only ONE entry. Since
+ * this shape is the *invalidation guard* for a stored heal override, reading the derived
+ * views would fingerprint at most two components of a repo that may have many — so a repo
+ * could change shape (gain, lose, or re-frame a third service) while its signature stayed
+ * identical, and a stale override would be replayed against it.
+ *
+ * Reading `components[]` when present keeps that guard complete, and the fallback keeps
+ * this correct before the field exists.
+ */
+function detectedComponents(detection: RunContext['detection']): { framework?: string }[] {
+  const withComponents = detection as { components?: { framework?: string }[] } | undefined;
+  if (Array.isArray(withComponents?.components)) return withComponents.components;
+  return [detection?.frontend, detection?.backend].filter(
+    (c): c is NonNullable<typeof c> => c != null
+  );
+}
+
 /** Assemble the full shape (identity + descriptors) for the current run. */
 export function repoShapeFrom(ctx: RunContext): RepoShape {
   const detection = ctx.detection;
   const frameworks: string[] = [];
-  for (const framework of [detection?.frontend?.framework, detection?.backend?.framework]) {
+  for (const component of detectedComponents(detection)) {
+    const framework = component.framework;
     if (framework !== undefined && framework !== 'unknown') frameworks.push(framework);
   }
   return {
