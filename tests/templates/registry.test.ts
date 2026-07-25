@@ -60,6 +60,7 @@ function detectionResult(parts: {
       scriptSources: [],
       ecosystemComponents: [],
       recoveredBuild: null,
+      recoveredRuntimes: null,
     },
     warnings: [],
   };

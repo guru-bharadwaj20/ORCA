@@ -69,6 +69,7 @@ function insights(over: Partial<RepoInsights> = {}): RepoInsights {
     scriptSources: [],
     ecosystemComponents: [],
     recoveredBuild: null,
+    recoveredRuntimes: null,
     ...over,
   };
 }
