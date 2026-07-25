@@ -1,10 +1,10 @@
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { runSelfHealLoop } from '../../src/build/selfHeal.js';
+import { runSelfHealLoop, resolveAllowedRealPath } from '../../src/build/selfHeal.js';
 import { createRunContext, type Logger, type RunContext } from '../../src/core/context.js';
 import type { AttemptResult } from '../../src/build/runner.js';
 
@@ -142,5 +142,41 @@ describe('runSelfHealLoop', () => {
       code: 'HEAL_EXHAUSTED',
       message: expect.stringContaining('missing script') as string,
     });
+  });
+});
+
+describe('resolveAllowedRealPath symlink guard', () => {
+  it('rejects an allowlisted path that is a symlink', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'orca-symheal-'));
+    const outside = join(dir, 'outside.txt');
+    await writeFile(outside, 'original');
+    const workspace = join(dir, 'ws');
+    await mkdir(workspace, { recursive: true });
+    // A repo shipping a symlink at a name ORCA generates would redirect the write.
+    await symlink(outside, join(workspace, 'Dockerfile'));
+
+    const allowlist = new Set(['Dockerfile']);
+    await expect(resolveAllowedRealPath(workspace, 'Dockerfile', allowlist)).resolves.toBeNull();
+  });
+
+  it('allows an ordinary generated file, and one not yet written', async () => {
+    const workspace = await mkdtemp(join(tmpdir(), 'orca-symheal2-'));
+    await writeFile(join(workspace, 'Dockerfile'), 'FROM node:20');
+    const allowlist = new Set(['Dockerfile', 'docker-compose.yml']);
+
+    await expect(resolveAllowedRealPath(workspace, 'Dockerfile', allowlist)).resolves.toBe(
+      join(workspace, 'Dockerfile')
+    );
+    // Declared but not yet on disk — still allowed, the patch may be creating it.
+    await expect(resolveAllowedRealPath(workspace, 'docker-compose.yml', allowlist)).resolves.toBe(
+      join(workspace, 'docker-compose.yml')
+    );
+  });
+
+  it('still rejects a path outside the workspace', async () => {
+    const workspace = await mkdtemp(join(tmpdir(), 'orca-symheal3-'));
+    await expect(
+      resolveAllowedRealPath(workspace, '../escape.txt', new Set(['../escape.txt']))
+    ).resolves.toBeNull();
   });
 });
