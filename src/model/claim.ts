@@ -79,6 +79,44 @@ export function claim<T>(value: T, evidence: Evidence[], source: ClaimSource): C
   return { value, confidence, evidence, source };
 }
 
+/**
+ * A claim value that names its own kind, so claims of different kinds can share one
+ * registry without their values being confused for one another.
+ *
+ * WHY THIS EXISTS. Detectors emit `Claim<unknown>`, which erases what a claim is *about*.
+ * That erasure forced two workarounds: role detectors had to live in a second registry
+ * (mixing them into the runtime registry "would corrupt runtime detection"), and both
+ * consumers recovered their type with an unchecked `as Claim<T>[]` cast — a cast that
+ * would silently mis-type every claim the moment a registry gained a new detector kind.
+ * Tagging the value makes the kind checkable at runtime and narrowable at compile time,
+ * so one registry can safely serve every kind.
+ */
+export interface KindedValue<K extends string = string> {
+  readonly kind: K;
+}
+
+/** True when a claim's value is a `KindedValue` bearing exactly `kind`. */
+function hasKind(value: unknown, kind: string): boolean {
+  return (
+    typeof value === 'object' && value !== null && (value as Partial<KindedValue>).kind === kind
+  );
+}
+
+/**
+ * Select the claims whose value is of `kind`, narrowing them to `Claim<V>`.
+ *
+ * This replaces `claims as Claim<T>[]`: the discriminant is *checked* at runtime, so a
+ * claim of another kind is filtered out rather than mis-typed. Mixing kinds in one
+ * registry is therefore safe — a consumer asks for the kind it understands and is
+ * unaffected by every other kind present.
+ */
+export function claimsOfKind<V extends KindedValue>(
+  claims: readonly Claim<unknown>[],
+  kind: V['kind']
+): Claim<V>[] {
+  return claims.filter((c): c is Claim<V> => hasKind(c.value, kind));
+}
+
 /** Project a claim's evidence to the plain reasoning strings shown to the user. */
 export function reasoning<T>(c: Claim<T>): string[] {
   return c.evidence.map((e) => e.signal);
