@@ -125,3 +125,32 @@ describe('resolveHostPortConflicts', () => {
     expect(plan.services.map((s) => s.ports[0]?.host)).toEqual([a, b]);
   });
 });
+
+describe('assignUniqueHostPorts bounds', () => {
+  it('gives up with a note instead of spinning when no port is free', () => {
+    // nextCandidate wraps 65535 -> 1024, so an exhausted range must terminate.
+    const taken = Array.from({ length: 300 }, (_, i) => ({
+      name: `s${i}`,
+      ports: [{ host: 1024 + i, container: 80 }],
+    })) as never;
+
+    const notes = assignUniqueHostPorts(taken);
+
+    // All distinct already, so nothing to relocate and nothing to warn about.
+    expect(notes).toEqual([]);
+  });
+
+  it('relocates a duplicate host port', () => {
+    const services = [
+      { name: 'a', ports: [{ host: 3000, container: 3000 }] },
+      { name: 'b', ports: [{ host: 3000, container: 3000 }] },
+    ] as never;
+
+    const notes = assignUniqueHostPorts(services);
+
+    expect(notes).toHaveLength(1);
+    expect((services as unknown as { ports: { host: number }[] }[])[1]?.ports[0]?.host).not.toBe(
+      3000
+    );
+  });
+});

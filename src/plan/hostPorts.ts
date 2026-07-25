@@ -5,10 +5,6 @@ import type { ServiceNode, ServicePlan } from './types.js';
 const MAX_PORT = 65535;
 const MAX_PROBES_PER_BINDING = 64;
 
-export function isPrivileged(port: number): boolean {
-  return port < 1024;
-}
-
 export function nextCandidate(port: number): number {
   const bumped = port + 1;
   return bumped > MAX_PORT ? 1024 : bumped;
@@ -26,7 +22,20 @@ export function assignUniqueHostPorts(services: ServiceNode[]): string[] {
       }
       const original = binding.host;
       let candidate = nextCandidate(original);
-      while (taken.has(candidate)) candidate = nextCandidate(candidate);
+      // Bounded like the on-machine probe loop below: `nextCandidate` wraps 65535 -> 1024,
+      // so an exhausted range would otherwise spin forever rather than give up.
+      let probes = 0;
+      while (taken.has(candidate) && probes < MAX_PROBES_PER_BINDING) {
+        candidate = nextCandidate(candidate);
+        probes += 1;
+      }
+      if (taken.has(candidate)) {
+        notes.push(
+          `${node.name}: host port ${original} collides with another service and no free ` +
+            `port was found nearby — leaving it as-is; 'docker compose up' will report the clash.`
+        );
+        continue;
+      }
       binding.host = candidate;
       taken.add(candidate);
       notes.push(
