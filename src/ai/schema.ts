@@ -154,14 +154,37 @@ export const FilledTemplateVarsSchema = z.object({
 });
 export type FilledTemplateVars = z.infer<typeof FilledTemplateVarsSchema>;
 
-/** Validated shape for AI-inferred environment variables. */
+/**
+ * Collapse any line break into a single space.
+ *
+ * `.env` is a LINE-ORIENTED format: a newline ends the current entry and begins a new
+ * one. So a model-supplied string carrying `\n` does not stay inside the field it was
+ * written to — it escapes into the file structure. A `reason` of
+ * `"harmless\nADMIN_TOKEN=1"` is rendered as a comment line followed by a live variable
+ * assignment, and a `value` containing `\n` splits its own quoted literal in half.
+ *
+ * The model's input includes repo-controlled text (READMEs, manifests), so treat these
+ * strings as untrusted and normalize at the schema boundary — one rule, inherited by
+ * every consumer, rather than each formatter re-deriving its own escaping.
+ */
+const singleLine = z
+  .string()
+  .transform((value) => value.replace(/[\r\n\u2028\u2029]+/g, ' ').trim());
+
+/**
+ * Validated shape for AI-inferred environment variables.
+ *
+ * `value` and `reason` are forced single-line: both are written verbatim into a
+ * line-oriented `.env`, where an embedded newline would inject a variable rather than
+ * stay in its field (see `singleLine`).
+ */
 export const InferredEnvSchema = z.object({
   variables: z.array(
     z.object({
       key: z.string(),
-      value: z.string(),
+      value: singleLine,
       required: z.boolean().default(true),
-      reason: z.string(),
+      reason: singleLine,
     })
   ),
 });

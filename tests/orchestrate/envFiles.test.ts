@@ -65,3 +65,42 @@ describe('selectEnvVars / buildEnvFile', () => {
     expect(withoutVars.services.find((s) => s.id === 'backend')?.envFile).toBeUndefined();
   });
 });
+
+describe('env file injection hardening', () => {
+  const plan = { services: [] } as unknown as Parameters<typeof buildEnvFile>[1];
+
+  it('does not let a newline in reason inject a variable', () => {
+    const out = buildEnvFile(
+      {
+        variables: [
+          { key: 'SAFE', value: 'ok', required: false, reason: 'harmless\nINJECTED_ADMIN=true' },
+        ],
+      } as never,
+      plan
+    );
+
+    // The comment must stay a comment — no bare assignment may appear on its own line.
+    expect(out).not.toMatch(/^INJECTED_ADMIN=true$/m);
+    expect(out).toContain('# harmless INJECTED_ADMIN=true');
+  });
+
+  it('does not let a newline in value split its quoted literal', () => {
+    const out = buildEnvFile(
+      { variables: [{ key: 'K', value: 'a\nEVIL=1', required: false, reason: 'r' }] } as never,
+      plan
+    );
+
+    expect(out).not.toMatch(/^EVIL=1"$/m);
+    expect(out).toContain('K="a EVIL=1"');
+  });
+
+  it('flattens carriage returns and unicode line separators too', () => {
+    const out = buildEnvFile(
+      { variables: [{ key: 'K', value: 'a\r\nb c', required: false, reason: 'x y' }] } as never,
+      plan
+    );
+
+    expect(out.split('\n').filter((l) => l.startsWith('K='))).toHaveLength(1);
+    expect(out).toContain('# x y');
+  });
+});
