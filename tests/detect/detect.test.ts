@@ -42,6 +42,13 @@ describe('detect stage', () => {
       source: 'package-json-script',
     });
 
+    // Single-component-per-role repos: .components is the authoritative list, and the
+    // derived .frontend/.backend compat fields must mirror it exactly (P0 fix regression
+    // guard — see tests/plan/multi-component.test.ts for the multi-component case).
+    expect(result.components).toHaveLength(2);
+    expect(result.components).toContainEqual(result.frontend);
+    expect(result.components).toContainEqual(result.backend);
+
     expect(result.databases).toEqual([
       { engine: 'mongodb', defaultPort: 27017, detectedFrom: 'mongoose' },
     ]);
