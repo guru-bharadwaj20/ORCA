@@ -468,15 +468,27 @@ _Per decision #2: design the interface, do not build execution now._
 
 ---
 
-## 8. Recommended first step
+## 8. Recommended next step
 
-**Phase A, the foundation refactor** — introduce `Claim`/`Evidence`/`Detector`, port the
-existing detectors onto it, and re-express the three current stacks as data recipes,
-all behind the then-115-test suite so nothing regresses. It changes no user-visible
-behavior, but it converts "add a framework = edit closed enums + a switch" into "add a
-framework = add a detector + a recipe," which is the unlock for every later phase.
+_Originally "start Phase A." Phases A–G have since landed; this section now records what
+a verified review says to do next._
 
-I can start Phase A on request — it's a well-bounded, test-guarded refactor.
+**Collapse the two component slots to `components[]`, then route Node/Python through the
+ecosystem path** (§10 rows 10–11, P0 in [`CONTRIBUTING.md`](../CONTRIBUTING.md)). ORCA
+today drops services it has _already successfully detected_: `pickCandidate` keeps one
+frontend and one backend, so a three-service Express monorepo ships one. The generic
+N-component engine already exists and works — `servicePlan.ts` places ecosystem
+components with DB wiring and health-gated `depends_on` — but Node and Python are
+explicitly excluded from it, which is why a 5-service Go monorepo fares better than a
+2-service Express one.
+
+That ordering matters: P0 makes P1 (finishing decision #1 — deleting the framework switch
+so there is one generation path) substantially easier, and the two share a blast radius.
+
+**This is also the case for keeping decision #2 deferred.** The static/CI/AI tiers are
+nowhere near exhausted. The ceiling being hit is the _plan layer's shape_, not the limit
+of what can be learned without executing code — so P0/P1 containerize materially more
+repos than a tier-4 prober would, at zero security cost.
 
 ---
 
