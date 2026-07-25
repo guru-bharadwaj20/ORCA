@@ -71,7 +71,7 @@ import {
 } from '../plan/servicePlan.js';
 import type { ServicePlan } from '../plan/types.js';
 import { ALL_RECIPES } from '../model/recipes/index.js';
-import { describeComponent } from '../templates/registry.js';
+import { dockerfileVarsFor, selectDockerfileTemplate } from '../templates/registry.js';
 import { renderCompose, renderDockerfile } from '../templates/render.js';
 import { OrcaError, PlanRejectedError, UnsupportedStackError } from '../utils/errors.js';
 import { readFileIfExists, walk } from '../utils/fs.js';
@@ -245,7 +245,7 @@ async function fillComponents(
     try {
       filled[role] = await fillTemplate(
         detection,
-        describeComponent(component),
+        { template: selectDockerfileTemplate(component), defaults: dockerfileVarsFor(component) },
         readme,
         ctx.cost,
         client

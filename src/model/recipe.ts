@@ -3,14 +3,16 @@
  * abstraction that will replace `templates/registry.ts`'s hardcoded switch.
  *
  * A `BuildRecipe` is DATA describing how a runtime is built and run: install/build/
- * start commands, ports, base images. The current React/Express/Django logic is
- * re-expressed here as three seed recipes (decision #1: "generic engine, templates
- * become data"). Later phases add recipes per ecosystem (Go, Rust, Java, …) and
- * synthesize recipes from `Claim`s when none match — all without touching control flow.
+ * start commands, ports, base images. The React/Express/Django logic is expressed here
+ * as three seed recipes (decision #1: "generic engine, templates become data"). Recipes
+ * per ecosystem (Go, Rust, Java, …) and AI-synthesized recipes join them — all without
+ * touching control flow.
  *
- * PHASE: A (foundation) — REAL code, additive. The legacy `describeComponent` switch
- * still runs the pipeline; this registry provides the data-driven path + a matcher so
- * the migration is incremental and behavior-preserving.
+ * PHASE: A (foundation) — REAL code. Decision #1 is complete: the old
+ * `describeComponent` / `switch (framework)` in `templates/registry.ts` is gone, and a
+ * seed component's build knowledge is now sourced from its recipe here via
+ * `recipeForComponent` (`model/recipes/index.ts`). The .hbs templates remain only as the
+ * node/python renderer behind the single `dockerfileFor` seam.
  */
 
 import type { PackageManager } from '../templates/types.js';
@@ -84,8 +86,8 @@ export interface MatchFacts {
 }
 
 /**
- * The three current stacks, expressed as data. These reproduce the defaults that
- * `templates/registry.ts` derives via its switch — proving decision #1 with zero
+ * The three seed stacks, expressed as data. These ARE the source of the defaults
+ * `templates/registry.ts` now derives (via `recipeForComponent`) — decision #1 with zero
  * capability change. Ordered by specificity (framework recipes before bare-runtime).
  */
 export const SEED_RECIPES: readonly RecipeEntry[] = [

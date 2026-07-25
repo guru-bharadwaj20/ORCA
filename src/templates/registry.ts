@@ -2,6 +2,7 @@ import type {
   DetectedComponent,
   PackageManager as DetectedPackageManager,
 } from '../detect/types.js';
+import { recipeForComponent } from '../model/recipes/index.js';
 import type { DockerfileVars, PackageManager } from './types.js';
 
 export type DockerfileTemplateName = 'node.Dockerfile.hbs' | 'python.Dockerfile.hbs';
@@ -62,60 +63,45 @@ function installCommandFor(pm: PackageManager): string {
   }
 }
 
-function defaultPortFor(framework: DetectedComponent['framework']): number {
-  switch (framework) {
-    case 'react':
-      return 5173;
-    case 'django':
-      return 8000;
-    case 'express':
-      return 3000;
-    default:
-      return 3000;
-  }
-}
-
-function startCommandFor(framework: DetectedComponent['framework']): string {
-  // Only Django needs `manage.py runserver`, and Django is the sole Python seed
-  // framework — so this must key off the framework, never off "is this Python". A
-  // non-Django component (react/express/unknown) runs the Node dev script and must
-  // never inherit a command that assumes a manage.py the repo doesn't ship.
-  if (framework === 'django') return 'python manage.py runserver 0.0.0.0:8000';
-  return 'npm run dev';
-}
-
-export function defaultDockerfileVars(component: DetectedComponent): DockerfileVars {
+/**
+ * The default `DockerfileVars` for a seed frontend/backend component, driven by its
+ * matched `BuildRecipe` (decision #1). The recipe supplies the framework-specific build
+ * knowledge — base image, start command, default ports, system packages, entrypoint —
+ * that the old `switch (framework)` used to hardcode; the package manager (and the
+ * dependency files / install command it implies) is still resolved from what detection
+ * actually found, and every detected port is honored over the recipe default. Output is
+ * identical to the pre-recipe switch for react/express/django and for an unclassified
+ * node/python component — this is a plumbing unification, not a behavior change.
+ */
+export function dockerfileVarsFor(component: DetectedComponent): DockerfileVars {
+  const recipe = recipeForComponent(component);
   const python = isPython(component);
   const pm = resolvePackageManager(component.packageManager, python);
   // Every port detectPorts found (deduped, detection order preserved), not just the
   // first — the first stays `port`, the primary used for PORT/health/inter-service URLs.
+  // The recipe's default ports apply only when detection found none.
   const ports =
     component.ports.length > 0
       ? [...new Set(component.ports.map((p) => p.port))]
-      : [defaultPortFor(component.framework)];
+      : [...recipe.defaultPorts];
 
   const vars: DockerfileVars = {
-    baseImage: python ? 'python:3.12-slim' : 'node:20-slim',
+    baseImage: recipe.baseImages.runtime,
     workdir: '/app',
     packageManager: pm,
     dependencyFiles: dependencyFilesFor(pm),
     installCommand: installCommandFor(pm),
-    startCommand: startCommandFor(component.framework),
+    startCommand: recipe.startCommand,
     port: ports[0]!,
     ports,
   };
 
-  if (component.framework === 'django') {
-    vars.systemPackages = ['libpq-dev', 'gcc'];
-    vars.entrypointScript = 'entrypoint.sh';
+  if (recipe.systemPackages !== undefined && recipe.systemPackages.length > 0) {
+    vars.systemPackages = [...recipe.systemPackages];
+  }
+  if (recipe.entrypointScript !== undefined && recipe.entrypointScript !== '') {
+    vars.entrypointScript = recipe.entrypointScript;
   }
 
   return vars;
-}
-
-export function describeComponent(component: DetectedComponent): TemplateDescriptor {
-  return {
-    template: selectDockerfileTemplate(component),
-    defaults: defaultDockerfileVars(component),
-  };
 }
