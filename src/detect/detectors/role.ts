@@ -16,10 +16,12 @@
  * are self-sufficient: a `Detector` receives only a `RepoContext`, so each reads the facts
  * it needs from disk and is correct when run in isolation.
  *
- * NOTE ON REGISTRATION: these deliberately do NOT join `defaultDetectorRegistry()`. That
- * registry's tier-1 claims are consumed as `Claim<Runtime>` by `gatherInsights`, and
- * mixing claim value types in one registry would corrupt runtime detection. Role
- * detectors therefore have their own list, `ROLE_DETECTORS`.
+ * NOTE ON REGISTRATION: these now emit tagged `RoleFact` values, so they can safely share
+ * `defaultDetectorRegistry()` with the runtime detectors — a consumer narrows to the kind
+ * it wants via `claimsOfKind` and is unaffected by the rest. (Previously they had to keep
+ * a separate `ROLE_DETECTORS` list, because untagged claims were recovered with an
+ * unchecked cast that mixing kinds would have corrupted.) `ROLE_DETECTORS` remains as the
+ * role-only view, for `detectComponentRole`, which wants exactly these two and no others.
  *
  * STAGE: 2 (detect) — REAL code. Pure signal matching, no AI.
  */
@@ -29,6 +31,7 @@ import { join } from 'node:path';
 
 import { claim, type Claim, type Evidence } from '../../model/claim.js';
 import type { Detector, RepoContext } from '../../model/detector.js';
+import { roleFact, type RoleFact } from './facts.js';
 import { readFileIfExists, walk } from '../../utils/fs.js';
 import { readAllDependencies, readPackageJson } from '../manifest.js';
 import {
@@ -39,7 +42,6 @@ import {
   readRustDependencies,
 } from '../manifestExt.js';
 import { declaredPorts } from '../ports.js';
-import type { RunnableRole } from '../types.js';
 
 /**
  * Background-processing libraries. A dependency on one is suggestive but never
@@ -190,10 +192,10 @@ async function dependenciesAt(dir: string): Promise<string[]> {
  *
  * Gated on declaring no port, like every other non-listening role.
  */
-export const jobDetector: Detector = {
+export const jobDetector: Detector<RoleFact> = {
   id: 'role:job',
   tier: 1,
-  async detect(ctx: RepoContext): Promise<Claim<unknown>[]> {
+  async detect(ctx: RepoContext): Promise<Claim<RoleFact>[]> {
     const dir = dirOf(ctx);
     if ((await declaredPorts(dir)).length > 0) return [];
 
@@ -224,7 +226,7 @@ export const jobDetector: Detector = {
     }
 
     if (evidence.length === 0) return [];
-    return [claim<RunnableRole>('job', evidence, 'deterministic')];
+    return [claim<RoleFact>(roleFact('job'), evidence, 'deterministic')];
   },
 };
 
@@ -314,10 +316,10 @@ const LIBRARY_RULES: readonly ((dir: string, deps: readonly string[]) => Promise
  * container — but see `LIBRARY_RULES` for why the rules are per-ecosystem rather than one
  * generic heuristic.
  */
-export const libraryDetector: Detector = {
+export const libraryDetector: Detector<RoleFact> = {
   id: 'role:library',
   tier: 1,
-  async detect(ctx: RepoContext): Promise<Claim<unknown>[]> {
+  async detect(ctx: RepoContext): Promise<Claim<RoleFact>[]> {
     const dir = dirOf(ctx);
     if ((await declaredPorts(dir)).length > 0) return [];
     if ((await procfileProcesses(dir)).length > 0) return [];
@@ -330,8 +332,8 @@ export const libraryDetector: Detector = {
       const signal = await rule(dir, dependencies);
       if (signal === null) continue;
       return [
-        claim<RunnableRole>(
-          'library',
+        claim<RoleFact>(
+          roleFact('library'),
           [{ detector: 'role:library', signal, weight: 0.45 }],
           'deterministic'
         ),
@@ -347,4 +349,4 @@ export const libraryDetector: Detector = {
  * evidence, weight 0.75) beats `library` (negative evidence, weight 0.45) whenever both
  * somehow apply.
  */
-export const ROLE_DETECTORS: readonly Detector[] = [jobDetector, libraryDetector];
+export const ROLE_DETECTORS: readonly Detector<RoleFact>[] = [jobDetector, libraryDetector];

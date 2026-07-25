@@ -17,6 +17,7 @@ import { claim, type Claim, type Evidence } from '../../model/claim.js';
 import type { Detector, RepoContext } from '../../model/detector.js';
 import type { Runtime } from '../../model/recipe.js';
 import { readFileIfExists } from '../../utils/fs.js';
+import { runtimeFact, type RuntimeFact } from './facts.js';
 
 /** True when any of the named files exists at `dir`. */
 async function anyFilePresent(dir: string, files: readonly string[]): Promise<string[]> {
@@ -53,11 +54,11 @@ function manifestRuntimeDetector(opts: {
   files?: readonly string[];
   suffixes?: readonly string[];
   weight: number;
-}): Detector {
+}): Detector<RuntimeFact> {
   return {
     id: opts.id,
     tier: 1,
-    async detect(ctx: RepoContext): Promise<Claim<unknown>[]> {
+    async detect(ctx: RepoContext): Promise<Claim<RuntimeFact>[]> {
       const dir = ctx.scopeDir === '.' ? ctx.repoPath : join(ctx.repoPath, ctx.scopeDir);
       const found = [
         ...(await anyFilePresent(dir, opts.files ?? [])),
@@ -69,7 +70,7 @@ function manifestRuntimeDetector(opts: {
         signal: `${f} present`,
         weight: opts.weight,
       }));
-      return [claim<Runtime>(opts.runtime, evidence, 'deterministic')];
+      return [claim<RuntimeFact>(runtimeFact(opts.runtime), evidence, 'deterministic')];
     },
   };
 }
@@ -124,7 +125,7 @@ export const rubyDetector = manifestRuntimeDetector({
 });
 
 /** Every Phase-B tier-1 runtime detector, in priority order. */
-export const RUNTIME_DETECTORS: readonly Detector[] = [
+export const RUNTIME_DETECTORS: readonly Detector<RuntimeFact>[] = [
   goDetector,
   rustDetector,
   jvmDetector,
