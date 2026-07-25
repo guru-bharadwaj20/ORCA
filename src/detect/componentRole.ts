@@ -27,6 +27,7 @@
 import { join } from 'node:path';
 
 import { bestClaim, reasoning, type Claim } from '../model/claim.js';
+import type { RoleFact } from './detectors/facts.js';
 import { ROLE_DETECTORS, hasWebDependency, hasWorkerDependency } from './detectors/role.js';
 
 import { readPackageJson } from './manifest.js';
@@ -121,12 +122,10 @@ export async function detectComponentRole(
   //    `Detector` plugins, so adding a further role is a new detector plus a registry
   //    entry rather than another branch here. `bestClaim` ranks them by confidence, which
   //    is what keeps positive evidence ahead of negative.
-  const claims: Claim<RunnableRole>[] = [];
+  const claims: Claim<RoleFact>[] = [];
   for (const detector of ROLE_DETECTORS) {
-    claims.push(
-      ...((await detector.detect({ repoPath: dir, scopeDir: '.' })) as Claim<RunnableRole>[])
-    );
+    claims.push(...(await detector.detect({ repoPath: dir, scopeDir: '.' })));
   }
   const best = bestClaim(claims);
-  return best === null ? null : { role: best.value, signal: reasoning(best).join('; ') };
+  return best === null ? null : { role: best.value.role, signal: reasoning(best).join('; ') };
 }
