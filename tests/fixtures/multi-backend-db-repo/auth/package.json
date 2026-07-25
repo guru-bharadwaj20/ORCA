@@ -1,0 +1,11 @@
+{
+  "name": "auth",
+  "private": true,
+  "scripts": {
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.0",
+    "pg": "^8.12.0"
+  }
+}
