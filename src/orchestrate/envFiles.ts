@@ -14,6 +14,19 @@ export function selectEnvVars(
   );
 }
 
+/**
+ * Flatten line breaks so a value or comment cannot escape its own line.
+ *
+ * `.env` is line-oriented: a newline ends the entry. Left as-is, a `reason` of
+ * `"harmless\nADMIN_TOKEN=1"` renders as a comment followed by a live assignment, and a
+ * multi-line `value` splits its own quoted literal. `InferredEnvSchema` already normalizes
+ * both fields; this repeats the guarantee at the point of writing so the file format is
+ * safe by construction for any caller, not only for schema-validated input.
+ */
+function oneLine(value: string): string {
+  return value.replace(/[\r\n\u2028\u2029]+/g, ' ');
+}
+
 export function buildEnvFile(inferred: InferredEnv, plan: ServicePlan): string {
   const variables = selectEnvVars(inferred, plan);
   if (variables.length === 0) return '';
@@ -24,13 +37,14 @@ export function buildEnvFile(inferred: InferredEnv, plan: ServicePlan): string {
     '# Review the placeholder secrets before sharing this stack.',
   ];
   for (const variable of variables) {
-    lines.push('', `# ${variable.required ? '(required) ' : ''}${variable.reason}`);
+    lines.push('', `# ${variable.required ? '(required) ' : ''}${oneLine(variable.reason)}`);
     // Compose's dotenv parser processes escape sequences inside double-quoted values, so a
     // backslash must be escaped first (before the quote), or a Windows path / regex value
     // would be corrupted. Order matters: backslashes, then quotes.
-    const value = /[\s#'"]/.test(variable.value)
-      ? `"${variable.value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
-      : variable.value;
+    const raw = oneLine(variable.value);
+    const value = /[\s#'"]/.test(raw)
+      ? `"${raw.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+      : raw;
     lines.push(`${variable.key}=${value}`);
   }
   return `${lines.join('\n')}\n`;
