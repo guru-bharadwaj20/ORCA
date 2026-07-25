@@ -155,7 +155,13 @@ export interface RepoInsights {
   monorepoTools: string[];
   /** Build/test/start commands recovered from CI workflows. */
   ciCommands: { command: string; kind: string }[];
-  /** Runtime versions pinned in CI, e.g. [{ runtime: "node", version: "20" }]. */
+  /**
+   * Runtime versions pinned in CI, e.g. [{ runtime: "node", version: "20" }]. RAW signal:
+   * the flat, deduped merge every provider parser feeds. The normalized, provenance- and
+   * confidence-carrying view is `recoveredRuntimes` below — read that, not this, for "what
+   * runtime version does this repo want"; this stays as the fold's input (same role
+   * `ciCommands`/`ciProviders` play for `recoveredBuild`).
+   */
   ciRuntimeVersions: { runtime: string; version: string }[];
   /**
    * CI configs recovered from non-GitHub-Actions providers (GitLab CI, Azure
@@ -241,6 +247,23 @@ export interface RepoInsights {
     image: string | null;
     commands: { command: string; kind: string; source: string; origin: string }[];
     /** Distinct files/jobs that contributed, e.g. ["gitlab:.gitlab-ci.yml#build_app"]. */
+    origins: string[];
+    /** The recovery claim's computed confidence. */
+    confidence: number;
+    /** The claim's evidence projected to strings, same convention as `reasoning`. */
+    reasoning: string[];
+  } | null;
+  /**
+   * Runtime versions a repo's CI pins, folded across every provider into one ranked claim
+   * with provenance — the `buildRecovery` pattern applied to `ciRuntimeVersions` (§P2
+   * "RepoInsights shape pressure"). This is the NORMALIZED view every consumer should
+   * read; `ciRuntimeVersions` above is the raw input it folds. Null when no source pinned
+   * a version. A new CI provider lands here as data (its pins carry a `provider` label),
+   * never a new field or a consumer edit — the same line `ciProviders` holds.
+   */
+  recoveredRuntimes: {
+    versions: { runtime: string; version: string; origins: string[] }[];
+    /** Distinct providers that contributed any pin. */
     origins: string[];
     /** The recovery claim's computed confidence. */
     confidence: number;
