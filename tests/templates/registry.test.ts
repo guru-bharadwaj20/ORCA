@@ -9,7 +9,7 @@ import type {
   Language,
   PackageManager,
 } from '../../src/detect/types.js';
-import { defaultDockerfileVars, selectDockerfileTemplate } from '../../src/templates/registry.js';
+import { dockerfileVarsFor, selectDockerfileTemplate } from '../../src/templates/registry.js';
 import { KNOWN_PACKAGE_MANAGERS } from '../../src/templates/types.js';
 
 function component(overrides: Partial<DetectedComponent>): DetectedComponent {
@@ -82,9 +82,9 @@ describe('selectDockerfileTemplate', () => {
   });
 });
 
-describe('defaultDockerfileVars', () => {
+describe('dockerfileVarsFor', () => {
   it('Node + Express backend', () => {
-    const vars = defaultDockerfileVars(
+    const vars = dockerfileVarsFor(
       component({
         language: 'javascript',
         framework: 'express',
@@ -107,7 +107,7 @@ describe('defaultDockerfileVars', () => {
   });
 
   it('React frontend', () => {
-    const vars = defaultDockerfileVars(
+    const vars = dockerfileVarsFor(
       component({ role: 'frontend', framework: 'react' as FrontendFramework, ports: [port(5173)] })
     );
     expect(vars.baseImage).toBe('node:20-slim');
@@ -116,7 +116,7 @@ describe('defaultDockerfileVars', () => {
   });
 
   it('Django backend gets libpq/build deps + a migrate entrypoint', () => {
-    const vars = defaultDockerfileVars(
+    const vars = dockerfileVarsFor(
       component({
         language: 'python',
         framework: 'django' as BackendFramework,
@@ -137,13 +137,13 @@ describe('defaultDockerfileVars', () => {
   });
 
   it('honors alternate package managers', () => {
-    expect(defaultDockerfileVars(component({ packageManager: 'yarn' })).installCommand).toBe(
+    expect(dockerfileVarsFor(component({ packageManager: 'yarn' })).installCommand).toBe(
       'yarn install'
     );
-    expect(defaultDockerfileVars(component({ packageManager: 'pnpm' })).installCommand).toBe(
+    expect(dockerfileVarsFor(component({ packageManager: 'pnpm' })).installCommand).toBe(
       'pnpm install'
     );
-    const poetry = defaultDockerfileVars(
+    const poetry = dockerfileVarsFor(
       component({ language: 'python', framework: 'django', packageManager: 'poetry' })
     );
     expect(poetry.installCommand).toBe('poetry install');
@@ -151,19 +151,19 @@ describe('defaultDockerfileVars', () => {
   });
 
   it('falls back to framework default ports when none were detected', () => {
-    expect(defaultDockerfileVars(component({ framework: 'express', ports: [] })).port).toBe(3000);
+    expect(dockerfileVarsFor(component({ framework: 'express', ports: [] })).port).toBe(3000);
     expect(
-      defaultDockerfileVars(component({ role: 'frontend', framework: 'react', ports: [] })).port
+      dockerfileVarsFor(component({ role: 'frontend', framework: 'react', ports: [] })).port
     ).toBe(5173);
   });
 
   it("resolves an 'unknown' package manager per toolchain", () => {
     expect(
-      defaultDockerfileVars(component({ language: 'javascript', packageManager: 'unknown' }))
+      dockerfileVarsFor(component({ language: 'javascript', packageManager: 'unknown' }))
         .packageManager
     ).toBe('npm');
     expect(
-      defaultDockerfileVars(
+      dockerfileVarsFor(
         component({ language: 'python', framework: 'django', packageManager: 'unknown' })
       ).packageManager
     ).toBe('pip');
@@ -195,7 +195,7 @@ describe('representative DetectionResults (MERN + Django)', () => {
     });
 
     expect(selectDockerfileTemplate(result.backend!)).toBe('python.Dockerfile.hbs');
-    expect(defaultDockerfileVars(result.backend!).systemPackages).toEqual(['libpq-dev', 'gcc']);
+    expect(dockerfileVarsFor(result.backend!).systemPackages).toEqual(['libpq-dev', 'gcc']);
     expect(result.databases[0]!.engine).toBe('postgres');
   });
 });

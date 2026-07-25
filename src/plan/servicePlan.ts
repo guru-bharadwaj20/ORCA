@@ -18,7 +18,7 @@ import { selectEnvVars } from '../orchestrate/envFiles.js';
 import { LISTENING_ROLES } from '../detect/types.js';
 import type { DetectedComponent, DetectedDatabase, DetectionResult } from '../detect/types.js';
 import type { BuildRecipe } from '../model/recipe.js';
-import { describeComponent } from '../templates/registry.js';
+import { dockerfileVarsFor } from '../templates/registry.js';
 import type { DockerfileVars } from '../templates/types.js';
 import type { Healthcheck, ServiceDependency, ServiceNode, ServicePlan } from './types.js';
 
@@ -182,6 +182,23 @@ function connectionEnv(pairs: DatabasePair[]): Record<string, string> {
   return env;
 }
 
+/**
+ * Attach the repo-wide database wiring to a service node: the shared connection env and
+ * the health-gated `depends_on` edges, computed once in `buildServicePlan`. The single
+ * place any db-consuming node — a seed backend or an ecosystem 'service' — gets wired, so
+ * decision #1's "one path" holds for DB wiring too (it no longer lives on a seed-specific
+ * branch). Env is assigned after the node's own vars so its keys keep leading, matching
+ * the prior inline `{ ...base, ...dbEnv }` order exactly.
+ */
+function wireDatabases(
+  node: ServiceNode,
+  dbEnv: Record<string, string>,
+  dbDeps: readonly ServiceDependency[]
+): void {
+  Object.assign(node.environment, dbEnv);
+  node.dependsOn = [...node.dependsOn, ...dbDeps];
+}
+
 /** Dev-mode volumes: source bind mount, plus an anonymous node_modules shield for Node. */
 function componentVolumes(
   component: DetectedComponent,
@@ -203,8 +220,8 @@ function componentVolumes(
  * stage synthesizes directly — no registry lookup, so AI-inferred `ai-*` recipes build
  * identically), and — when the component's role is one that listens — publishes every
  * one of the recipe's default ports (e.g. a Dockerfile with multiple EXPOSEs), not just
- * the first. No DB wiring here — that stays with the seed-stack backend path until
- * ecosystem DB inference exists.
+ * the first. DB wiring is applied uniformly by `buildServicePlan` via `wireDatabases`
+ * (the same helper the seed backends use), not on a seed-specific branch.
  */
 export function ecosystemServiceNode(
   id: string,
@@ -251,7 +268,7 @@ export function refinedComponentVars(
   role: 'frontend' | 'backend',
   filled: Record<string, FilledTemplateVars>
 ): DockerfileVars {
-  const defaults = describeComponent(component).defaults;
+  const defaults = dockerfileVarsFor(component);
   const fill = filled[role];
   return fill === undefined ? defaults : refineDockerfileVars(defaults, fill);
 }
@@ -326,11 +343,13 @@ export function buildServicePlan(
         ...(component.language === 'python'
           ? { DJANGO_DEBUG: '1' }
           : { NODE_ENV: 'development', PORT: String(vars.port) }),
-        ...dbEnv,
       },
-      dependsOn: [...dbDeps],
+      dependsOn: [],
       volumes: componentVolumes(component, vars),
     };
+    // Every backend-role component gets the repo-wide db wiring — the same helper the
+    // ecosystem 'service' nodes use below, not a seed-stack-specific branch.
+    wireDatabases(node, dbEnv, dbDeps);
     nodes.push(node);
     if (isPrimary) {
       primaryBackendNode = node;
@@ -387,8 +406,7 @@ export function buildServicePlan(
   for (const eco of ecosystem) {
     if (nodes.some((n) => n.id === eco.id)) continue;
     const node = ecosystemServiceNode(eco.id, eco.component, eco.recipe, eco.commandOrigins ?? []);
-    Object.assign(node.environment, dbEnv);
-    node.dependsOn = [...node.dependsOn, ...dbDeps];
+    wireDatabases(node, dbEnv, dbDeps);
     nodes.push(node);
   }
 

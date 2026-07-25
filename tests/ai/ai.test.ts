@@ -13,7 +13,7 @@ import { inferEnv } from '../../src/ai/inferEnv.js';
 import { validateAgainst, InferredEnvSchema } from '../../src/ai/schema.js';
 import type { CostLedger } from '../../src/core/context.js';
 import type { DetectedComponent, DetectionResult } from '../../src/detect/types.js';
-import { describeComponent } from '../../src/templates/registry.js';
+import { dockerfileVarsFor, selectDockerfileTemplate } from '../../src/templates/registry.js';
 import { CostCapExceededError } from '../../src/utils/errors.js';
 
 const backend: DetectedComponent = {
@@ -54,7 +54,10 @@ const detection: DetectionResult = {
   warnings: [],
 };
 
-const template = describeComponent(backend);
+const template = {
+  template: selectDockerfileTemplate(backend),
+  defaults: dockerfileVarsFor(backend),
+};
 const freshLedger = (): CostLedger => ({ inputTokens: 0, outputTokens: 0, estimatedUsd: 0 });
 
 function mockModelReply(text: string, usage = { input_tokens: 1200, output_tokens: 250 }): void {

@@ -25,7 +25,8 @@
  * PHASE: B — REAL code.
  */
 
-import { RecipeRegistry, SEED_RECIPES } from '../recipe.js';
+import type { DetectedComponent } from '../../detect/types.js';
+import { RecipeRegistry, SEED_RECIPES, type BuildRecipe } from '../recipe.js';
 import { ECOSYSTEM_RECIPES } from './ecosystems.js';
 import { NODE_BUNDLER_RECIPES, NODE_FRAMEWORK_RECIPES } from './node.js';
 import { PYTHON_RECIPES } from './python.js';
@@ -49,4 +50,60 @@ export const ALL_RECIPES = [
 /** The registry the pipeline uses: every shipped recipe, in priority order. */
 export function defaultRecipeRegistry(): RecipeRegistry {
   return new RecipeRegistry(ALL_RECIPES);
+}
+
+/**
+ * The `BuildRecipe` that drives a seed frontend/backend component's Dockerfile — the
+ * single source of its build knowledge (base image, ports, install/start commands,
+ * system packages, entrypoint). This is decision #1's "templates become data": the old
+ * `templates/registry.ts` `switch (framework)` that hardcoded ports/start-commands is
+ * gone — that data now lives on the recipe and is looked up here.
+ *
+ * Selection honors the detector's already-made framework classification (it did the
+ * dependency/manifest work the registry matcher would otherwise redo, and — unlike the
+ * matcher — needs no file list, keeping this pure and synchronous). react/express/django
+ * map to their seed recipes; a component the detector left framework-'unknown' falls back
+ * to a bare-runtime recipe reproducing the pre-recipe defaults exactly.
+ */
+const SEED_RECIPE_BY_FRAMEWORK: Readonly<Record<string, string>> = {
+  react: 'node-react',
+  express: 'node-express',
+  django: 'python-django',
+};
+
+/**
+ * Bare-runtime fallbacks for an unclassified (framework-'unknown') node/python component.
+ * These reproduce, as data, exactly what the old `defaultDockerfileVars` switch emitted
+ * for such a component: the Node dev-server defaults, and the slim Python base with the
+ * same `npm run dev` default the old `startCommandFor('unknown')` returned (preserved
+ * verbatim so this refactor changes no output — the only Python seed framework, Django,
+ * has its own recipe above and never reaches this fallback).
+ */
+const BARE_NODE_RECIPE: BuildRecipe = {
+  id: 'node-app',
+  runtime: 'node',
+  packageManager: 'npm',
+  dependencyFiles: ['package.json'],
+  installCommands: ['npm install'],
+  startCommand: 'npm run dev',
+  defaultPorts: [3000],
+  baseImages: { build: 'node:20-slim', runtime: 'node:20-slim' },
+};
+
+const BARE_PYTHON_RECIPE: BuildRecipe = {
+  id: 'python-app',
+  runtime: 'python',
+  packageManager: 'pip',
+  dependencyFiles: ['requirements.txt'],
+  installCommands: ['pip install -r requirements.txt'],
+  startCommand: 'npm run dev',
+  defaultPorts: [3000],
+  baseImages: { build: 'python:3.12-slim', runtime: 'python:3.12-slim' },
+};
+
+export function recipeForComponent(component: DetectedComponent): BuildRecipe {
+  const id = SEED_RECIPE_BY_FRAMEWORK[component.framework];
+  const seed = id === undefined ? undefined : ALL_RECIPES.find((e) => e.recipe.id === id)?.recipe;
+  if (seed !== undefined) return seed;
+  return component.language === 'python' ? BARE_PYTHON_RECIPE : BARE_NODE_RECIPE;
 }
