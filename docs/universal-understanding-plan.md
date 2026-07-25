@@ -326,14 +326,28 @@ shippable and leaves the product working.
 _The enabling work everything else depends on._
 
 - [x] Introduce `Claim<T>` / `Evidence` / `Detector` contracts in a new `src/model/`.
-- [x] Refactor the existing 7 detectors to emit `Claim`s (behavior-preserving).
+- [~] Refactor the existing 7 detectors to emit `Claim`s (behavior-preserving).
+  **PARTIAL — verified:** only `aiInference.ts`, `buildRecovery.ts`, and
+  `detectors/role.ts` call `claim()`; ~30 detectors in `detect/` still return plain
+  values with no evidence trail, so design requirement #6 holds for a minority of
+  inferences. Blocked on claim-value typing: `Claim<unknown>` cannot be mixed in one
+  registry (see `detectors/role.ts`), which already forced a second registry
+  (`ROLE_DETECTORS`) and an unchecked `claims as Claim<Runtime>[]` cast in
+  `detect/index.ts`. Tracked as **P1** in CONTRIBUTING.md.
 - [x] Replace `scoreConfidence()` with the evidence-combination model (§4).
-- [x] Convert `registry.ts`'s switch into 3 seed **recipes as data** (react, express,
-      django) behind a `RecipeRegistry.match()` — proving decision #1 with zero
-      capability change. Existing tests must stay green (115 when this was
-      written; 410 today).
-- **Exit criterion (met):** the three current stacks run identically, but now through the
-  generic engine. Pure refactor, fully covered by the existing hermetic suite.
+- [~] Convert `registry.ts`'s switch into 3 seed **recipes as data** (react, express,
+  django) behind a `RecipeRegistry.match()` — proving decision #1 with zero
+  capability change. Existing tests must stay green (115 when this was
+  written; 550 today).
+  **PARTIAL — verified:** the seed recipes exist, but `templates/registry.ts` still
+  holds the `switch (framework)` and `describeComponent` is still called from
+  `pipeline.ts` and `servicePlan.ts`, while `defaultRecipeRegistry()` is used only
+  inside `gatherInsights` ("advisory"). Two live generation paths remain — templates
+  for seed stacks, recipes for ecosystem components — which is precisely the
+  "parallel hardcoded path" decision #1 rules out. Tracked as **P1**.
+- **Exit criterion (partially met):** the three current stacks run identically and the
+  contracts exist, but they run through the _legacy_ path, not the generic engine. The
+  refactor was additive rather than replacing — closing this is P1 in CONTRIBUTING.md.
 
 ### Phase B — Widen deterministic detection (brief's Phase 1 + 2)
 
