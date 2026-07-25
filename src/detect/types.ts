@@ -260,9 +260,25 @@ export interface DetectionResult {
   languages: Language[];
   /** Every package manager seen anywhere in the repo. */
   packageManagers: PackageManager[];
-  /** The detected frontend component, or null if there isn't one. */
+  /**
+   * Every seed frontend/backend component detected, across every candidate root —
+   * authoritative. A monorepo with 3 Express services yields 3 entries here, all with
+   * `role: 'backend'`. Discovery order (alphabetical by rootDir), not preference order.
+   */
+  components: DetectedComponent[];
+  /**
+   * @deprecated Derived compat view over `components`: the first frontend-role entry by
+   * directory-hint preference (`client`/`frontend`/`web`/`ui`), or null. Prefer
+   * `components` for anything that needs to see every detected component, not just one —
+   * this field silently picks one when there are several.
+   */
   frontend: DetectedComponent | null;
-  /** The detected backend component, or null if there isn't one. */
+  /**
+   * @deprecated Derived compat view over `components`: the first backend-role entry by
+   * directory-hint preference (`server`/`backend`/`api`/`service`), or null. Prefer
+   * `components` for anything that needs to see every detected component, not just one —
+   * this field silently picks one when there are several.
+   */
   backend: DetectedComponent | null;
   /** Databases/caches the app depends on (may be empty). */
   databases: DetectedDatabase[];

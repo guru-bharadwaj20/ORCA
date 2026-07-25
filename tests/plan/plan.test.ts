@@ -94,21 +94,23 @@ describe('buildServicePlan', () => {
   });
 
   it('points each connection string at its own engine when several databases exist', () => {
+    const backend = {
+      role: 'backend' as const,
+      rootDir: '.',
+      language: 'javascript' as const,
+      packageManager: 'npm' as const,
+      framework: 'express' as const,
+      dependencies: ['express', 'pg', 'mongodb', 'redis'],
+      ports: [{ port: 3000, protocol: 'tcp' as const, source: 'default' as const }],
+      entrypoint: null,
+    };
     const detection: DetectionResult = {
       repoPath: '/tmp/multi-db-repo',
       languages: ['javascript'],
       packageManagers: ['npm'],
+      components: [backend],
       frontend: null,
-      backend: {
-        role: 'backend',
-        rootDir: '.',
-        language: 'javascript',
-        packageManager: 'npm',
-        framework: 'express',
-        dependencies: ['express', 'pg', 'mongodb', 'redis'],
-        ports: [{ port: 3000, protocol: 'tcp', source: 'default' }],
-        entrypoint: null,
-      },
+      backend,
       databases: [
         { engine: 'postgres', defaultPort: 5432, detectedFrom: 'package.json' },
         { engine: 'mongodb', defaultPort: 27017, detectedFrom: 'package.json' },

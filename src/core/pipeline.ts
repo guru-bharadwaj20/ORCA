@@ -97,6 +97,17 @@ export interface PipelineIO extends ReviewIO {
  * is not the open role vocabulary (§2.3): worker/cli/library/job components never come
  * through here, they ride on `insights.ecosystemComponents` and are placed as open
  * `'service'` nodes. Widening the shared type must not widen this list.
+ *
+ * SCOPE BOUNDARY (deliberate, not a gap): `DetectionResult.components` can now hold more
+ * than one frontend/backend-role component (a monorepo with 3 Express services yields 3
+ * backend entries — see the P0 fix in detect/index.ts and plan/servicePlan.ts). AI-fill
+ * only ever refines the PRIMARY component per role — `.frontend`/`.backend`, the same
+ * derived-compat fields `componentFor` already reads below. Every additional same-role
+ * component builds from its recipe/template defaults, untouched, permanently — this is
+ * not a temporary gap to close later without a deliberate decision to widen it, since
+ * doing so means N AI calls per role (real cost + latency) instead of 1. `writeConfigs.ts`
+ * mirrors this: `refinedComponentVars` is only ever called with `filled` for the node that
+ * is the primary; every other node gets `{}` (defaults only).
  */
 const COMPONENT_ROLES = ['backend', 'frontend'] as const;
 type ComponentRole = (typeof COMPONENT_ROLES)[number];
@@ -161,7 +172,7 @@ async function ecosystemComponentsFrom(detection: DetectionResult): Promise<Ecos
       },
     });
   }
-  if (detection.frontend === null && detection.backend === null) {
+  if (detection.components.length === 0) {
     for (const dockerfile of detection.insights.dockerfiles) {
       const id =
         slugify(
