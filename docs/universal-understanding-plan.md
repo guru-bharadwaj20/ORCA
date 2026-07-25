@@ -707,7 +707,10 @@ Known follow-ups surfaced during integration:
 ## 10. Still open — what this document describes but the code does not do
 
 Collected here so §1–§8 can stay as the original design argument while remaining honest
-about the gap. Nothing below is implemented on this branch.
+about the gap. Rows struck through are since **resolved**; the rest are open, and rows
+10–12 were added from a verified codebase review (each traced to specific code, not
+speculative). Open rows are prioritized as P0/P1/P2 in
+[`CONTRIBUTING.md`](../CONTRIBUTING.md#architectural-debt--verified-prioritized).
 
 | #   | Gap                                                                                                                                                                                                                                                                                                                                           | Where the doc claims it   |
 | --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
@@ -720,6 +723,9 @@ about the gap. Nothing below is implemented on this branch.
 | 7   | **`cli`/`job` as one-shot services.** They become ordinary portless `'service'` nodes; there is no `restart: no` / "runnable, not long-lived" affordance.                                                                                                                                                                                     | §2.3                      |
 | 8   | ~~**`library` and `job` detection.**~~ **RESOLVED.** `detect/detectors/role.ts` ships `jobDetector` (cron table / Procfile `release:`) and `libraryDetector` (negative evidence, per-ecosystem); neither role takes a port.                                                                                                                   | §2.3                      |
 | 9   | **Probing implementation.** Seam only, by decision #2. This one is a _choice_, not a gap.                                                                                                                                                                                                                                                     | §5 Phase G                |
+| 10  | **Two component slots, not N.** `pickCandidate` (`detect/index.ts`) collapses candidates to one `frontend` + one `backend`; a repo with three Express services ships one and drops two behind an `ambiguous-backend` warning. The singletons are load-bearing in 6 files (~29 refs). **P0** in CONTRIBUTING.                                  | §2.1, §2.3                |
+| 11  | **Node/Python barred from the generic path.** `detect/index.ts` excludes them from ecosystem placement to keep seed and generic disjoint, yet `servicePlan.ts` already places N ecosystem components with DB wiring — so a 5-service Go monorepo fares better than a 2-service Express one. **P0** in CONTRIBUTING.                           | §5 Phase B                |
+| 12  | **Unbounded repo walks, no caching.** `utils/fs.ts` `walk()` has no depth cap, entry cap, or symlink-cycle guard, and `detect/` caches nothing — the same directories are re-read per detector per root. **P2** in CONTRIBUTING.                                                                                                              | §3                        |
 
 `DetectedPort.source`'s remaining unused member is `'inferred'` — no detector emits it,
 since nothing currently infers a port without a declaring source. `'readme'` is now live.
