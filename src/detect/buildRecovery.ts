@@ -16,50 +16,38 @@
  * in the confidence model, and emits an ordinary evidence-backed `Claim` — the same
  * shape every other detector produces, so recovery explains itself like everything else.
  *
+ * SOURCES ARE A REGISTRY, NOT A HARDCODED LIST. Which families exist, what each is
+ * worth, and how they rank all live in `signalSources.ts` as descriptors; this module
+ * only folds over whatever is registered. Adding a signal source is one registry entry —
+ * no edit here, no new `RepoInsights` array for every consumer to learn, which is the
+ * growth pattern that produced the four dead ends above in the first place.
+ *
  * PROVIDERS ARE UNIFORM. `ciProviders` is walked as data: the `provider` field is a
  * label inside the provenance string, never a branch. Adding a fifth CI provider means
- * the parser writes into `ciProviders` and this module needs no edit at all.
+ * the parser writes into `ciProviders` and nothing in the fold changes at all.
  *
  * STAGE: 2 (detect) — REAL code. Pure functions over `RepoInsights`. No AI, no IO.
  */
 
 import { claim, type Claim, type Evidence } from '../model/claim.js';
 import type { BuildRecipe } from '../model/recipe.js';
+import {
+  defaultSignalSources,
+  type SignalSourceRegistry,
+  type DeclaredCommand,
+} from './signalSources.js';
 import type { RepoInsights } from './types.js';
 
-/** The families a recovered command can come from, ordered most-authoritative-first. */
-export type RecoverySource = 'ci' | 'task' | 'script';
-
 /**
- * Confidence weight per source family. These are the SAME numbers `confidenceEvidence`
- * already uses, exported here so there is one definition rather than two that drift:
- * CI is the maintainer's executable build (it runs on every push), a task runner is
- * their declared entrypoint, and a README is the weakest — prose that merely describes.
+ * One command a repo declares about itself, tagged with the family that declared it.
+ *
+ * `source` is an OPEN string (a `SignalSource.id`), not a closed union — matching how
+ * `Runtime` and `PackageManager` are already modelled here. A new family is data in the
+ * registry, so it must not require widening a type every consumer switches on.
  */
-export const RECOVERY_WEIGHTS: Record<RecoverySource, number> = {
-  ci: 0.2,
-  task: 0.2,
-  script: 0.15,
-};
-
-/** Ranking order between families when two of them declare the same kind of command. */
-const SOURCE_PRIORITY: RecoverySource[] = ['ci', 'task', 'script'];
-
-/** One command a repo declares about itself, with enough provenance to cite the file. */
-export interface RecoveredCommand {
-  command: string;
-  /** Intent, as classified by `ci.ts`'s shared `classifyCommand`. */
-  kind: string;
+export interface RecoveredCommand extends DeclaredCommand {
   /** Which family declared it, used for ranking and weighting. */
-  source: RecoverySource;
-  /**
-   * Human-readable provenance, e.g. `gitlab:.gitlab-ci.yml#build_app`,
-   * `github-actions`, `makefile:build`, `README.md`. Surfaced on the plan node so a
-   * command can be traced back to the file that declared it.
-   */
-  origin: string;
-  /** Container image the declaring job named, when it named one (CI jobs usually do). */
-  image?: string;
+  source: string;
 }
 
 /** The build/run shape recovered from a repo's own declarations. */
@@ -76,62 +64,19 @@ export interface RecoveredBuild {
   origins: string[];
 }
 
-/** Strip a directory prefix so provenance cites `.gitlab-ci.yml`, not an absolute path. */
-function fileLabel(file: string): string {
-  const posix = file.replace(/\\/g, '/');
-  return posix.slice(posix.lastIndexOf('/') + 1);
-}
-
 /**
- * Every CI-declared command across BOTH CI shapes, uniformly. GitHub Actions arrives
- * pre-flattened in `ciCommands`; the other providers keep their job structure in
- * `ciProviders`. Neither is special-cased beyond that difference in shape — the provider
- * name is data that lands in the provenance string.
+ * Every declared command from every registered source, tagged with its family and in
+ * registry (authority) order. This is the whole fold — sources are walked as data, so
+ * nothing here knows what a "CI provider" or a "Makefile" is.
  */
-function fromCi(insights: RepoInsights): RecoveredCommand[] {
+function declaredCommands(
+  insights: RepoInsights,
+  sources: SignalSourceRegistry
+): RecoveredCommand[] {
   const out: RecoveredCommand[] = [];
-
-  for (const c of insights.ciCommands) {
-    out.push({ command: c.command, kind: c.kind, source: 'ci', origin: 'github-actions' });
-  }
-
-  for (const config of insights.ciProviders) {
-    const label = fileLabel(config.file);
-    for (const job of config.jobs) {
-      const image = job.image ?? config.image ?? undefined;
-      for (const c of job.commands) {
-        out.push({
-          command: c.command,
-          kind: c.kind,
-          source: 'ci',
-          origin: `${config.provider}:${label}#${job.name}`,
-          ...(image !== undefined && image !== null ? { image } : {}),
-        });
-      }
-    }
-  }
-
-  return out;
-}
-
-/** Maintainer-declared tasks (Makefile / Taskfile / justfile / package scripts). */
-function fromTasks(insights: RepoInsights): RecoveredCommand[] {
-  return insights.taskCommands
-    .filter((t) => t.command.trim() !== '')
-    .map((t) => ({
-      command: t.command,
-      kind: t.kind,
-      source: 'task' as const,
-      origin: `${t.source}:${t.name}`,
-    }));
-}
-
-/** README fenced-shell blocks and shipped shell scripts. */
-function fromScripts(insights: RepoInsights): RecoveredCommand[] {
-  const out: RecoveredCommand[] = [];
-  for (const s of insights.scriptSources) {
-    for (const c of s.commands) {
-      out.push({ command: c.command, kind: c.kind, source: 'script', origin: s.file });
+  for (const source of sources.all()) {
+    for (const command of source.extract(insights)) {
+      out.push({ ...command, source: source.id });
     }
   }
   return out;
@@ -172,12 +117,16 @@ function isAppCommand(command: string): boolean {
  * `go build ./cmd/api` and whose Makefile runs `make build` needs one of them, not both
  * concatenated into the image.
  */
-function ofKind(commands: readonly RecoveredCommand[], kind: string): RecoveredCommand[] {
-  for (const source of SOURCE_PRIORITY) {
+function ofKind(
+  commands: readonly RecoveredCommand[],
+  kind: string,
+  sources: SignalSourceRegistry
+): RecoveredCommand[] {
+  for (const source of sources.all()) {
     const picked: RecoveredCommand[] = [];
     const seen = new Set<string>();
     for (const c of commands) {
-      if (c.source !== source || c.kind !== kind || seen.has(c.command)) continue;
+      if (c.source !== source.id || c.kind !== kind || seen.has(c.command)) continue;
       seen.add(c.command);
       picked.push(c);
     }
@@ -193,15 +142,16 @@ function ofKind(commands: readonly RecoveredCommand[], kind: string): RecoveredC
  * runner, and no parseable README leaves the matched recipe entirely alone rather than
  * producing an empty recovery that callers must special-case.
  */
-export function recoverBuild(insights: RepoInsights): Claim<RecoveredBuild> | null {
-  const commands = [...fromCi(insights), ...fromTasks(insights), ...fromScripts(insights)].filter(
-    (c) => isAppCommand(c.command)
-  );
+export function recoverBuild(
+  insights: RepoInsights,
+  sources: SignalSourceRegistry = defaultSignalSources()
+): Claim<RecoveredBuild> | null {
+  const commands = declaredCommands(insights, sources).filter((c) => isAppCommand(c.command));
   if (commands.length === 0) return null;
 
-  const installs = ofKind(commands, 'install');
-  const builds = ofKind(commands, 'build');
-  const starts = ofKind(commands, 'start');
+  const installs = ofKind(commands, 'install', sources);
+  const builds = ofKind(commands, 'build', sources);
+  const starts = ofKind(commands, 'start', sources);
 
   // Nothing that changes how the repo is built — `test`/`other` alone is not a recovery.
   if (installs.length === 0 && builds.length === 0 && starts.length === 0) return null;
@@ -223,14 +173,14 @@ export function recoverBuild(insights: RepoInsights): Claim<RecoveredBuild> | nu
   // independent sources agreeing raises confidence exactly like any other cross-tier
   // agreement (§4) rather than through a bespoke rule.
   const evidence: Evidence[] = [];
-  for (const source of SOURCE_PRIORITY) {
-    const mine = declaring.filter((c) => c.source === source);
+  for (const source of sources.all()) {
+    const mine = declaring.filter((c) => c.source === source.id);
     if (mine.length === 0) continue;
     const cited = [...new Set(mine.map((c) => c.origin))].join(', ');
     evidence.push({
-      detector: `build-recovery:${source}`,
-      signal: `${source} declares the build (${mine.length} command(s) from ${cited})`,
-      weight: RECOVERY_WEIGHTS[source],
+      detector: `build-recovery:${source.id}`,
+      signal: `${source.id} declares the build (${mine.length} command(s) from ${cited})`,
+      weight: source.weight,
     });
   }
 
