@@ -55,6 +55,7 @@ import { applyRecoveredBuild } from '../detect/buildRecovery.js';
 import { detectComponentRole } from '../detect/componentRole.js';
 import { runtimeFromBaseImage } from '../detect/dockerfile.js';
 import { detectStack } from '../detect/index.js';
+import { assessUnderstanding, describeUnderstanding } from '../detect/understanding.js';
 import type { DetectedComponent, DetectionResult } from '../detect/types.js';
 import { reasoning } from '../model/claim.js';
 import { planToComposeVars } from '../generate/composeVars.js';
@@ -523,7 +524,10 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
     // ecosystem component so the repo containerizes through the open-role synthesis path;
     // only a repo that can't even be inferred hard-stops.
     let inferredComponent: EcosystemComponent | null = null;
-    if (!detection.isSupported) {
+    const understanding = assessUnderstanding(detection);
+    ctx.logger.info(`Detection: ${describeUnderstanding(understanding)}`);
+
+    if (understanding.level === 'none') {
       if (aiKeyPresent(ctx.resolveKey)) {
         inferredComponent = await inferEcosystemComponent(ctx);
       }
@@ -536,6 +540,21 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
       ctx.logger.info(
         'Proceeding with an AI-inferred build recipe (unsupported deterministically).'
       );
+    } else if (understanding.shouldEscalate && aiKeyPresent(ctx.resolveKey)) {
+      // The `partial` band: the repo WAS placed, so this is not a rescue — it is a
+      // second opinion on a thin result. Previously impossible, because escalation was
+      // gated on `!isSupported`, so a placed-but-barely-understood repo went straight to
+      // a build that would likely fail. A failure here is non-fatal by design: the
+      // deterministic result already stands on its own.
+      ctx.logger.info(`Asking for a second opinion — ${understanding.gaps.join('; ')}.`);
+      try {
+        inferredComponent = await inferEcosystemComponent(ctx);
+      } catch {
+        inferredComponent = null;
+      }
+      if (inferredComponent === null) {
+        ctx.logger.info('No usable inference; continuing with the deterministic result.');
+      }
     }
 
     // STAGE 3: AI fill + env inference (both degrade gracefully when keyless).

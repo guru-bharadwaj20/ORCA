@@ -1,0 +1,125 @@
+import { describe, it, expect } from 'vitest';
+
+import {
+  assessUnderstanding,
+  describeUnderstanding,
+  CONFIDENT_THRESHOLD,
+} from '../../src/detect/understanding.js';
+import type { DetectionResult } from '../../src/detect/types.js';
+
+/** A placed, well-corroborated detection — the `confident` baseline. */
+function detection(over: Partial<DetectionResult> = {}): DetectionResult {
+  return {
+    repoPath: '/repo',
+    languages: ['javascript'],
+    packageManagers: ['npm'],
+    frontend: null,
+    backend: null,
+    databases: [],
+    isSupported: true,
+    confidence: 0.9,
+    reasoning: [],
+    warnings: [],
+    insights: {
+      frameworks: [],
+      runtimes: ['node'],
+      monorepoTools: [],
+      ciCommands: [{ command: 'npm run build', kind: 'build' }],
+      ciRuntimeVersions: [],
+      ciProviders: [],
+      dockerfiles: [],
+      taskCommands: [],
+      scriptSources: [],
+      ecosystemComponents: [],
+      ...(over.insights ?? {}),
+    },
+    ...over,
+  } as DetectionResult;
+}
+
+describe('assessUnderstanding', () => {
+  it('grades a placed, corroborated, confident repo as confident', () => {
+    const u = assessUnderstanding(detection());
+
+    expect(u.level).toBe('confident');
+    expect(u.gaps).toEqual([]);
+    expect(u.shouldEscalate).toBe(false);
+  });
+
+  it('grades an unplaceable repo as none and preserves the hard-stop condition', () => {
+    const u = assessUnderstanding(detection({ isSupported: false, confidence: 0 }));
+
+    expect(u.level).toBe('none');
+    expect(u.shouldEscalate).toBe(true);
+  });
+
+  it('grades a placed but low-confidence repo as partial', () => {
+    // The case the old boolean gate could not express: placed, so `isSupported` is true,
+    // yet barely understood — it would have gone straight to a likely-broken build.
+    const u = assessUnderstanding(detection({ confidence: 0.3 }));
+
+    expect(u.level).toBe('partial');
+    expect(u.shouldEscalate).toBe(true);
+    expect(u.gaps.join(' ')).toContain('confidence');
+  });
+
+  it('flags a repo where nothing declares how it is built', () => {
+    const u = assessUnderstanding(
+      detection({
+        insights: {
+          ...detection().insights,
+          ciCommands: [],
+        },
+      })
+    );
+
+    expect(u.level).toBe('partial');
+    expect(u.gaps.join(' ')).toContain('declares how it is built');
+  });
+
+  it('flags an ecosystem component placed without a recipe', () => {
+    const u = assessUnderstanding(
+      detection({
+        insights: {
+          ...detection().insights,
+          ecosystemComponents: [
+            { rootDir: 'svc', runtime: 'go', recipeId: '', role: 'backend' },
+          ] as never,
+        },
+      })
+    );
+
+    expect(u.gaps.join(' ')).toContain("'svc' was placed without a matched recipe");
+  });
+
+  it('treats the threshold as inclusive', () => {
+    const at = assessUnderstanding(detection({ confidence: CONFIDENT_THRESHOLD }));
+    const below = assessUnderstanding(detection({ confidence: CONFIDENT_THRESHOLD - 0.01 }));
+
+    expect(at.level).toBe('confident');
+    expect(below.level).toBe('partial');
+  });
+
+  it('accumulates several gaps rather than reporting only the first', () => {
+    const u = assessUnderstanding(
+      detection({ confidence: 0.2, insights: { ...detection().insights, ciCommands: [] } })
+    );
+
+    expect(u.gaps.length).toBeGreaterThan(1);
+  });
+});
+
+describe('describeUnderstanding', () => {
+  it('summarizes a confident result without noise', () => {
+    expect(describeUnderstanding(assessUnderstanding(detection()))).toBe(
+      'understood with confidence 0.90'
+    );
+  });
+
+  it('names the gaps for a partial result', () => {
+    const text = describeUnderstanding(assessUnderstanding(detection({ confidence: 0.3 })));
+
+    expect(text).toContain('partial understanding');
+    expect(text).toContain('confidence');
+  });
+});
