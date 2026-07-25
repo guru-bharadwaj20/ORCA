@@ -26,6 +26,7 @@ import { withFsCache } from '../utils/fsCache.js';
 import { OrcaError } from '../utils/errors.js';
 import { analyzeAzurePipelines } from './azurePipelines.js';
 import { recoverBuild } from './buildRecovery.js';
+import { DEFAULT_SOURCE_WEIGHTS } from './signalSources.js';
 import { analyzeCi } from './ci.js';
 import { analyzeCircleCi } from './circleci.js';
 import { detectComponentRole } from './componentRole.js';
@@ -840,7 +841,7 @@ function confidenceEvidence(
     evidence.push({
       detector: 'ci',
       signal: `CI corroborates the build (${ciBuildSignals.length} build/start step(s))`,
-      weight: 0.2,
+      weight: DEFAULT_SOURCE_WEIGHTS.ci,
     });
   }
   // README/shell-script commands are the weakest deterministic signal here, so they are
@@ -857,7 +858,7 @@ function confidenceEvidence(
     evidence.push({
       detector: 'repo-scripts',
       signal: `README/scripts declare the build (${scriptBuildSignals.length} build/start command(s))`,
-      weight: 0.15,
+      weight: DEFAULT_SOURCE_WEIGHTS.script,
     });
   }
   return evidence;
