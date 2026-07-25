@@ -115,6 +115,15 @@ export interface ServiceNode {
   healthcheck?: Healthcheck;
   /** Optional override command; falls back to the image/Dockerfile default. */
   command?: string;
+  /**
+   * Repo-relative root of the `DetectedComponent` this node was built from (e.g.
+   * "services/api"). Only set for seed frontend/backend nodes — the ones that can now
+   * number more than one per role (a monorepo with 3 Express services yields 3 backend
+   * nodes, not 1). Lets a generate-stage consumer pair a node back to its component
+   * without guessing from `id`. Ecosystem/inferred 'service' nodes don't need this: they
+   * already carry their originating data inline via `source.recipe`.
+   */
+  componentRootDir?: string;
 }
 
 /**
