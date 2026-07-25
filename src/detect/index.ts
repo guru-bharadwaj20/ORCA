@@ -182,26 +182,14 @@ async function componentLanguage(absDir: string): Promise<Language> {
 }
 
 /**
- * Pick the single candidate for a role. Multiple matches are resolved by the
- * conventional directory-name hint, then by first (alphabetical) order plus a warning.
+ * Pure hint-preference pick — no side effects, no dropping. Used only to compute the
+ * `frontend`/`backend` derived-compat fields from an already-built component list; every
+ * match, not just this pick, still lands in `DetectionResult.components`.
  */
-function pickCandidate(
-  matches: Candidate[],
-  hint: RegExp,
-  role: 'frontend' | 'backend',
-  warnings: DetectionWarning[]
-): Candidate | null {
+function pickPrimary(matches: readonly DetectedComponent[], hint: RegExp): DetectedComponent | null {
   if (matches.length === 0) return null;
-  if (matches.length === 1) return matches[0] ?? null;
-
   const hinted = matches.find((c) => hint.test(c.rootDir));
-  const chosen = hinted ?? matches[0];
-  warnings.push({
-    code: `ambiguous-${role}`,
-    message: `Multiple ${role} candidates (${matches.map((c) => c.rootDir).join(', ')}); picked '${chosen?.rootDir}'.`,
-    detector: 'index',
-  });
-  return chosen ?? null;
+  return hinted ?? matches[0] ?? null;
 }
 
 /** Run the per-component detectors and assemble a `DetectedComponent`. */
@@ -254,19 +242,23 @@ export async function detectStack(repoPath: string): Promise<DetectionResult> {
     })
   );
 
-  // A candidate may serve both roles (single-package repos with react + express).
-  const frontendPick = pickCandidate(
-    candidates.filter((c) => c.frontend !== 'unknown'),
-    FRONTEND_DIR_HINT,
-    'frontend',
-    warnings
-  );
-  const backendPick = pickCandidate(
-    candidates.filter((c) => c.backend !== 'unknown'),
-    BACKEND_DIR_HINT,
-    'backend',
-    warnings
-  );
+  // A candidate may serve both roles (single-package repos with react + express). Every
+  // match becomes a component — no picking, no dropping. A monorepo with 3 Express
+  // services yields 3 backend-role entries here, not 1 (the pickCandidate bug this
+  // replaces: it kept exactly one match per role and silently discarded the rest).
+  const frontendMatches = candidates.filter((c) => c.frontend !== 'unknown');
+  const backendMatches = candidates.filter((c) => c.backend !== 'unknown');
+  const [frontendComponents, backendComponents] = await Promise.all([
+    Promise.all(frontendMatches.map((c) => buildComponent('frontend', c))),
+    Promise.all(backendMatches.map((c) => buildComponent('backend', c))),
+  ]);
+  const components = [...frontendComponents, ...backendComponents];
+
+  // frontend/backend are a derived, deprecated compat view (see types.ts): the same
+  // directory-hint preference pickCandidate used to apply, just no longer dropping the
+  // rest. A single-frontend+single-backend repo resolves identically to before.
+  const frontend = pickPrimary(frontendComponents, FRONTEND_DIR_HINT);
+  const backend = pickPrimary(backendComponents, BACKEND_DIR_HINT);
 
   for (const c of candidates) {
     if (c.frontend === 'unknown' && c.backend === 'unknown') {
@@ -278,10 +270,21 @@ export async function detectStack(repoPath: string): Promise<DetectionResult> {
     }
   }
 
-  const [frontend, backend] = await Promise.all([
-    frontendPick === null ? null : buildComponent('frontend', frontendPick),
-    backendPick === null ? null : buildComponent('backend', backendPick),
-  ]);
+  // Informational, non-blocking: more than one component shares a role. Nothing was
+  // dropped (all of them are in `components`) — this just explains what `.frontend`/
+  // `.backend` resolved to for anything still reading the singular compat fields.
+  for (const [role, matches, primary] of [
+    ['frontend', frontendComponents, frontend],
+    ['backend', backendComponents, backend],
+  ] as const) {
+    if (matches.length > 1) {
+      warnings.push({
+        code: `multiple-${role}-components`,
+        message: `${matches.length} ${role} components detected (${matches.map((c) => c.rootDir).join(', ')}); '${primary?.rootDir}' is the default .${role} — all are included in .components.`,
+        detector: 'index',
+      });
+    }
+  }
 
   // Databases: union across every candidate root, first-found per engine wins.
   const databases: DetectedDatabase[] = [];
@@ -304,7 +307,7 @@ export async function detectStack(repoPath: string): Promise<DetectionResult> {
   const insights = await gatherInsights(repoPath, roots, monorepo);
   const hasEcosystem = insights.ecosystemComponents.length > 0 || insights.dockerfiles.length > 0;
 
-  const isSupported = frontend !== null || backend !== null || hasEcosystem;
+  const isSupported = components.length > 0 || hasEcosystem;
   if (!isSupported) {
     warnings.push({
       code: 'unsupported-stack',
@@ -316,12 +319,17 @@ export async function detectStack(repoPath: string): Promise<DetectionResult> {
     });
   }
 
+  // Confidence stays boolean-per-role (does a frontend/backend exist at all), not scaled
+  // by component count — a monorepo with 3 backends isn't inherently "more confidently
+  // detected" than one with 1. See docs/universal-understanding-plan.md for the rationale
+  // if this is revisited.
   const evidence = confidenceEvidence(frontend, backend, databases, insights);
 
   return {
     repoPath,
     languages: await detectLanguages(repoPath),
     packageManagers,
+    components,
     frontend,
     backend,
     databases,
