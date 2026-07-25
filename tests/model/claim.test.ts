@@ -27,8 +27,35 @@ describe('combineConfidence', () => {
   });
 
   it('combines independent signals as a probabilistic OR (agreement raises confidence)', () => {
-    // 1 - (1-0.5)(1-0.5) = 0.75 — two agreeing signals beat either alone.
-    expect(combineConfidence([ev(0.5), ev(0.5)])).toBe(0.75);
+    // 1 - (1-0.5)(1-0.5) = 0.75 — two agreeing signals from DIFFERENT families beat
+    // either alone. Independence is what licenses the probabilistic OR.
+    const a: Evidence = { detector: 'manifest', family: 'manifest', signal: 's', weight: 0.5 };
+    const b: Evidence = { detector: 'ci', family: 'ci', signal: 's', weight: 0.5 };
+    expect(combineConfidence([a, b])).toBe(0.75);
+  });
+
+  it('does not let correlated signals in one family compound', () => {
+    // Same family = one fact observed twice (a lockfile is generated from its manifest),
+    // so the strongest wins instead of folding to 1 - (1-0.85)(1-0.85) = 0.978.
+    expect(combineConfidence([ev(0.85), ev(0.85)])).toBe(0.85);
+  });
+
+  it('defaults a signal family to its detector', () => {
+    // The honest default: two signals from one detector are rarely independent.
+    const same: Evidence[] = [
+      { detector: 'manifest:rust', signal: 'Cargo.toml present', weight: 0.85 },
+      { detector: 'manifest:rust', signal: 'Cargo.lock present', weight: 0.85 },
+    ];
+    expect(combineConfidence(same)).toBe(0.85);
+  });
+
+  it('keeps the strongest weight within a family, not the first', () => {
+    expect(combineConfidence([ev(0.2), ev(0.7), ev(0.4)])).toBe(0.7);
+  });
+
+  it('stops ten correlated weak signals from manufacturing near-certainty', () => {
+    // The naive fold gives 0.893 here — a pile of guesses reading as near-certain.
+    expect(combineConfidence(Array.from({ length: 10 }, () => ev(0.2)))).toBe(0.2);
   });
 
   it('clamps out-of-range weights instead of exploding', () => {

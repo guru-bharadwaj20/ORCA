@@ -65,8 +65,13 @@ function manifestRuntimeDetector(opts: {
         ...(await filesWithSuffix(dir, opts.suffixes ?? [])),
       ];
       if (found.length === 0) return [];
+      // One family for the whole ecosystem manifest set: a lockfile is GENERATED FROM its
+      // manifest, so `Cargo.toml` + `Cargo.lock` is one fact observed twice, not two
+      // independent corroborations. Folding them as independent would push a single
+      // ordinary Rust repo to 0.98 confidence.
       const evidence: Evidence[] = found.map((f) => ({
         detector: opts.id,
+        family: opts.id,
         signal: `${f} present`,
         weight: opts.weight,
       }));

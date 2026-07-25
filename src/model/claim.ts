@@ -33,6 +33,16 @@ export interface Evidence {
   signal: string;
   /** This signal's contribution to confidence, 0..1. */
   weight: number;
+  /**
+   * Which INDEPENDENT source this signal came from. Signals sharing a family are treated
+   * as one observation (the strongest wins) rather than as corroborating each other.
+   *
+   * Defaults to `detector` when omitted, which is the honest default: two signals from the
+   * same detector are rarely independent. Give two detectors the same family when their
+   * observations are derived from one another — `Cargo.toml` and `Cargo.lock` are one
+   * fact, since the lockfile is *generated from* the manifest.
+   */
+  family?: string;
 }
 
 /**
@@ -49,17 +59,39 @@ export interface Claim<T> {
 }
 
 /**
- * Combine independent evidence weights into a single 0..1 confidence using the
- * probabilistic OR `1 - Π(1 - wᵢ)`: independent signals that agree drive confidence
- * up (manifest AND ci AND imports all saying "rust" beats any one alone), while a
- * lone weak signal stays low. Weights are clamped to [0, 1]; the result never exceeds 1.
+ * Combine evidence weights into a single 0..1 confidence using the probabilistic OR
+ * `1 - Π(1 - wᵢ)` — but only ACROSS independent families, never within one.
+ *
+ * The probabilistic OR is only valid for independent observations. Applied naively it
+ * treats every signal as fresh corroboration, so evidence that is really one fact
+ * observed twice compounds into near-certainty:
+ *
+ *   `Cargo.toml` (0.85) + `Cargo.lock` (0.85)  ->  0.978 under a naive fold
+ *
+ * A lockfile is *generated from* its manifest, so it carries almost no information the
+ * manifest did not already give; letting it cut the residual uncertainty by 85% is
+ * manufactured confidence. The same flaw scales: ten correlated weak signals at 0.2 fold
+ * to 0.89, turning a pile of guesses into an apparent near-certainty.
+ *
+ * So signals are grouped by `family` (defaulting to `detector`), reduced to the STRONGEST
+ * weight within each family, and only then combined across families. Genuinely independent
+ * corroboration — manifest AND ci AND imports all saying "rust" — still compounds, because
+ * those are different families. Weights are clamped to [0, 1]; the result never exceeds 1.
  */
 export function combineConfidence(evidence: readonly Evidence[]): number {
   if (evidence.length === 0) return 0;
-  const complement = evidence.reduce((acc, e) => {
-    const w = Math.min(1, Math.max(0, e.weight));
-    return acc * (1 - w);
-  }, 1);
+
+  // Strongest signal per independent family — correlated repeats do not stack.
+  const strongestByFamily = new Map<string, number>();
+  for (const e of evidence) {
+    const family = e.family ?? e.detector;
+    const weight = Math.min(1, Math.max(0, e.weight));
+    const current = strongestByFamily.get(family);
+    if (current === undefined || weight > current) strongestByFamily.set(family, weight);
+  }
+
+  let complement = 1;
+  for (const weight of strongestByFamily.values()) complement *= 1 - weight;
   return round2(1 - complement);
 }
 

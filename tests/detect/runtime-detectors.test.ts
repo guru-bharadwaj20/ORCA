@@ -45,15 +45,18 @@ describe('runtime detectors', () => {
     expect(await rustDetector.detect(ctx())).toEqual([]);
   });
 
-  it('rustDetector reinforces confidence when a lockfile is also present', async () => {
+  it('records a lockfile as evidence without compounding confidence', async () => {
     await writeFile(join(dir, 'Cargo.toml'), '[package]\nname = "app"\n');
     const single = await rustDetector.detect(ctx());
 
     await writeFile(join(dir, 'Cargo.lock'), '# lockfile\n');
     const withLock = await rustDetector.detect(ctx());
 
-    expect(withLock[0]?.confidence).toBeGreaterThan(single[0]?.confidence ?? 1);
+    // A lockfile is GENERATED FROM its manifest, so it is the same fact observed twice.
+    // It belongs in the reasoning trail, but treating it as independent corroboration
+    // would inflate an ordinary Rust repo from 0.85 to 0.978.
     expect(withLock[0]?.evidence).toHaveLength(2);
+    expect(withLock[0]?.confidence).toBe(single[0]?.confidence);
   });
 
   it('jvmDetector recognizes both Maven and Gradle layouts', async () => {
