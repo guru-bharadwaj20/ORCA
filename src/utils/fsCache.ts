@@ -1,0 +1,95 @@
+/**
+ * A detection-scoped filesystem cache (docs/universal-understanding-plan.md §10 row 12).
+ *
+ * Detection is single-pass over a **static checkout**: nothing ORCA runs mutates the repo
+ * between the first detector and the last. But the detectors are deliberately independent
+ * — each reads the facts it needs from disk — so the same `package.json`, the same
+ * `Cargo.toml`, and the same directory listings are re-read many times over. There are
+ * ~85 `readFileIfExists`/`walk` call sites under `src/detect/`, several of them inside a
+ * per-candidate-root loop, which makes the redundant work O(roots × detectors).
+ *
+ * This cache removes that cost without touching detector independence: a detector still
+ * asks for whatever it wants, whenever it wants, and simply gets a memoized answer the
+ * second time. Independence is the design property worth keeping; the repeated I/O was
+ * only ever an artifact of it.
+ *
+ * SCOPE IS EXPLICIT, NOT GLOBAL. A cache instance is created per detection run and thrown
+ * away with it — there is no module-level singleton. That is what makes invalidation a
+ * non-problem (a run cannot outlive the checkout it read) and what keeps tests hermetic:
+ * two runs in the same process never share state.
+ *
+ * PROMISES ARE CACHED, NOT JUST RESULTS, so concurrent callers for the same path share
+ * one in-flight read rather than racing to issue duplicates — detection fans out with
+ * `Promise.all` in several places, so this is the common case, not an edge case.
+ *
+ * STAGE: 2 (detect) — REAL code. Pure memoization, no behavior change.
+ */
+
+import { readFileIfExists, walk, type WalkOptions, DEFAULT_WALK_IGNORE } from './fs.js';
+
+/** Cache-key a walk by its directory *and* the options that change its result. */
+function walkKey(dir: string, options: string[] | WalkOptions): string {
+  const opts: WalkOptions = Array.isArray(options) ? { ignore: options } : options;
+  const ignore = (opts.ignore ?? DEFAULT_WALK_IGNORE).join(',');
+  return `${dir}\0${ignore}\0${opts.maxDepth ?? ''}\0${opts.maxEntries ?? ''}`;
+}
+
+/**
+ * Memoizes file reads and directory walks for the lifetime of one detection run.
+ *
+ * Construct one per run and pass it to whatever wants it; never share across runs. Misses
+ * delegate to the plain `fs.ts` helpers, so behavior is identical to calling them directly
+ * — this only removes repeat work.
+ */
+export class FsCache {
+  private readonly files = new Map<string, Promise<string | null>>();
+  private readonly walks = new Map<string, Promise<string[]>>();
+
+  /** Hits served from cache, for tests and diagnostics. */
+  private hitCount = 0;
+  /** Underlying reads actually issued, for tests and diagnostics. */
+  private missCount = 0;
+
+  /** `readFileIfExists`, memoized by absolute path. Missing files cache as `null`. */
+  async readFile(path: string): Promise<string | null> {
+    const cached = this.files.get(path);
+    if (cached !== undefined) {
+      this.hitCount++;
+      return cached;
+    }
+    this.missCount++;
+    const pending = readFileIfExists(path);
+    this.files.set(path, pending);
+    return pending;
+  }
+
+  /** `walk`, memoized by directory + the options that affect its result. */
+  async walk(
+    dir: string,
+    options: string[] | WalkOptions = DEFAULT_WALK_IGNORE
+  ): Promise<string[]> {
+    const key = walkKey(dir, options);
+    const cached = this.walks.get(key);
+    if (cached !== undefined) {
+      this.hitCount++;
+      return cached;
+    }
+    this.missCount++;
+    const pending = walk(dir, options);
+    this.walks.set(key, pending);
+    return pending;
+  }
+
+  /** Hit/miss counters — how much repeat I/O this run avoided. */
+  stats(): { hits: number; misses: number } {
+    return { hits: this.hitCount, misses: this.missCount };
+  }
+
+  /** Drop everything. Rarely needed: a run's cache normally dies with the run. */
+  clear(): void {
+    this.files.clear();
+    this.walks.clear();
+    this.hitCount = 0;
+    this.missCount = 0;
+  }
+}
