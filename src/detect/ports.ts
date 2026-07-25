@@ -9,11 +9,16 @@ const SCANNABLE_EXTENSIONS = new Set(['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cj
 
 const MAX_SCANNED_FILES = 200;
 
+/**
+ * Port literals in source. Each capture ends with `(?!\d)` so the pattern matches a WHOLE
+ * number: without it `\d{2,5}` truncates a longer literal and reports a port the app never
+ * binds — `app.listen(123456)` would yield 12345, which `isValidPort` happily accepts.
+ */
 const CODE_PORT_PATTERNS: RegExp[] = [
-  /\.listen\(\s*(\d{2,5})/,
-  /(?:process\.env\.)?PORT\s*(?:\|\||\?\?)\s*(\d{2,5})/,
-  /port:\s*(\d{2,5})/,
-  /runserver\s+(?:0\.0\.0\.0:)?(\d{2,5})/,
+  /\.listen\(\s*(\d{2,5})(?!\d)/,
+  /(?:process\.env\.)?PORT\s*(?:\|\||\?\?)\s*(\d{2,5})(?!\d)/,
+  /port:\s*(\d{2,5})(?!\d)/,
+  /runserver\s+(?:0\.0\.0\.0:)?(\d{2,5})(?!\d)/,
 ];
 
 const KNOWN_SERVICE_PORTS = new Set([
