@@ -76,6 +76,7 @@ const detectionWithPostgres = (): DetectionResult => ({
     scriptSources: [],
     ecosystemComponents: [],
     recoveredBuild: null,
+    recoveredRuntimes: null,
   },
   warnings: [],
 });

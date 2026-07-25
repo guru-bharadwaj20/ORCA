@@ -378,9 +378,13 @@ function logInsights(insights: DetectionResult['insights'], logger: Logger): voi
   if (ciBuild.length > 0) {
     logger.info(`CI reveals build commands: ${ciBuild.map((c) => c.command).join(' | ')}.`);
   }
-  if (insights.ciRuntimeVersions.length > 0) {
-    const versions = insights.ciRuntimeVersions.map((v) => `${v.runtime} ${v.version}`).join(', ');
-    logger.info(`CI pins runtime versions: ${versions}.`);
+  const recoveredRuntimes = insights.recoveredRuntimes;
+  if (recoveredRuntimes !== null && recoveredRuntimes.versions.length > 0) {
+    const versions = recoveredRuntimes.versions
+      .map((v) => `${v.runtime} ${v.version} (${v.origins.join(', ')})`)
+      .join(', ');
+    const pct = Math.round(recoveredRuntimes.confidence * 100);
+    logger.info(`CI pins runtime versions (${pct}% confident): ${versions}.`);
   }
   const buildTasks = insights.taskCommands.filter((t) => t.kind === 'build' || t.kind === 'start');
   if (buildTasks.length > 0) {

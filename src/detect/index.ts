@@ -26,6 +26,7 @@ import { withFsCache } from '../utils/fsCache.js';
 import { OrcaError } from '../utils/errors.js';
 import { analyzeAzurePipelines } from './azurePipelines.js';
 import { recoverBuild } from './buildRecovery.js';
+import { recoverRuntimes, type RuntimeVersionSignal } from './runtimeRecovery.js';
 import { analyzeCi } from './ci.js';
 import { analyzeCircleCi } from './circleci.js';
 import { detectComponentRole } from './componentRole.js';
@@ -632,23 +633,25 @@ async function gatherInsights(
     ...circleCi.configs.map((c) => ({ provider: 'circleci' as const, ...c })),
   ];
 
-  // GitHub Actions first (stable ordering), then the image-derived providers. Deduped by
-  // the full runtime:version key, not by runtime alone — a genuine cross-source version
-  // difference (e.g. CI pins node:18, a GitLab image says node:20) is real information
-  // about the repo, not noise, so both entries are kept rather than one silently winning.
-  const ciRuntimeVersions: RepoInsights['ciRuntimeVersions'] = [];
-  const seenCiVer = new Set<string>();
-  for (const v of [
-    ...ci.runtimeVersions,
-    ...gitlabCi.runtimeVersions,
-    ...azurePipelines.runtimeVersions,
-    ...circleCi.runtimeVersions,
-  ]) {
-    const key = `${v.runtime}:${v.version}`;
-    if (seenCiVer.has(key)) continue;
-    seenCiVer.add(key);
-    ciRuntimeVersions.push(v);
-  }
+  // Runtime-version pins from every provider, each tagged with its provider so the fold
+  // can cite WHICH one pinned it. GitHub Actions first (stable ordering), then the
+  // image-derived providers — the order `recoverRuntimes` preserves when it dedupes.
+  const runtimeSignals: RuntimeVersionSignal[] = [
+    ...ci.runtimeVersions.map((v) => ({ ...v, provider: 'github-actions' })),
+    ...gitlabCi.runtimeVersions.map((v) => ({ ...v, provider: 'gitlab' })),
+    ...azurePipelines.runtimeVersions.map((v) => ({ ...v, provider: 'azure' })),
+    ...circleCi.runtimeVersions.map((v) => ({ ...v, provider: 'circleci' })),
+  ];
+  const recoveredRuntimesClaim = recoverRuntimes(runtimeSignals);
+  // The raw `ciRuntimeVersions` array is now DERIVED from the normalized claim, so there
+  // is one dedup rule (in `recoverRuntimes`), not two that drift. Deduped by the full
+  // runtime:version key — a genuine cross-source difference (CI pins node:18, GitLab says
+  // node:20) is real information and both are kept, as before.
+  const ciRuntimeVersions: RepoInsights['ciRuntimeVersions'] =
+    recoveredRuntimesClaim?.value.versions.map((v) => ({
+      runtime: v.runtime,
+      version: v.version,
+    })) ?? [];
 
   const insights: RepoInsights = {
     frameworks: [...frameworkSet],
@@ -662,6 +665,14 @@ async function gatherInsights(
     scriptSources,
     ecosystemComponents,
     recoveredBuild: null,
+    recoveredRuntimes:
+      recoveredRuntimesClaim === null
+        ? null
+        : {
+            ...recoveredRuntimesClaim.value,
+            confidence: recoveredRuntimesClaim.confidence,
+            reasoning: reasoning(recoveredRuntimesClaim),
+          },
   };
 
   // Recovery reads the assembled insights (it spans CI, tasks, and scripts), so it runs
