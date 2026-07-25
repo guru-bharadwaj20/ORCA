@@ -115,7 +115,12 @@ export async function writeConfigs(ctx: RunContext): Promise<GeneratedFile[]> {
 
   const generated: GeneratedFile[] = [];
   const write = async (relPath: string, contents: string, kind: GeneratedFile['kind']) => {
-    await writeFile(join(ctx.workspaceDir, relPath), contents, 'utf8');
+    const abs = join(ctx.workspaceDir, relPath);
+    await writeFile(abs, contents, 'utf8');
+    // An env file holds credentials — placeholders today, but this is the file users edit
+    // to add real ones. Default 0644 would leave those world-readable on a shared machine,
+    // so narrow it to the owner. Other generated files are ordinary config.
+    if (kind === 'env') await chmod(abs, 0o600);
     generated.push({ path: relPath, kind });
   };
 
