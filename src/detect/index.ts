@@ -22,6 +22,7 @@ import type { RepoContext } from '../model/detector.js';
 import type { Runtime } from '../model/recipe.js';
 import { defaultRecipeRegistry } from '../model/recipes/index.js';
 import { DEFAULT_WALK_IGNORE, readFileIfExists } from '../utils/fs.js';
+import { FsCache } from '../utils/fsCache.js';
 import { OrcaError } from '../utils/errors.js';
 import { analyzeAzurePipelines } from './azurePipelines.js';
 import { recoverBuild } from './buildRecovery.js';
@@ -349,15 +350,18 @@ async function allEcosystemDependencies(dir: string): Promise<string[]> {
 }
 
 /** True when any of the named files exists at `dir`. */
-async function hasFile(dir: string, ...names: string[]): Promise<boolean> {
-  for (const name of names) {
-    if ((await readFileIfExists(join(dir, name))) !== null) return true;
-  }
-  return false;
+async function hasFile(cache: FsCache, dir: string, ...names: string[]): Promise<boolean> {
+  // Probed together: the names are independent and a serial chain here is paid once per
+  // candidate root. The run-scoped cache collapses repeats, so a name another helper already
+  // looked at costs nothing the second time.
+  const found = await Promise.all(
+    names.map(async (name) => (await cache.readFile(join(dir, name))) !== null)
+  );
+  return found.some(Boolean);
 }
 
 /** Marker files present at a directory (mostly basenames, one nested path), for file-marker matching. */
-async function filesAt(dir: string): Promise<string[]> {
+async function filesAt(cache: FsCache, dir: string): Promise<string[]> {
   const markers = [
     'go.mod',
     'Cargo.toml',
@@ -382,10 +386,12 @@ async function filesAt(dir: string): Promise<string[]> {
     // this list, but `join(dir, m)` handles the subpath the same way.
     'bin/console',
   ];
-  const present: string[] = [];
-  for (const m of markers) {
-    if ((await readFileIfExists(join(dir, m))) !== null) present.push(m);
-  }
+  // Marker probes are independent; issue them together and keep `markers` order so the
+  // matcher sees a stable list.
+  const hits = await Promise.all(
+    markers.map(async (m) => ((await cache.readFile(join(dir, m))) !== null ? m : null))
+  );
+  const present: string[] = hits.filter((m): m is string => m !== null);
   // .NET project/solution files have arbitrary names, so surface them by extension —
   // the dotnet recipe matches on the `.csproj`/`.sln` suffix, not a fixed filename.
   try {
@@ -412,6 +418,11 @@ async function gatherInsights(
 ): Promise<RepoInsights> {
   const registry = defaultDetectorRegistry();
   const recipes = defaultRecipeRegistry();
+  // Scoped to this insight pass, then discarded. Detection reads a STATIC checkout, so
+  // within one pass a file cannot change — which is what makes memoizing safe here and
+  // why the cache must not outlive the run (a module-level singleton would leak state
+  // between runs and break test hermeticity).
+  const cache = new FsCache();
   const runtimeSet = new Set<Runtime>();
   const frameworkSet = new Set<string>();
   const taskCommands: RepoInsights['taskCommands'] = [];
@@ -424,9 +435,25 @@ async function gatherInsights(
     const absDir = rootDir === '.' ? repoPath : join(repoPath, rootDir);
     const ctx: RepoContext = { repoPath, scopeDir: rootDir };
 
+    // These reads are independent of one another, so issue them together rather than
+    // awaiting each in turn. Detection is I/O-bound and this loop already runs once per
+    // candidate root, so a serial chain here multiplies latency by the number of roots in
+    // a monorepo. Accumulation below stays sequential and in root order, which is what
+    // keeps every dedup (`seenTask`, `seenDockerfile`) and the resulting output stable.
+    const [tasks, dockerfileAnalysis, claims, dependencies, files, hasNode, hasPython] =
+      await Promise.all([
+        recoverTasks(absDir),
+        analyzeDockerfiles(absDir),
+        registry.collectAtTier(1, ctx),
+        allEcosystemDependencies(absDir),
+        filesAt(cache, absDir),
+        hasFile(cache, absDir, 'package.json'),
+        hasFile(cache, absDir, 'requirements.txt', 'pyproject.toml', 'manage.py'),
+      ]);
+
     // Maintainer-declared tasks (Makefile/Taskfile/justfile/package scripts), deduped
     // by source+name across roots.
-    for (const task of await recoverTasks(absDir)) {
+    for (const task of tasks) {
       const key = `${task.source}:${task.name}:${task.command}`;
       if (seenTask.has(key)) continue;
       seenTask.add(key);
@@ -438,7 +465,6 @@ async function gatherInsights(
       });
     }
 
-    const dockerfileAnalysis = await analyzeDockerfiles(absDir);
     for (const dockerfile of dockerfileAnalysis.dockerfiles) {
       const key = `${dockerfile.rootDir}:${dockerfile.file}`;
       if (seenDockerfile.has(key)) continue;
@@ -450,17 +476,12 @@ async function gatherInsights(
     // Runtime claims from tier-1 detectors, best (highest-confidence) first. The registry
     // may hold detectors of other kinds (roles, …), so narrow by the fact's `kind` tag
     // rather than casting — a claim of another kind is filtered out, never mis-typed.
-    const claims = await registry.collectAtTier(1, ctx);
     const runtimeClaim = bestClaim(claimsOfKind<RuntimeFact>(claims, 'runtime'));
-    const dependencies = await allEcosystemDependencies(absDir);
-    const files = await filesAt(absDir);
 
     // Only runtimes with a genuine manifest at this root count as present. node/python
     // are inferred from their common manifests (package.json / requirements|pyproject),
     // which the seed-stack readers already parsed into `dependencies`.
     if (runtimeClaim) runtimeSet.add(runtimeClaim.value.runtime);
-    const hasNode = await hasFile(absDir, 'package.json');
-    const hasPython = await hasFile(absDir, 'requirements.txt', 'pyproject.toml', 'manage.py');
     if (hasNode) runtimeSet.add('node');
     if (hasPython) runtimeSet.add('python');
 
