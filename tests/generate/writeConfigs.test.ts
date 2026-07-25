@@ -75,6 +75,9 @@ describe('writeConfigs', () => {
     const generated = await writeConfigs(ctx);
 
     expect(generated.find((f) => f.kind === 'env')?.path).toBe('.env');
+    // An env file is where users put real credentials — keep it owner-only, not 0644.
+    const mode = (await stat(join(ctx.workspaceDir, '.env'))).mode & 0o777;
+    expect(mode).toBe(0o600);
     const envText = await readFile(join(ctx.workspaceDir, '.env'), 'utf8');
     expect(envText).toContain('JWT_SECRET=change-me');
 
