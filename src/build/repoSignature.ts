@@ -72,48 +72,29 @@ export function recipeFingerprint(ctx: RunContext): string[] {
       tokens.add(node.source.recipeId);
       continue;
     }
-    // A seed-stack template node carries no recipe id; derive one from its framework so
-    // the fingerprint still changes when the seed framework changes.
-    const framework =
-      node.kind === 'backend'
-        ? ctx.detection?.backend?.framework
-        : node.kind === 'frontend'
-          ? ctx.detection?.frontend?.framework
-          : undefined;
-    tokens.add(`seed:${node.kind}:${framework ?? 'unknown'}`);
+    // A seed-stack template node carries no recipe id; derive one from ITS OWN
+    // component's framework (via componentRootDir, not the singular compat field) so N
+    // same-role nodes don't collapse into one token — a monorepo with 3 backends must
+    // invalidate when ANY of the 3 changes shape, not just the primary. rootDir is part
+    // of the token for the same reason: two same-framework nodes would otherwise
+    // produce an identical token and the Set would silently dedupe them to one.
+    const component = ctx.detection?.components.find((c) => c.rootDir === node.componentRootDir);
+    tokens.add(
+      `seed:${node.kind}:${node.componentRootDir ?? '?'}:${component?.framework ?? 'unknown'}`
+    );
   }
   return [...tokens].sort();
-}
-
-/**
- * Every detected seed component, preferring the authoritative `components[]` list and
- * falling back to the two legacy `frontend`/`backend` slots.
- *
- * WHY THE FALLBACK. `components[]` is the N-component list that replaces the two nullable
- * slots; `frontend`/`backend` become derived views that each surface only ONE entry. Since
- * this shape is the *invalidation guard* for a stored heal override, reading the derived
- * views would fingerprint at most two components of a repo that may have many — so a repo
- * could change shape (gain, lose, or re-frame a third service) while its signature stayed
- * identical, and a stale override would be replayed against it.
- *
- * Reading `components[]` when present keeps that guard complete, and the fallback keeps
- * this correct before the field exists.
- */
-function detectedComponents(detection: RunContext['detection']): { framework?: string }[] {
-  const withComponents = detection as { components?: { framework?: string }[] } | undefined;
-  if (Array.isArray(withComponents?.components)) return withComponents.components;
-  return [detection?.frontend, detection?.backend].filter(
-    (c): c is NonNullable<typeof c> => c != null
-  );
 }
 
 /** Assemble the full shape (identity + descriptors) for the current run. */
 export function repoShapeFrom(ctx: RunContext): RepoShape {
   const detection = ctx.detection;
+  // Every detected component's framework, not just the primary frontend/backend's — a
+  // monorepo with 3 Express services should invalidate a stored override if any of the
+  // 3 changes framework, not just whichever one .backend happens to resolve to.
   const frameworks: string[] = [];
-  for (const component of detectedComponents(detection)) {
-    const framework = component.framework;
-    if (framework !== undefined && framework !== 'unknown') frameworks.push(framework);
+  for (const component of detection?.components ?? []) {
+    if (component.framework !== 'unknown') frameworks.push(component.framework);
   }
   return {
     repoId: normalizeRepoId(ctx.repoUrl),

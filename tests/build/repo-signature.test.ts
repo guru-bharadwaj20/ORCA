@@ -20,18 +20,16 @@ describe('shape covers every component, not just two slots', () => {
     expect(repoShapeFrom(ctx).frameworks).toEqual(['express', 'nestjs', 'react']);
   });
 
-  it('falls back to the legacy slots when components[] is absent', () => {
+  it('is empty when no components were detected', () => {
+    // `components[]` is now the authoritative list and always present, so there is no
+    // legacy frontend/backend fallback to reach for — an empty list means an empty shape.
     const ctx = {
       repoUrl: 'https://github.com/o/r.git',
-      detection: {
-        languages: ['python'],
-        frontend: null,
-        backend: { framework: 'django' },
-      },
+      detection: { languages: ['python'], components: [] },
       plan: { services: [] },
     } as never;
 
-    expect(repoShapeFrom(ctx).frameworks).toEqual(['django']);
+    expect(repoShapeFrom(ctx).frameworks).toEqual([]);
   });
 
   it('drops unknown frameworks from the shape', () => {

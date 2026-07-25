@@ -199,7 +199,9 @@ describe('learned heal overrides through the pipeline', () => {
     // The re-heal rewrote the override with the CURRENT (correct) fingerprint.
     const rewritten = await new HealOverrideStore(orcaHome).lookup(signature);
     expect(rewritten?.recipeFingerprint).not.toEqual(['python-fastapi']);
-    expect(rewritten?.recipeFingerprint).toContain('seed:backend:express');
+    // Fingerprint tokens now include the owning component's rootDir (mern's backend is
+    // at 'server'), so two same-framework nodes never collapse into one token.
+    expect(rewritten?.recipeFingerprint).toContain('seed:backend:server:express');
   });
 
   it('(d) the override persists to disk and reloads in a separate pipeline run', async () => {

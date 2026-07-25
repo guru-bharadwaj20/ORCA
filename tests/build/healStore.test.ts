@@ -22,7 +22,7 @@ import {
   signatureFor,
 } from '../../src/build/repoSignature.js';
 import { createRunContext, type Logger } from '../../src/core/context.js';
-import type { DetectionResult } from '../../src/detect/types.js';
+import type { DetectedComponent, DetectionResult } from '../../src/detect/types.js';
 import type { ServicePlan } from '../../src/plan/types.js';
 
 const silent: Logger = { debug() {}, info() {}, warn() {}, error() {} };
@@ -72,6 +72,10 @@ describe('recipeFingerprint (recipe-agnostic)', () => {
       repoPath: '/x',
       languages: ['javascript'],
       packageManagers: ['npm'],
+      // recipeFingerprint now looks up a seed node's OWN component via componentRootDir
+      // (not the singular .backend compat field), so this needs a real rootDir - kept in
+      // sync with the ServiceNode fixtures below, which all use componentRootDir: '.'.
+      components: [{ role: 'backend', rootDir: '.', framework: 'express' } as DetectedComponent],
       frontend: null,
       backend: { framework: 'express' },
       databases: [],
@@ -108,6 +112,7 @@ describe('recipeFingerprint (recipe-agnostic)', () => {
         id: 'backend',
         name: 'backend',
         kind: 'backend',
+        componentRootDir: '.',
         source: { type: 'build', context: '.', dockerfile: 'Dockerfile' },
         ports: [],
         environment: {},
@@ -115,12 +120,12 @@ describe('recipeFingerprint (recipe-agnostic)', () => {
         volumes: [],
       },
     ]);
-    expect(recipeFingerprint(ctx)).toEqual(['seed:backend:express']);
+    expect(recipeFingerprint(ctx)).toEqual(['seed:backend:.:express']);
   });
 
   it('uses the recipeId verbatim for an ecosystem/inferred node (any future recipe)', () => {
     const ctx = createRunContext({ repoUrl: 'x', workspaceDir: '/x', logger: silent });
-    ctx.detection = detection({ backend: null });
+    ctx.detection = detection({ backend: null, components: [] });
     ctx.plan = plan([
       {
         id: 'app',
@@ -153,6 +158,7 @@ describe('recipeFingerprint (recipe-agnostic)', () => {
         id: 'backend',
         name: 'backend',
         kind: 'backend',
+        componentRootDir: '.',
         source: { type: 'build', context: '.', dockerfile: 'Dockerfile' },
         ports: [],
         environment: {},
@@ -164,7 +170,7 @@ describe('recipeFingerprint (recipe-agnostic)', () => {
     expect(shape.repoId).toBe('github.com/acme/app');
     expect(shape.languages).toEqual(['javascript', 'typescript']); // sorted
     expect(shape.frameworks).toEqual(['express']);
-    expect(shape.recipeFingerprint).toEqual(['seed:backend:express']);
+    expect(shape.recipeFingerprint).toEqual(['seed:backend:.:express']);
   });
 });
 

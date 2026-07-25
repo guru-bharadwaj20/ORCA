@@ -125,12 +125,26 @@ export async function writeConfigs(ctx: RunContext): Promise<GeneratedFile[]> {
   };
 
   const contextsSeen = new Set<string>();
-  for (const role of ['backend', 'frontend'] as const) {
-    const component = role === 'backend' ? detection.backend : detection.frontend;
-    const node = plan.services.find((s) => s.id === role);
-    if (component === null || node === undefined || node.source.type !== 'build') continue;
+  // One pass per seed frontend/backend NODE, not per role — a monorepo can have more
+  // than one same-role node now (§P0 fix). Each node carries `componentRootDir`, which
+  // pairs it back to its `DetectedComponent` (id alone isn't enough once there can be
+  // more than 2 possible ids).
+  for (const node of plan.services) {
+    if (node.kind !== 'backend' && node.kind !== 'frontend') continue;
+    if (node.source.type !== 'build' || node.componentRootDir === undefined) continue;
+    const component = detection.components.find(
+      (c) => c.role === node.kind && c.rootDir === node.componentRootDir
+    );
+    if (component === undefined) continue;
+    const role = node.kind;
 
-    const vars = refinedComponentVars(component, role, filled);
+    // AI-fill only ever refines the primary component per role (see pipeline.ts) — an
+    // additional same-role component always builds from recipe/template defaults, so
+    // `filled` is only consulted for the one node that's actually the primary.
+    const isPrimary =
+      node.componentRootDir ===
+      (role === 'backend' ? detection.backend : detection.frontend)?.rootDir;
+    const vars = refinedComponentVars(component, role, isPrimary ? filled : {});
     // Seed stacks render their hand-verified template; the `dockerfileFor` seam is
     // where ecosystem/inferred components will synthesize instead (open-role work).
     await write(
