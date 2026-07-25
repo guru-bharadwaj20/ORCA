@@ -13,9 +13,9 @@ import { join } from 'node:path';
 
 import {
   bestClaim,
+  claimsOfKind,
   combineConfidence,
   reasoning,
-  type Claim,
   type Evidence,
 } from '../model/claim.js';
 import type { RepoContext } from '../model/detector.js';
@@ -31,6 +31,7 @@ import { detectComponentRole } from './componentRole.js';
 import { analyzeDockerfiles, runtimeFromBaseImage } from './dockerfile.js';
 import { analyzeGitlabCi } from './gitlabCi.js';
 import { defaultDetectorRegistry } from './detectors/index.js';
+import type { RuntimeFact } from './detectors/facts.js';
 import { detectEntrypoint } from './entrypoint.js';
 import { detectBackendFramework, detectFrontendFramework } from './framework.js';
 import { matchFrameworks } from './frameworkSignatures.js';
@@ -446,19 +447,18 @@ async function gatherInsights(
       runtimeSet.add(runtimeFromBaseImage(dockerfile.baseImage));
     }
 
-    // Runtime claims from tier-1 detectors, best (highest-confidence) first.
-    const claims: Claim<unknown>[] = [];
-    for (const detector of registry.atTier(1)) {
-      claims.push(...(await detector.detect(ctx)));
-    }
-    const runtimeClaim = bestClaim(claims as Claim<Runtime>[]);
+    // Runtime claims from tier-1 detectors, best (highest-confidence) first. The registry
+    // may hold detectors of other kinds (roles, …), so narrow by the fact's `kind` tag
+    // rather than casting — a claim of another kind is filtered out, never mis-typed.
+    const claims = await registry.collectAtTier(1, ctx);
+    const runtimeClaim = bestClaim(claimsOfKind<RuntimeFact>(claims, 'runtime'));
     const dependencies = await allEcosystemDependencies(absDir);
     const files = await filesAt(absDir);
 
     // Only runtimes with a genuine manifest at this root count as present. node/python
     // are inferred from their common manifests (package.json / requirements|pyproject),
     // which the seed-stack readers already parsed into `dependencies`.
-    if (runtimeClaim) runtimeSet.add(runtimeClaim.value);
+    if (runtimeClaim) runtimeSet.add(runtimeClaim.value.runtime);
     const hasNode = await hasFile(absDir, 'package.json');
     const hasPython = await hasFile(absDir, 'requirements.txt', 'pyproject.toml', 'manage.py');
     if (hasNode) runtimeSet.add('node');
@@ -467,7 +467,7 @@ async function gatherInsights(
     // Match frameworks against whichever runtimes are actually present here. A probe
     // set is unnecessary now that runtime presence is established up front.
     const present: Runtime[] = [
-      runtimeClaim?.value,
+      runtimeClaim?.value.runtime,
       hasNode ? 'node' : undefined,
       hasPython ? 'python' : undefined,
     ].filter((r): r is Runtime => Boolean(r));
@@ -488,8 +488,12 @@ async function gatherInsights(
     // roots stay on the seed frontend/backend path, so they're excluded below (by
     // runtime here, by recipe id further down) to avoid double-placing the same
     // directory.
-    if (runtimeClaim && runtimeClaim.value !== 'node' && runtimeClaim.value !== 'python') {
-      const recipe = recipes.match({ runtime: runtimeClaim.value, dependencies, files });
+    if (
+      runtimeClaim &&
+      runtimeClaim.value.runtime !== 'node' &&
+      runtimeClaim.value.runtime !== 'python'
+    ) {
+      const recipe = recipes.match({ runtime: runtimeClaim.value.runtime, dependencies, files });
       if (recipe) {
         const detected = await detectComponentRole(absDir, {
           dependencies,
@@ -498,7 +502,7 @@ async function gatherInsights(
         });
         ecosystemComponents.push({
           rootDir,
-          runtime: runtimeClaim.value,
+          runtime: runtimeClaim.value.runtime,
           recipeId: recipe.id,
           role: detected?.role ?? 'backend',
         });
