@@ -163,7 +163,13 @@ export interface RepoInsights {
    * like `ciCommands` above, since job/stage grouping is what was asked for.
    */
   ciProviders: {
-    provider: 'gitlab' | 'azure' | 'circleci';
+    /**
+     * Which provider declared it. An OPEN taxonomy (same shape as `Runtime` and
+     * `PackageManager`): known members are typed for autocomplete, but nothing branches
+     * on this value — it is a label inside the provenance string — so a fifth provider
+     * is a parser plus data, never an enum edit that ripples through consumers.
+     */
+    provider: 'gitlab' | 'azure' | 'circleci' | (string & {});
     file: string;
     stages: string[];
     jobs: {
