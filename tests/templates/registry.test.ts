@@ -35,12 +35,15 @@ function detectionResult(parts: {
   backend?: DetectedComponent | null;
   databases?: DetectedDatabase[];
 }): DetectionResult {
+  const frontend = parts.frontend ?? null;
+  const backend = parts.backend ?? null;
   return {
     repoPath: '/tmp/repo',
     languages: ['javascript', 'python'] as Language[],
     packageManagers: ['npm', 'pip'] as PackageManager[],
-    frontend: parts.frontend ?? null,
-    backend: parts.backend ?? null,
+    components: [frontend, backend].filter((c): c is DetectedComponent => c !== null),
+    frontend,
+    backend,
     databases: parts.databases ?? [],
     isSupported: true,
     confidence: 0.9,
@@ -51,8 +54,12 @@ function detectionResult(parts: {
       monorepoTools: [],
       ciCommands: [],
       ciRuntimeVersions: [],
+      ciProviders: [],
+      dockerfiles: [],
       taskCommands: [],
+      scriptSources: [],
       ecosystemComponents: [],
+      recoveredBuild: null,
     },
     warnings: [],
   };
