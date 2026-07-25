@@ -29,13 +29,13 @@ export interface RepoContext {
  * 2 = CI analysis, 3 = AI inference, 4 = dynamic probing. The runner executes tiers in
  * order and only escalates to a higher tier when confidence gaps remain (deterministic-first).
  */
-export interface Detector {
+export interface Detector<V = unknown> {
   /** Stable id, namespaced by kind, e.g. "manifest:node", "ci:github-actions". */
   id: string;
   /** Ladder rung (see docs §3). */
   tier: 1 | 2 | 3 | 4;
   /** Emit zero or more scored, evidence-backed claims for this context. */
-  detect(ctx: RepoContext): Promise<Claim<unknown>[]>;
+  detect(ctx: RepoContext): Promise<Claim<V>[]>;
 }
 
 /**
@@ -46,9 +46,16 @@ export interface Detector {
 export class DetectorRegistry {
   private readonly detectors: Detector[] = [];
 
-  /** Register a detector. Returns `this` for chaining. */
-  register(detector: Detector): this {
-    this.detectors.push(detector);
+  /**
+   * Register a detector. Returns `this` for chaining.
+   *
+   * Detectors of **any** claim kind may share one registry: a detector's value type is
+   * tagged (`KindedValue`), so consumers narrow with `claimsOfKind` rather than casting.
+   * Before that tag existed, mixing kinds here would have mis-typed claims, which is why
+   * role detectors were kept in a separate list.
+   */
+  register<V>(detector: Detector<V>): this {
+    this.detectors.push(detector as Detector);
     return this;
   }
 
@@ -60,5 +67,17 @@ export class DetectorRegistry {
   /** Every registered detector, in registration order. */
   all(): readonly Detector[] {
     return this.detectors;
+  }
+
+  /**
+   * Run every detector at `tier` and return the union of their claims, unfiltered.
+   * Callers narrow to the kind they care about with `claimsOfKind`.
+   */
+  async collectAtTier(tier: Detector['tier'], ctx: RepoContext): Promise<Claim<unknown>[]> {
+    const claims: Claim<unknown>[] = [];
+    for (const detector of this.atTier(tier)) {
+      claims.push(...(await detector.detect(ctx)));
+    }
+    return claims;
   }
 }

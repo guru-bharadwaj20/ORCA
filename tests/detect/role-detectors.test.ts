@@ -180,7 +180,7 @@ describe('what library must NOT claim', () => {
       JSON.stringify({ name: 'x', main: 'dist/index.js', scripts: { build: 'tsc' } })
     );
     const claims = await libraryDetector.detect(ctxFor(repo));
-    expect(claims[0]?.value).toBe('library');
+    expect(claims[0]?.value).toEqual({ kind: 'role', role: 'library' });
   });
 
   it('declines for a Rust crate with a binary target', async () => {
@@ -194,7 +194,7 @@ describe('what library must NOT claim', () => {
     await writeFile(join(repo, 'Cargo.toml'), '[package]\nname = "x"\nversion = "0.1.0"\n');
     await mkdir(join(repo, 'src'));
     await writeFile(join(repo, 'src', 'lib.rs'), 'pub fn f() {}\n');
-    expect((await libraryDetector.detect(ctxFor(repo)))[0]?.value).toBe('library');
+    expect((await libraryDetector.detect(ctxFor(repo)))[0]?.value.role).toBe('library');
   });
 
   it('declines whenever the component declares a port', async () => {
@@ -230,7 +230,7 @@ describe('job ranking and gating', () => {
 
   it('claims a cron table', async () => {
     await writeFile(join(repo, 'crontab'), '0 3 * * * /app/nightly.sh\n');
-    expect((await jobDetector.detect(ctxFor(repo)))[0]?.value).toBe('job');
+    expect((await jobDetector.detect(ctxFor(repo)))[0]?.value.role).toBe('job');
   });
 
   it('outranks library when a component could satisfy both', async () => {
