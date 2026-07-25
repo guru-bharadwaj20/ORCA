@@ -13,7 +13,7 @@
  * source files are rejected here regardless of what the model claims.
  */
 
-import { writeFile } from 'node:fs/promises';
+import { lstat, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 import { ai } from '../ai/client.js';
@@ -52,6 +52,32 @@ export function resolveAllowedPath(
   const rel = relative(workspaceDir, abs);
   if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) return null;
   return allowlist.has(rel.split(sep).join('/')) ? abs : null;
+}
+
+/**
+ * `resolveAllowedPath` plus a symlink check on the real filesystem.
+ *
+ * `resolve()` is purely LEXICAL — it cannot see that an allowed path is a symlink whose
+ * target sits outside the workspace. Since this function guards where LLM-proposed
+ * patches may be written, a repo that ships a symlink at a name ORCA later generates
+ * would otherwise redirect a write out of the workspace. Rejecting symlinked targets
+ * outright is safe here: every allowlisted path is a file ORCA itself generated, so a
+ * symlink at that name is never legitimate.
+ */
+export async function resolveAllowedRealPath(
+  workspaceDir: string,
+  file: string,
+  allowlist: ReadonlySet<string>
+): Promise<string | null> {
+  const abs = resolveAllowedPath(workspaceDir, file, allowlist);
+  if (abs === null) return null;
+  try {
+    const stats = await lstat(abs);
+    if (stats.isSymbolicLink()) return null;
+  } catch {
+    // Missing is fine — the patch is creating a file ORCA declared but has not written.
+  }
+  return abs;
 }
 
 /**
@@ -95,7 +121,7 @@ async function applyPatches(
   const applied: string[] = [];
   const rejected: string[] = [];
   for (const patch of suggestion.patches) {
-    const abs = resolveAllowedPath(ctx.workspaceDir, patch.file, allowlist);
+    const abs = await resolveAllowedRealPath(ctx.workspaceDir, patch.file, allowlist);
     if (abs === null) {
       rejected.push(patch.file);
       ctx.logger.warn(

@@ -27,7 +27,7 @@ import { join } from 'node:path';
 import { packageVersion } from '../cli/version.js';
 import type { GeneratedFile, RunContext } from '../core/context.js';
 import { readFileIfExists } from '../utils/fs.js';
-import { resolveAllowedPath } from './selfHeal.js';
+import { resolveAllowedRealPath } from './selfHeal.js';
 import type { RepoShape } from './repoSignature.js';
 
 /** Current on-disk schema version. Bumped only on a breaking record-shape change. */
@@ -162,7 +162,7 @@ export async function applyLearnedOverride(
   const allowlist = new Set(ctx.generatedFiles.map((f) => f.path));
   const applied: string[] = [];
   for (const file of record.files) {
-    const abs = resolveAllowedPath(ctx.workspaceDir, file.path, allowlist);
+    const abs = await resolveAllowedRealPath(ctx.workspaceDir, file.path, allowlist);
     if (abs === null) continue; // silently skip anything not on the generated allowlist
     await writeFile(abs, file.healed, 'utf8');
     applied.push(file.path);
