@@ -57,6 +57,7 @@ const detectionWithPostgres = (): DetectionResult => ({
   repoPath: '/tmp/eco',
   languages: ['go'],
   packageManagers: ['unknown'],
+  components: [],
   frontend: null,
   backend: null,
   databases: [{ engine: 'postgres', defaultPort: 5432, detectedFrom: 'lib/pq' }],
@@ -69,8 +70,12 @@ const detectionWithPostgres = (): DetectionResult => ({
     monorepoTools: [],
     ciCommands: [],
     ciRuntimeVersions: [],
+    ciProviders: [],
+    dockerfiles: [],
     taskCommands: [],
+    scriptSources: [],
     ecosystemComponents: [],
+    recoveredBuild: null,
   },
   warnings: [],
 });
@@ -133,6 +138,9 @@ describe('buildServicePlan — ecosystem DB wiring', () => {
       ports: [{ port: 8000, protocol: 'tcp', source: 'default' }],
       entrypoint: null,
     };
+    // buildServicePlan now reads .components, not the derived .backend directly — keep
+    // them in sync, same as detectStack always does.
+    detection.components = [detection.backend];
     const eco: EcosystemComponent[] = [{ id: 'worker', recipe, component: component('worker') }];
     const plan = buildServicePlan(detection, {}, null, eco);
 

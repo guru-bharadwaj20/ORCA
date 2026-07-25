@@ -76,6 +76,42 @@ function contextFor(rootDir: string): string {
   return rootDir === '.' ? '.' : `./${rootDir}`;
 }
 
+/**
+ * The node id for a non-primary same-role component: its rootDir's basename ("app" at
+ * the repo root), matching the convention `ecosystemComponentsFrom` (pipeline.ts)
+ * already uses. The primary keeps the literal 'backend'/'frontend' id — see
+ * `buildServicePlan` — so a single-frontend+single-backend repo is unaffected.
+ */
+function idFromRootDir(rootDir: string): string {
+  return rootDir === '.' ? 'app' : (rootDir.split('/').pop() ?? 'app');
+}
+
+/** `candidate` if free, else `candidate-2`, `candidate-3`, ... — never drops a component. */
+function uniqueId(candidate: string, taken: ReadonlySet<string>): string {
+  if (!taken.has(candidate)) return candidate;
+  let n = 2;
+  while (taken.has(`${candidate}-${n}`)) n++;
+  return `${candidate}-${n}`;
+}
+
+/**
+ * rootDirs that produced both a frontend AND a backend component — the same collision
+ * the original single-pair `sharedRoot` check caught (a candidate directory with both
+ * react + express), generalized to N components. A single candidate can only ever yield
+ * at most one frontend + one backend (`buildComponent` runs once per role per
+ * candidate — see index.ts), so a rootDir can never collide with more than these two;
+ * no numbered Dockerfile suffixes are needed beyond the existing `.frontend`/`.backend`.
+ */
+function sharedRootDirs(components: readonly DetectedComponent[]): Set<string> {
+  const seen = new Set<string>();
+  const shared = new Set<string>();
+  for (const c of components) {
+    if (seen.has(c.rootDir)) shared.add(c.rootDir);
+    seen.add(c.rootDir);
+  }
+  return shared;
+}
+
 /** A detected database paired with the concrete node built for it. */
 interface DatabasePair {
   db: DetectedDatabase;
@@ -243,60 +279,85 @@ export function buildServicePlan(
 ): ServicePlan {
   const { nodes: dbNodes, pairs: dbPairs } = databaseNodes(detection.databases);
   const nodes: ServiceNode[] = [...dbNodes];
+  const usedIds = new Set<string>(nodes.map((n) => n.id));
 
-  // Both components sharing one root would collide on ./Dockerfile — disambiguate.
-  const sharedRoot =
-    detection.frontend !== null &&
-    detection.backend !== null &&
-    detection.frontend.rootDir === detection.backend.rootDir;
+  // Any detected database is a repo-wide dependency, so every backend-role component
+  // (and every ecosystem service, below) gets the same health-gated `depends_on` and
+  // connection env — computed once, reused by every node that needs it.
+  const dbEnv = connectionEnv(dbPairs);
+  const dbDeps: ServiceDependency[] = dbNodes.map((db) => ({
+    serviceId: db.id,
+    condition: db.healthcheck ? 'service_healthy' : 'service_started',
+  }));
 
+  const shared = sharedRootDirs(detection.components);
   const refined = (component: DetectedComponent, role: 'frontend' | 'backend'): DockerfileVars =>
     refinedComponentVars(component, role, filled);
 
-  let backendNode: ServiceNode | null = null;
-  let backendVars: DockerfileVars | null = null;
-  if (detection.backend !== null) {
-    backendVars = refined(detection.backend, 'backend');
-    const dbDeps: ServiceDependency[] = dbNodes.map((db) => ({
-      serviceId: db.id,
-      condition: db.healthcheck ? 'service_healthy' : 'service_started',
-    }));
-    backendNode = {
-      id: 'backend',
-      name: 'backend',
+  // Backend nodes: one per detected backend-role component, not just detection.backend.
+  // The hint-preferred primary (detection.backend) keeps the literal 'backend' id, so a
+  // single-backend repo is unaffected; additional components get a rootDir-derived id
+  // (uniqueId guards a basename collision — never dropped, unlike the old pickCandidate
+  // behavior this replaces).
+  let primaryBackendNode: ServiceNode | null = null;
+  let primaryBackendVars: DockerfileVars | null = null;
+  for (const component of detection.components) {
+    if (component.role !== 'backend') continue;
+    const isPrimary = detection.backend?.rootDir === component.rootDir;
+    const vars = refined(component, 'backend');
+    const id = uniqueId(isPrimary ? 'backend' : idFromRootDir(component.rootDir), usedIds);
+    usedIds.add(id);
+    const node: ServiceNode = {
+      id,
+      name: id,
       kind: 'backend',
+      componentRootDir: component.rootDir,
       source: {
         type: 'build',
-        context: contextFor(detection.backend.rootDir),
-        dockerfile: sharedRoot ? 'Dockerfile.backend' : 'Dockerfile',
+        context: contextFor(component.rootDir),
+        dockerfile: shared.has(component.rootDir) ? 'Dockerfile.backend' : 'Dockerfile',
       },
-      ports: (backendVars.ports ?? [backendVars.port]).map((port) => ({
+      ports: (vars.ports ?? [vars.port]).map((port) => ({
         host: port,
         container: port,
         protocol: 'tcp',
       })),
       environment: {
-        ...(detection.backend.language === 'python'
+        ...(component.language === 'python'
           ? { DJANGO_DEBUG: '1' }
-          : { NODE_ENV: 'development', PORT: String(backendVars.port) }),
-        ...connectionEnv(dbPairs),
+          : { NODE_ENV: 'development', PORT: String(vars.port) }),
+        ...dbEnv,
       },
-      dependsOn: dbDeps,
-      volumes: componentVolumes(detection.backend, backendVars),
+      dependsOn: [...dbDeps],
+      volumes: componentVolumes(component, vars),
     };
-    nodes.push(backendNode);
+    nodes.push(node);
+    if (isPrimary) {
+      primaryBackendNode = node;
+      primaryBackendVars = vars;
+    }
   }
 
-  if (detection.frontend !== null) {
-    const vars = refined(detection.frontend, 'frontend');
-    nodes.push({
-      id: 'frontend',
-      name: 'frontend',
+  // Frontend nodes: same pattern. VITE_API_URL and the startup dependency always point
+  // at the PRIMARY backend for every frontend — with N backends there's no signal for
+  // which frontend talks to which, so every frontend gets the same default the
+  // single-backend case already had, rather than guessing a pairing.
+  let primaryFrontendNode: ServiceNode | null = null;
+  for (const component of detection.components) {
+    if (component.role !== 'frontend') continue;
+    const isPrimary = detection.frontend?.rootDir === component.rootDir;
+    const vars = refined(component, 'frontend');
+    const id = uniqueId(isPrimary ? 'frontend' : idFromRootDir(component.rootDir), usedIds);
+    usedIds.add(id);
+    const node: ServiceNode = {
+      id,
+      name: id,
       kind: 'frontend',
+      componentRootDir: component.rootDir,
       source: {
         type: 'build',
-        context: contextFor(detection.frontend.rootDir),
-        dockerfile: sharedRoot ? 'Dockerfile.frontend' : 'Dockerfile',
+        context: contextFor(component.rootDir),
+        dockerfile: shared.has(component.rootDir) ? 'Dockerfile.frontend' : 'Dockerfile',
       },
       ports: (vars.ports ?? [vars.port]).map((port) => ({
         host: port,
@@ -306,24 +367,23 @@ export function buildServicePlan(
       environment: {
         NODE_ENV: 'development',
         // The browser talks to the backend from the host, hence localhost.
-        ...(backendVars !== null ? { VITE_API_URL: `http://localhost:${backendVars.port}` } : {}),
+        ...(primaryBackendVars !== null
+          ? { VITE_API_URL: `http://localhost:${primaryBackendVars.port}` }
+          : {}),
       },
       dependsOn:
-        backendNode !== null ? [{ serviceId: backendNode.id, condition: 'service_started' }] : [],
-      volumes: componentVolumes(detection.frontend, vars),
-    });
+        primaryBackendNode !== null
+          ? [{ serviceId: primaryBackendNode.id, condition: 'service_started' }]
+          : [],
+      volumes: componentVolumes(component, vars),
+    };
+    nodes.push(node);
+    if (isPrimary) primaryFrontendNode = node;
   }
 
   // Ecosystem/inferred components (Go/Rust/JVM/.NET) become generic 'service' nodes
   // that build from a synthesized Dockerfile. Ids are de-duplicated against nodes
-  // already placed (databases, seed components). Any detected database is a repo-wide
-  // dependency, so each ecosystem service gets the same health-gated `depends_on` and
-  // connection env a seed backend would — that's the ecosystem DB wiring.
-  const dbEnv = connectionEnv(dbPairs);
-  const dbDeps: ServiceDependency[] = dbNodes.map((db) => ({
-    serviceId: db.id,
-    condition: db.healthcheck ? 'service_healthy' : 'service_started',
-  }));
+  // already placed (databases, seed components).
   for (const eco of ecosystem) {
     if (nodes.some((n) => n.id === eco.id)) continue;
     const node = ecosystemServiceNode(eco.id, eco.component, eco.recipe, eco.commandOrigins ?? []);
@@ -337,10 +397,7 @@ export function buildServicePlan(
   // pure Go/Rust/inferred repo has no seed component). Vars the plan already injects
   // inline are filtered out, so an empty selection means no .env and no env_file at all.
   if (inferred !== null) {
-    const appNode =
-      backendNode ??
-      nodes.find((n) => n.id === 'frontend') ??
-      nodes.find((n) => n.kind === 'service');
+    const appNode = primaryBackendNode ?? primaryFrontendNode ?? nodes.find((n) => n.kind === 'service');
     if (appNode !== undefined && selectEnvVars(inferred, { services: nodes }).length > 0) {
       appNode.envFile = '.env';
     }
