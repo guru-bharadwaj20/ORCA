@@ -15,7 +15,7 @@
 
 import type { KindedValue } from '../../model/claim.js';
 import type { Runtime } from '../../model/recipe.js';
-import type { RunnableRole } from '../types.js';
+import type { Entrypoint, Language, PackageManager, RunnableRole } from '../types.js';
 
 /** "This component's runtime is X" — emitted by the tier-1 manifest detectors. */
 export interface RuntimeFact extends KindedValue<'runtime'> {
@@ -29,8 +29,27 @@ export interface RoleFact extends KindedValue<'role'> {
   role: RunnableRole;
 }
 
+/** "This component's package manager is X" — emitted by the package-manager detector. */
+export interface PackageManagerFact extends KindedValue<'packageManager'> {
+  kind: 'packageManager';
+  packageManager: PackageManager;
+}
+
+/** "This repo uses language X" — emitted by the language detector, one per language. */
+export interface LanguageFact extends KindedValue<'language'> {
+  kind: 'language';
+  language: Language;
+}
+
+/** "This component starts with X" — emitted by the entrypoint detector. */
+export interface EntrypointFact extends KindedValue<'entrypoint'> {
+  kind: 'entrypoint';
+  entrypoint: Entrypoint;
+}
+
 /** Every fact kind the shipped detectors can emit. */
-export type DetectedFact = RuntimeFact | RoleFact;
+export type DetectedFact =
+  RuntimeFact | RoleFact | PackageManagerFact | LanguageFact | EntrypointFact;
 
 /** Construct a `RuntimeFact`. */
 export function runtimeFact(runtime: Runtime): RuntimeFact {
@@ -40,4 +59,19 @@ export function runtimeFact(runtime: Runtime): RuntimeFact {
 /** Construct a `RoleFact`. */
 export function roleFact(role: RunnableRole): RoleFact {
   return { kind: 'role', role };
+}
+
+/** Construct a `PackageManagerFact`. */
+export function packageManagerFact(packageManager: PackageManager): PackageManagerFact {
+  return { kind: 'packageManager', packageManager };
+}
+
+/** Construct a `LanguageFact`. */
+export function languageFact(language: Language): LanguageFact {
+  return { kind: 'language', language };
+}
+
+/** Construct an `EntrypointFact`. */
+export function entrypointFact(entrypoint: Entrypoint): EntrypointFact {
+  return { kind: 'entrypoint', entrypoint };
 }

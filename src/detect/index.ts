@@ -342,7 +342,7 @@ async function detectStackScoped(repoPath: string): Promise<DetectionResult> {
   // by component count — a monorepo with 3 backends isn't inherently "more confidently
   // detected" than one with 1. See docs/universal-understanding-plan.md for the rationale
   // if this is revisited.
-  const evidence = confidenceEvidence(frontend, backend, databases, insights);
+  const evidence = confidenceEvidence(frontend, backend, databases, insights, components);
 
   return {
     repoPath,
@@ -688,13 +688,56 @@ async function gatherInsights(
  * Weights are tuned to preserve the prior heuristic's decision boundaries: a full
  * stack lands well above 0.8, a backend+db service above 0.5.
  */
+/**
+ * Evidence contributed by the per-component detectors that previously returned bare
+ * values.
+ *
+ * These say WHY a component was described the way it was — "pnpm-lock.yaml present"
+ * rather than a silent `'pnpm'`. Weight 0: they explain a component ORCA has already
+ * decided exists, so they belong in the reasoning trail without moving the score (the
+ * component's own detection is what earns confidence). This is design requirement #6
+ * applied to the detectors that were previously invisible in the trail.
+ */
+function componentDetectorEvidence(components: readonly DetectedComponent[]): Evidence[] {
+  const evidence: Evidence[] = [];
+  for (const component of components) {
+    const where = component.rootDir === '.' ? 'repo root' : `'${component.rootDir}'`;
+    if (component.packageManager !== 'unknown') {
+      evidence.push({
+        detector: 'packageManager',
+        family: `packageManager:${component.rootDir}`,
+        signal: `${where}: package manager ${component.packageManager}`,
+        weight: 0,
+      });
+    }
+    if (component.entrypoint) {
+      evidence.push({
+        detector: 'entrypoint',
+        family: `entrypoint:${component.rootDir}`,
+        signal: `${where}: starts with '${component.entrypoint.command}' (${component.entrypoint.source})`,
+        weight: 0,
+      });
+    }
+    if (component.language !== 'unknown') {
+      evidence.push({
+        detector: 'language',
+        family: `language:${component.rootDir}`,
+        signal: `${where}: ${component.language}`,
+        weight: 0,
+      });
+    }
+  }
+  return evidence;
+}
+
 function confidenceEvidence(
   frontend: DetectedComponent | null,
   backend: DetectedComponent | null,
   databases: DetectedDatabase[],
-  insights: RepoInsights
+  insights: RepoInsights,
+  components: readonly DetectedComponent[] = []
 ): Evidence[] {
-  const evidence: Evidence[] = [];
+  const evidence: Evidence[] = [...componentDetectorEvidence(components)];
   if (backend !== null) {
     evidence.push({
       detector: 'index',
