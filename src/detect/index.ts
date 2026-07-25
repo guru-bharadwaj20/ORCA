@@ -657,6 +657,7 @@ function confidenceEvidence(
   if (backend !== null) {
     evidence.push({
       detector: 'index',
+      family: 'component:backend',
       signal: `backend component detected (${backend.framework})`,
       weight: 0.55,
     });
@@ -664,6 +665,7 @@ function confidenceEvidence(
   if (frontend !== null) {
     evidence.push({
       detector: 'index',
+      family: 'component:frontend',
       signal: `frontend component detected (${frontend.framework})`,
       weight: 0.45,
     });
@@ -671,15 +673,28 @@ function confidenceEvidence(
   if (databases.length > 0) {
     evidence.push({
       detector: 'index',
+      family: 'services',
       signal: `database dependency found (${databases.map((d) => d.engine).join(', ')})`,
       weight: 0.35,
     });
   }
   if (frontend?.entrypoint) {
-    evidence.push({ detector: 'index', signal: 'frontend entrypoint resolved', weight: 0.25 });
+    // Same family as the frontend component itself: an entrypoint INSIDE an already
+    // detected component refines that one observation, it is not a second independent one.
+    evidence.push({
+      detector: 'index',
+      family: 'component:frontend',
+      signal: 'frontend entrypoint resolved',
+      weight: 0.25,
+    });
   }
   if (backend?.entrypoint) {
-    evidence.push({ detector: 'index', signal: 'backend entrypoint resolved', weight: 0.25 });
+    evidence.push({
+      detector: 'index',
+      family: 'component:backend',
+      signal: 'backend entrypoint resolved',
+      weight: 0.25,
+    });
   }
   // Ports recovered from a README are explained, not scored. `DetectedPort.source` exists
   // so the log can say WHY a port was chosen, and a README-sourced port is the one case a
@@ -706,8 +721,11 @@ function confidenceEvidence(
     });
   }
   for (const eco of insights.ecosystemComponents) {
+    // One family PER ROOT: separate directories with their own manifests are genuinely
+    // independent observations, so matching five of them is stronger than matching one.
     evidence.push({
       detector: 'recipe',
+      family: `recipe:${eco.rootDir}`,
       signal: `ecosystem component matched (${eco.runtime} → ${eco.recipeId})`,
       weight: 0.55,
     });
