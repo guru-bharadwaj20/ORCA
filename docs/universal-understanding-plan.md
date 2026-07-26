@@ -473,34 +473,31 @@ _Per decision #2: design the interface, do not build execution now._
 _Originally "start Phase A." Phases A–G have since landed; this section now records what
 a verified review says to do next._
 
-**Register the bare-runtime fallback recipes, then stop reporting partial placement as
-success** (§10 rows 13–14, P0/P1 in [`CONTRIBUTING.md`](../CONTRIBUTING.md)).
+**Both prior recommendations have landed. §10 rows 6 and 7 are what remain, and neither
+is urgent** — the honest answer is that the deterministic engine is now in good shape and
+the next real work is a judgement call rather than a defect.
 
-The earlier recommendation here — collapse the component slots, finish decision #1 — has
-**landed**, along with every other row from the first review. What replaced it came from
-probing detection against real manifests rather than reading types, and it is a larger
-hole than anything that review found:
+What landed, and what it bought:
 
-- `node-app` and `python-app` exist as bare-runtime recipes but are never registered in
-  the `RecipeRegistry`, so a Node/Python root whose framework no specific recipe names
-  places **nothing at all**. `fastify`, `koa`, and `nuxt` each detect as
-  `isSupported=false, confidence=0` — despite ORCA having already established the
-  runtime, a manifest, and a start script, which is everything a container needs.
-- `isSupported` reflects whether _any_ component placed, never whether _every_ one did.
-  A `fastify` gateway beside a `fastapi` api yields `isSupported=true, placed=['api']`:
-  ORCA ships half the app and reports success.
+- Registering the bare-runtime fallbacks turned "we know the runtime, the manifest, and
+  the start script, and place nothing" into a built container. `fastify`, `koa`, `nuxt`,
+  and any bespoke Node/Python server now place — the long tail this project exists for.
+- Grading partial placement stopped ORCA reporting success while shipping half a stack.
+  Those two must land together: placing MORE must not mean claiming completeness.
 
-Order matters for the same reason as before. The first is a coverage fix and removes most
-of the false drops; the second is an honesty fix and is much easier to evaluate once the
-drops that remain are genuine. Neither needs new infrastructure — the second is wiring a
-signal into `understanding.ts`'s existing `none`/`partial`/`confident` grader, which the
-pipeline already escalates on.
+The clearest remaining limitation is not in §10 at all. `FrontendFramework` and
+`BackendFramework` are still closed unions (`'react' | 'unknown'` and
+`'express' | 'django' | 'unknown'`), so the seed path can only ever produce three
+first-class components. Everything else reaches the plan as an open `'service'` node via
+the ecosystem path. That is no longer a _coverage_ problem — the fallbacks close it — but
+it does mean "which framework is this" and "how do I build it" are answered by two
+different mechanisms with different vocabularies. Unifying them is the natural successor
+to decision #1, and is a refactor rather than a fix.
 
-**This is also the case for keeping decision #2 deferred.** The static/CI/AI tiers are
-nowhere near exhausted — the row-13 repos fail with _zero_ code executed and _zero_ AI
-consulted, on information already in hand. The ceiling being hit is registration and
-reporting, not the limit of what can be learned without executing code, so these two
-containerize materially more repos than a tier-4 prober would, at zero security cost.
+**This remains the case for keeping decision #2 deferred.** Every gap closed since the
+first review was closed with static analysis alone — no execution, and in the last two
+cases no AI either. The failures were registration and reporting, not the limits of what
+can be learned without running code.
 
 ---
 
@@ -750,8 +747,8 @@ speculative). Open rows are prioritized as P0/P1/P2 in
 | 10  | ~~**Two component slots, not N.**~~ **RESOLVED.** `DetectionResult.components: DetectedComponent[]` is now authoritative; `pickPrimary` replaces `pickCandidate` and drops nothing; `buildServicePlan` emits one `ServiceNode` per component, paired via `componentRootDir`. Verified by `tests/plan/multi-component.test.ts` (3 same-role components → 3 distinct compose services, no `ambiguous-*` warning).                                                                                                            | §2.1, §2.3                |
 | 11  | ~~**Node/Python barred from the generic path.**~~ **RESOLVED (superseded).** The capability this row wanted — a multi-service Node/Python repo wiring a DB to every service — landed on the **seed** path instead: `components[]` places N same-role components and `buildServicePlan` gives each backend the shared connection env and health-gated `depends_on`. The two exclusions deliberately remain, because deleting them double-places every plain react/express/django root. See the P0 row in `CONTRIBUTING.md`. | §5 Phase B                |
 | 12  | ~~**Unbounded repo walks, no caching.**~~ **RESOLVED.** `walk()` is bounded (`MAX_WALK_DEPTH` 24, `MAX_WALK_ENTRIES` 20k) and truncates rather than throwing; reads are memoized by an ambient `AsyncLocalStorage` scope (`withFsCache`), measured at 237 hits / 202 misses on a 4-root repo. (Symlink cycles were never a risk: `isDirectory()` is false for symlinks, so they are never followed.)                                                                                                                       | §3                        |
-| 13  | **Bare-runtime fallback unreachable.** `node-app`/`python-app` are defined but never registered in the `RecipeRegistry`, so a Node/Python root whose framework no specific recipe names places NOTHING — `fastify`, `koa`, and `nuxt` each detect as `isSupported=false, confidence=0`. Verified by probing real manifests. P0 in `CONTRIBUTING.md`.                                                                                                                                                                       |                           |
-| 14  | **Partial placement reports full success.** `isSupported` reflects whether ANY component placed, never whether every one did, so a repo with one unplaceable component ships half an app behind a non-fatal warning (`fastify` + `fastapi` ⇒ `isSupported=true, placed=['api']`). P1 in `CONTRIBUTING.md`.                                                                                                                                                                                                                 |                           |
+| 13  | ~~**Bare-runtime fallback unreachable.**~~ **RESOLVED.** `node-app`/`python-app` are defined but never registered in the `RecipeRegistry`, so a Node/Python root whose framework no specific recipe names places NOTHING — `fastify`, `koa`, and `nuxt` each detect as `isSupported=false, confidence=0`. Verified by probing real manifests. P0 in `CONTRIBUTING.md`.                                                                                                                                                     |                           |
+| 14  | ~~**Partial placement reports full success.**~~ **RESOLVED.** `isSupported` reflects whether ANY component placed, never whether every one did, so a repo with one unplaceable component ships half an app behind a non-fatal warning (`fastify` + `fastapi` ⇒ `isSupported=true, placed=['api']`). P1 in `CONTRIBUTING.md`.                                                                                                                                                                                               |                           |
 
 `DetectedPort.source`'s remaining unused member is `'inferred'` — no detector emits it,
 since nothing currently infers a port without a declaring source. `'readme'` is now live.
