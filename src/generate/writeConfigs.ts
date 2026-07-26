@@ -18,7 +18,7 @@ import { buildEnvFile } from '../orchestrate/envFiles.js';
 import { refinedComponentVars } from '../plan/servicePlan.js';
 import { renderCompose } from '../templates/render.js';
 import { OrcaError } from '../utils/errors.js';
-import { readFileIfExists } from '../utils/fs.js';
+import { readFileIfExists, resolveWithinRoot } from '../utils/fs.js';
 import { planToComposeVars } from './composeVars.js';
 import { dockerfileFor } from './dockerfileFor.js';
 
@@ -124,7 +124,18 @@ export async function writeConfigs(ctx: RunContext): Promise<GeneratedFile[]> {
 
   const generated: GeneratedFile[] = [];
   const write = async (relPath: string, contents: string, kind: GeneratedFile['kind']) => {
-    const abs = join(ctx.workspaceDir, relPath);
+    // relPath is built from component.rootDir / recipe.entrypointScript, which trace
+    // back to the scanned (untrusted) repo. This is defense-in-depth, not the only
+    // guard — resolveWithinRoot() asserts it regardless of what upstream detection/AI
+    // code promises, so a traversal-shaped path can never make it past this point to
+    // write outside the workspace.
+    const abs = resolveWithinRoot(ctx.workspaceDir, relPath);
+    if (abs === null) {
+      throw new OrcaError(
+        `Refusing to write generated file outside the workspace: '${relPath}'.`,
+        'INTERNAL'
+      );
+    }
     await writeFile(abs, contents, 'utf8');
     // An env file holds credentials — placeholders today, but this is the file users edit
     // to add real ones. Default 0644 would leave those world-readable on a shared machine,
