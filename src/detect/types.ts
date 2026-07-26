@@ -42,11 +42,26 @@ export type Language =
  */
 export type PackageManager = BasePackageManager | 'unknown';
 
-/** Supported frontend frameworks. */
-export type FrontendFramework = 'react' | 'unknown';
+/**
+ * Frontend frameworks the seed component detector can name.
+ *
+ * OPEN taxonomy, matching `Runtime` and `PackageManager`: known members are typed for
+ * autocomplete and exhaustiveness where it matters, and `(string & {})` keeps it
+ * extensible so naming a new framework is data plus a detector rule, never an enum edit
+ * that ripples through every consumer. Closing this union was what kept the seed path to
+ * three first-class frameworks while the recipe registry grew past twenty.
+ */
+export type FrontendFramework = 'react' | 'vue' | 'svelte' | 'unknown' | (string & {});
 
-/** Supported backend frameworks. */
-export type BackendFramework = 'express' | 'django' | 'unknown';
+/** Backend frameworks the seed component detector can name. Open, same as above. */
+export type BackendFramework =
+  'express' | 'django' | 'fastify' | 'koa' | 'hapi' | 'unknown' | (string & {});
+
+/** Frontend frameworks ORCA has explicit, hand-tuned handling for. */
+export const KNOWN_FRONTEND_FRAMEWORKS = ['react', 'vue', 'svelte'] as const;
+
+/** Backend frameworks ORCA has explicit, hand-tuned handling for. */
+export const KNOWN_BACKEND_FRAMEWORKS = ['express', 'django', 'fastify', 'koa', 'hapi'] as const;
 
 /** Supported database / cache engines. */
 export type DatabaseEngine = 'postgres' | 'mongodb' | 'redis';
