@@ -92,6 +92,13 @@ export const FRAMEWORK_SIGNATURES: readonly FrameworkSignature[] = [
     weight: 0.9,
   },
   { id: 'astro', runtime: 'node', role: 'fullstack', anyDependency: ['astro'], weight: 0.9 },
+  {
+    id: 'adonis',
+    runtime: 'node',
+    role: 'backend',
+    anyDependency: ['@adonisjs/core'],
+    weight: 0.9,
+  },
   { id: 'express', runtime: 'node', role: 'backend', anyDependency: ['express'], weight: 0.7 },
 
   // --- Python ---
