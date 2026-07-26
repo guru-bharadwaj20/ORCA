@@ -168,6 +168,21 @@ export const NODE_FRAMEWORK_RECIPES: readonly RecipeEntry[] = [
     },
   },
   {
+    // Astro preview serves the real built output and ships with astro itself.
+    matcher: { runtime: 'node', anyDependency: ['astro'] },
+    recipe: {
+      id: 'node-astro',
+      runtime: 'node',
+      packageManager: 'npm',
+      dependencyFiles: ['package.json'],
+      installCommands: ['npm install'],
+      buildCommands: ['npm run build'],
+      startCommand: 'npm run preview -- --host 0.0.0.0 --port 4321',
+      defaultPorts: [4321],
+      baseImages: NODE_IMAGES,
+    },
+  },
+  {
     matcher: { runtime: 'node', anyDependency: ['@angular/core'] },
     recipe: {
       id: 'node-angular',
