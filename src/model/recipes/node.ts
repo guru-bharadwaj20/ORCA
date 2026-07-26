@@ -95,6 +95,20 @@ export const NODE_FRAMEWORK_RECIPES: readonly RecipeEntry[] = [
     },
   },
   {
+    // hapi ships no CLI; the maintainer's script starts the server.
+    matcher: { runtime: 'node', anyDependency: ['@hapi/hapi'] },
+    recipe: {
+      id: 'node-hapi',
+      runtime: 'node',
+      packageManager: 'npm',
+      dependencyFiles: ['package.json'],
+      installCommands: ['npm install'],
+      startCommand: 'npm run start',
+      defaultPorts: [3000],
+      baseImages: NODE_IMAGES,
+    },
+  },
+  {
     matcher: { runtime: 'node', anyDependency: ['@angular/core'] },
     recipe: {
       id: 'node-angular',
