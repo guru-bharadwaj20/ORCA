@@ -33,9 +33,11 @@ export function buildInferencePrompt(input: InferenceInput): { system: string; u
     'determine how it is built and run. Respond with ONLY a JSON object of shape:',
     '{ "runtime": string, "packageManager"?: string, "installCommands": string[],',
     '  "buildCommands": string[], "startCommand": string, "ports": number[],',
-    '  "reasoning": string[] }.',
+    '  "reasoning": string[], "confidence": number }.',
     'Base every claim on concrete evidence from the provided files and list it in',
     '"reasoning". Do not invent commands a maintainer would not run.',
+    '"confidence" is your own honest self-assessment (0.0-1.0) of how well the provided',
+    'files actually support this inference — use a low number when you are guessing.',
   ].join('\n');
 
   const snippetText = Object.entries(input.snippets)

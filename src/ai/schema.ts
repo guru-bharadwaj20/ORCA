@@ -127,6 +127,17 @@ const inferredStartCommand = z
 
 const stringList = z.preprocess(asList, z.array(inferredCommand));
 
+/**
+ * The model's own self-reported confidence (0.0-1.0) in a response, when it provides
+ * one. `AIRouter.completeValidated` (`src/ai/router.ts`) reads this field off the raw
+ * parsed JSON — BEFORE schema validation — to decide whether to escalate to the
+ * fallback provider (`ORCA_MIN_CONFIDENCE`), so it works whether or not a given schema
+ * declares it. It's still declared here on every AI-facing schema so the field survives
+ * validation as a typed, documented part of each response shape rather than being an
+ * implicit, unschema'd side channel.
+ */
+const aiConfidence = z.number().min(0).max(1).optional();
+
 const relativePath = z
   .string()
   .min(1)
@@ -171,6 +182,7 @@ export const FilledTemplateVarsSchema = z.object({
     entrypointScript: relativePath.optional(),
   }),
   notes: z.array(z.string()).default([]),
+  confidence: aiConfidence,
 });
 export type FilledTemplateVars = z.infer<typeof FilledTemplateVarsSchema>;
 
@@ -207,6 +219,7 @@ export const InferredEnvSchema = z.object({
       reason: singleLine,
     })
   ),
+  confidence: aiConfidence,
 });
 export type InferredEnv = z.infer<typeof InferredEnvSchema>;
 
@@ -230,6 +243,7 @@ export const InferredBuildSchema = z.object({
     z.array(z.coerce.number().int().min(1).max(65535)).default([])
   ),
   reasoning: z.array(z.string()).min(1),
+  confidence: aiConfidence,
 });
 export type InferredBuild = z.infer<typeof InferredBuildSchema>;
 
@@ -243,6 +257,7 @@ export const HealSuggestionSchema = z.object({
       contents: z.string(),
     })
   ),
+  confidence: aiConfidence,
 });
 export type HealSuggestion = z.infer<typeof HealSuggestionSchema>;
 
