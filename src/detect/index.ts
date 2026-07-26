@@ -66,6 +66,7 @@ import type {
   Language,
   PackageManager,
   RepoInsights,
+  RunnableRole,
 } from './types.js';
 
 export type { DetectionResult } from './types.js';
@@ -407,6 +408,23 @@ async function hasFile(dir: string, ...names: string[]): Promise<boolean> {
   return found.some(Boolean);
 }
 
+/**
+ * The start command a root's own manifest declares, as a spreadable partial.
+ *
+ * Detection already resolves this (`detectEntrypoint` reads package scripts, Procfile,
+ * manage.py) — it was simply never carried to the plan for ecosystem components, so a
+ * bare-fallback recipe fell back to a hardcoded guess while the real command sat one
+ * function call away. Returns `{}` when nothing declared one, so the field stays absent
+ * rather than empty and the recipe's own command is used unchanged.
+ */
+async function ownStartCommand(
+  absDir: string,
+  role: RunnableRole
+): Promise<{ startCommand?: string }> {
+  const entrypoint = await detectEntrypoint(absDir, role);
+  return entrypoint === null ? {} : { startCommand: entrypoint.command };
+}
+
 /** Marker files present at a directory (mostly basenames, one nested path), for file-marker matching. */
 async function filesAt(dir: string): Promise<string[]> {
   const markers = [
@@ -575,6 +593,7 @@ async function gatherInsights(
           runtime: runtimeClaim.value.runtime,
           recipeId: recipe.id,
           role: detected?.role ?? 'backend',
+          ...(await ownStartCommand(absDir, detected?.role ?? 'backend')),
         });
       }
     }
@@ -596,6 +615,7 @@ async function gatherInsights(
           runtime: 'python',
           recipeId: recipe.id,
           role: detected?.role ?? 'backend',
+          ...(await ownStartCommand(absDir, detected?.role ?? 'backend')),
         });
       }
     }
@@ -619,6 +639,7 @@ async function gatherInsights(
           runtime: 'node',
           recipeId: recipe.id,
           role: detected?.role ?? 'backend',
+          ...(await ownStartCommand(absDir, detected?.role ?? 'backend')),
         });
       }
     }
