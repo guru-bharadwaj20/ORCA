@@ -49,9 +49,14 @@ const GENERIC_BASE = { build: 'debian:bookworm', runtime: 'debian:bookworm-slim'
  * producing a broken `FROM undefined` (or worse) in the emitted Dockerfile.
  */
 function resolveBaseImages(recipe: BuildRecipe): { build: string; runtime: string } {
-  const fallback = Object.hasOwn(DEFAULT_BASE_IMAGES, recipe.runtime)
-    ? DEFAULT_BASE_IMAGES[recipe.runtime as Runtime]
-    : GENERIC_BASE;
+  // `Object.hasOwn` guards the prototype-pollution case above but does NOT narrow the
+  // index access for the compiler (`noUncheckedIndexedAccess` still types it as possibly
+  // undefined), so the `??` both satisfies the type and keeps GENERIC_BASE as the single
+  // fallback for either way the lookup can fail to produce an entry.
+  const fallback =
+    (Object.hasOwn(DEFAULT_BASE_IMAGES, recipe.runtime)
+      ? DEFAULT_BASE_IMAGES[recipe.runtime as Runtime]
+      : undefined) ?? GENERIC_BASE;
   return {
     build: recipe.baseImages.build || fallback.build,
     runtime: recipe.baseImages.runtime || fallback.runtime,

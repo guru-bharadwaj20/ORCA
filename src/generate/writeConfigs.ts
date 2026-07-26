@@ -61,7 +61,10 @@ const RUNTIME_DOCKERIGNORE: Record<string, readonly string[]> = {
  */
 function dockerignoreFor(runtime: string): string {
   if (!Object.hasOwn(RUNTIME_DOCKERIGNORE, runtime)) return DOCKERIGNORE;
-  const extra = RUNTIME_DOCKERIGNORE[runtime];
+  // `Object.hasOwn` guards the prototype case but does not narrow the index access for
+  // the compiler, so the `?? []` collapses "absent" into the same no-extra-entries path
+  // the length check below already handles.
+  const extra = RUNTIME_DOCKERIGNORE[runtime] ?? [];
   if (extra.length === 0) return DOCKERIGNORE;
   return `${DOCKERIGNORE}${extra.join('\n')}\n`;
 }
