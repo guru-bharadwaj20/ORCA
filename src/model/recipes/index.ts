@@ -200,6 +200,15 @@ export const BARE_RUNTIME_RECIPES = [
   ...BARE_PYTHON_RECIPES,
 ];
 
+/**
+ * Ids of the bare runtime fallbacks, for consumers that must treat "matched only because
+ * a manifest exists" differently from "matched a real framework". Derived from the list
+ * so it cannot fall out of step with it.
+ */
+export const BARE_RUNTIME_RECIPE_IDS: ReadonlySet<string> = new Set(
+  BARE_RUNTIME_RECIPES.map((entry) => entry.recipe.id)
+);
+
 /** Every recipe ORCA ships, in the priority order documented above. */
 export const ALL_RECIPES = [
   ...NODE_FRAMEWORK_RECIPES,
