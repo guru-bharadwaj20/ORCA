@@ -183,6 +183,21 @@ export const NODE_FRAMEWORK_RECIPES: readonly RecipeEntry[] = [
     },
   },
   {
+    // AdonisJS build emits build/bin/server.js; 3333 is its documented default.
+    matcher: { runtime: 'node', anyDependency: ['@adonisjs/core'] },
+    recipe: {
+      id: 'node-adonis',
+      runtime: 'node',
+      packageManager: 'npm',
+      dependencyFiles: ['package.json'],
+      installCommands: ['npm install'],
+      buildCommands: ['npm run build'],
+      startCommand: 'node build/bin/server.js',
+      defaultPorts: [3333],
+      baseImages: NODE_IMAGES,
+    },
+  },
+  {
     matcher: { runtime: 'node', anyDependency: ['@angular/core'] },
     recipe: {
       id: 'node-angular',
