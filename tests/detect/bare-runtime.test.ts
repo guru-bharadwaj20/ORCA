@@ -28,7 +28,7 @@ describe('bare-runtime fallback', () => {
   it('places a Node component whose framework no recipe names', async () => {
     const result = await detectStack(FIXTURE);
 
-    // Fastify has no recipe of its own. Before the fallback was registered this whole
+    // A bespoke http server on undici — no framework recipe names it. Before the fallback was registered this whole
     // repo detected as isSupported=false, confidence=0, placed=[].
     const gateway = result.insights.ecosystemComponents.find((c) => c.rootDir === 'gateway');
     expect(gateway?.recipeId).toBe('node-app');

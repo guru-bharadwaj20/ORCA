@@ -65,6 +65,22 @@ export const NODE_FRAMEWORK_RECIPES: readonly RecipeEntry[] = [
     },
   },
   {
+    // Fastify's own docs run the app directly; it ships no build step and no CLI server.
+    matcher: { runtime: 'node', anyDependency: ['fastify'] },
+    recipe: {
+      id: 'node-fastify',
+      runtime: 'node',
+      packageManager: 'npm',
+      dependencyFiles: ['package.json'],
+      installCommands: ['npm install'],
+      // The maintainer's own `start` script, not `node server.js` — a guessed filename is
+      // the single most common way a generated image dies at startup.
+      startCommand: 'npm run start',
+      defaultPorts: [3000],
+      baseImages: NODE_IMAGES,
+    },
+  },
+  {
     matcher: { runtime: 'node', anyDependency: ['@angular/core'] },
     recipe: {
       id: 'node-angular',
