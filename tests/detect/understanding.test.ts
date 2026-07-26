@@ -123,3 +123,50 @@ describe('describeUnderstanding', () => {
     expect(text).toContain('confidence');
   });
 });
+
+describe('partial placement', () => {
+  /**
+   * The defect: `isSupported` asks whether ANYTHING placed, never whether EVERYTHING did,
+   * so a repo with a dropped component reported full success and shipped a partial stack.
+   */
+  const unplaced = (rootDir: string) => ({
+    code: 'unplaced-component',
+    message: `'${rootDir}' declares a manifest but nothing was placed for it — it will be missing from the generated stack.`,
+    detector: 'index',
+  });
+
+  it('grades a repo with a dropped component as partial', () => {
+    const u = assessUnderstanding(detection({ warnings: [unplaced('legacy')] }));
+
+    expect(u.level).toBe('partial');
+    expect(u.shouldEscalate).toBe(true);
+  });
+
+  it('names the dropped roots in the gap', () => {
+    const u = assessUnderstanding(detection({ warnings: [unplaced('legacy'), unplaced('tools')] }));
+
+    // The reviewer needs to know WHICH directory is missing, not just that one is.
+    expect(u.gaps.some((g) => g.includes('legacy, tools'))).toBe(true);
+    expect(u.gaps.some((g) => g.includes('2 detected component(s)'))).toBe(true);
+  });
+
+  it('leaves a fully-placed repo confident', () => {
+    // The guard that keeps this from grading every ordinary repo as partial.
+    expect(assessUnderstanding(detection()).level).toBe('confident');
+  });
+
+  it('ignores the coarser unrecognized-component warning', () => {
+    // `unrecognized-component` fires whenever the SEED path can't classify a root — even
+    // for roots the ecosystem path then placed successfully. Grading on it would report
+    // a complete stack as partial.
+    const u = assessUnderstanding(
+      detection({
+        warnings: [
+          { code: 'unrecognized-component', message: "'api' has a manifest…", detector: 'index' },
+        ],
+      })
+    );
+
+    expect(u.level).toBe('confident');
+  });
+});
