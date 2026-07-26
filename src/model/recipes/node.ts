@@ -138,6 +138,21 @@ export const NODE_FRAMEWORK_RECIPES: readonly RecipeEntry[] = [
     },
   },
   {
+    // Nuxt build emits .output/server; exec it directly rather than via nuxt start.
+    matcher: { runtime: 'node', anyDependency: ['nuxt'] },
+    recipe: {
+      id: 'node-nuxt',
+      runtime: 'node',
+      packageManager: 'npm',
+      dependencyFiles: ['package.json'],
+      installCommands: ['npm install'],
+      buildCommands: ['npm run build'],
+      startCommand: 'node .output/server/index.mjs',
+      defaultPorts: [3000],
+      baseImages: NODE_IMAGES,
+    },
+  },
+  {
     matcher: { runtime: 'node', anyDependency: ['@angular/core'] },
     recipe: {
       id: 'node-angular',
