@@ -139,4 +139,11 @@ export const PYTHON_RECIPES: readonly RecipeEntry[] = [
     serverArgs: 'app:app --host 0.0.0.0 --port 8000',
     port: 8000,
   }),
+  ...pythonServiceRecipes({
+    id: 'python-sanic',
+    dependency: 'sanic',
+    server: 'sanic',
+    serverArgs: 'app:app --host 0.0.0.0 --port 8000',
+    port: 8000,
+  }),
 ];
