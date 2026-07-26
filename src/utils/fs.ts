@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { readdir, readFile } from 'node:fs/promises';
+import { lstat, readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 /**
@@ -58,8 +58,27 @@ export const DEFAULT_WALK_IGNORE: string[] = [
   '.orca-golden',
 ];
 
-/** Read a file, returning null when it is absent — bypassing any active scope. */
+/**
+ * Read a file, returning null when it is absent — bypassing any active scope.
+ *
+ * Refuses to follow symlinks: detection reads fixed, well-known filenames
+ * (`package.json`, `README.md`, …) out of an untrusted cloned repo, and `readFile`
+ * dereferences symlinks by default. A repo that commits one of those names as a
+ * symlink to a sensitive host path (`~/.ssh/id_rsa`, `~/.aws/credentials`, …) would
+ * otherwise have its target's real contents read and forwarded to the configured AI
+ * provider as "detection evidence." An `lstat` up front (treating a symlink the same
+ * as a missing file) closes that off without needing every one of the ~85 call sites
+ * to know about it.
+ */
 export async function readFileUncached(path: string): Promise<string | null> {
+  try {
+    const stats = await lstat(path);
+    if (stats.isSymbolicLink()) return null;
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') return null;
+    throw err;
+  }
   try {
     return await readFile(path, 'utf8');
   } catch (err) {
