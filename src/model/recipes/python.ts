@@ -118,4 +118,11 @@ export const PYTHON_RECIPES: readonly RecipeEntry[] = [
     serverArgs: '--bind 0.0.0.0:8000 app:app',
     port: 8000,
   }),
+  ...pythonServiceRecipes({
+    id: 'python-litestar',
+    dependency: 'litestar',
+    server: 'uvicorn',
+    serverArgs: 'app:app --host 0.0.0.0 --port 8000',
+    port: 8000,
+  }),
 ];
