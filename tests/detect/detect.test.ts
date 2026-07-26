@@ -2,6 +2,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { detectStack } from '../../src/detect/index.js';
+import { recipeForComponent } from '../../src/model/recipes/index.js';
 import { detectLanguages } from '../../src/detect/language.js';
 import { detectPackageManager } from '../../src/detect/packageManager.js';
 
@@ -196,19 +197,43 @@ describe('detect stage', () => {
       );
     });
 
-    it('routes a non-React Vite (Vue) repo to node-vite (previously unmatched)', async () => {
+    it('names a Vue repo as a first-class frontend component', async () => {
       const result = await detectStack(fixture('vite-vue-repo'));
 
+      // WAS: `frontend` null and a generic ecosystem `node-vite` service. Vue could not be
+      // NAMED, because `FrontendFramework` was a closed `'react' | 'unknown'` union — so a
+      // Vue app arrived as an anonymous 'service' node. With the taxonomy open it is an
+      // ordinary frontend component that says what it is.
       expect(result.isSupported).toBe(true);
-      expect(result.frontend).toBeNull();
-      expect(result.insights.ecosystemComponents).toContainEqual(
-        expect.objectContaining({
-          rootDir: '.',
-          runtime: 'node',
-          recipeId: 'node-vite',
-          role: 'backend',
-        })
-      );
+      expect(result.frontend?.framework).toBe('vue');
+      expect(result.frontend?.role).toBe('frontend');
+    });
+
+    it('builds a named Vue component from the vite recipe, not the bare fallback', () => {
+      // Naming a framework must be an UPGRADE. Without a `SEED_RECIPE_BY_FRAMEWORK` entry
+      // the newly-named component would fall to `node-app` (`npm run dev`, no build step),
+      // which is strictly worse than the ecosystem placement it replaced.
+      const recipe = recipeForComponent({
+        role: 'frontend',
+        rootDir: '.',
+        language: 'javascript',
+        packageManager: 'npm',
+        framework: 'vue',
+        dependencies: ['vue', 'vite'],
+        ports: [],
+        entrypoint: null,
+      });
+
+      expect(recipe.id).toBe('node-vite');
+      expect(recipe.buildCommands).toEqual(['npm run build']);
+    });
+
+    it('places a Vue repo exactly once', async () => {
+      const result = await detectStack(fixture('vite-vue-repo'));
+
+      // The disjointness invariant, now enforced by root rather than by a hardcoded list
+      // of recipe ids: the seed path claimed '.', so the ecosystem path must skip it.
+      expect(result.insights.ecosystemComponents.map((c) => c.rootDir)).not.toContain('.');
     });
 
     it('regression: a plain React + Express repo (MERN) still resolves to the seed path, with no double-placement', async () => {
