@@ -27,8 +27,12 @@ interface PythonService {
   id: string;
   /** Direct dependency that identifies the framework, e.g. "fastapi". */
   dependency: string;
-  /** The WSGI/ASGI server binary the start command invokes. */
-  server: 'uvicorn' | 'gunicorn';
+  /**
+   * The server binary the start command invokes. An open string, not a union: several
+   * frameworks ARE their own server (`sanic`, `streamlit`), and a closed union would make
+   * adding one an enum edit — the same shape the framework taxonomies now use.
+   */
+  server: string;
   /** Everything after the server binary, e.g. "main:app --host 0.0.0.0 --port 8000". */
   serverArgs: string;
   /** In-container port the start command binds. */
