@@ -86,15 +86,20 @@ describe('recipe registry invariants', () => {
     expect(duplicated).toEqual([]);
   });
 
-  it('gives every recipe a non-empty start command or leaves it deliberately blank', () => {
-    // A blank start command is meaningful ONLY for the registered bare fallbacks, where
-    // it signals "unknown" for the fill chain to resolve. Anywhere else it is a bug that
-    // would emit a Dockerfile with an empty CMD.
+  it('leaves a start command blank only where blank MEANS something', () => {
+    // Blank is a deliberate signal — "this recipe does not know how the app starts, ask
+    // the repo" — resolved by `startCommandFor` (seed) and `withStartCommand` (ecosystem).
+    // It is correct for exactly two groups: the bare runtime fallback, and the frameworks
+    // that ship no CLI and no start convention, where the maintainer's own script is the
+    // only right answer. Anywhere else a blank would emit a Dockerfile with an empty CMD,
+    // so this list is allow-listed rather than merely counted.
     const blank = ALL_RECIPES.filter((e) => e.recipe.startCommand.trim() === '').map(
       (e) => e.recipe.id
     );
 
-    expect(blank).toEqual(['node-app']);
+    expect(new Set(blank)).toEqual(
+      new Set(['node-app', 'node-fastify', 'node-koa', 'node-hapi', 'node-hono'])
+    );
   });
 
   it('gives every recipe at least one default port or none by design', () => {
