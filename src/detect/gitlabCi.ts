@@ -17,7 +17,7 @@ import {
   type CiCommand,
   type CiRuntimeVersion,
 } from './ci.js';
-import { readFileIfExists } from '../utils/fs.js';
+import { readFileIfExists, resolveWithinRoot } from '../utils/fs.js';
 
 /** A job recovered from a GitLab CI config. */
 export interface GitlabCiJob {
@@ -89,9 +89,15 @@ function localIncludePaths(value: unknown): string[] {
   return paths;
 }
 
-/** GitLab `include:local` paths are repo-root-relative, whether or not they start with `/`. */
-function resolveIncludePath(repoPath: string, includePath: string): string {
-  return join(repoPath, includePath.replace(/^\/+/, ''));
+/**
+ * GitLab `include:local` paths are repo-root-relative, whether or not they start with
+ * `/`. `includePath` is repo-controlled content, so a value like
+ * `../../../../etc/some-file.yml` must not escape `repoPath` — stripping only the
+ * leading slash (GitLab's own root-relative convention) is not enough on its own to
+ * reject an embedded `../`. Returns null (treated as a missing include) when it would.
+ */
+function resolveIncludePath(repoPath: string, includePath: string): string | null {
+  return resolveWithinRoot(repoPath, includePath.replace(/^\/+/, ''));
 }
 
 /** The candidate `.gitlab-ci.yml`/`.gitlab-ci.yaml` files at the repo root. */
@@ -220,6 +226,7 @@ async function collectJobs(
 
     for (const includePath of parsed.includes) {
       const resolvedPath = resolveIncludePath(repoPath, includePath);
+      if (resolvedPath === null) continue;
       const included = await collectJobs(repoPath, resolvedPath, stack, depth + 1);
       if (included === null) continue;
 
