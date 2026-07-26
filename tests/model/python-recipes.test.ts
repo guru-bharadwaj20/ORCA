@@ -114,10 +114,23 @@ describe('variant selection and seed preservation', () => {
 
   it('returns null when the framework is present but no manifest resolves an install', () => {
     // Honest no-match (the synthesis / AI-inference signal) beats emitting a Dockerfile
-    // whose `COPY requirements.txt` is guaranteed to fail.
+    // whose `COPY requirements.txt` is guaranteed to fail. Still true with NO manifest at
+    // all: there is nothing any install command could copy.
     expect(registry.match(facts({ dependencies: ['fastapi'], files: [] }))).toBeNull();
-    expect(
-      registry.match(facts({ dependencies: ['flask'], files: ['pyproject.toml'] }))
-    ).toBeNull();
+  });
+
+  it('falls back to the pyproject bare recipe when no framework variant fits', () => {
+    // A Flask repo declaring its dependencies inline in `[project.dependencies]` — no
+    // lockfile, no requirements.txt — is a real shape no `python-flask` variant covers.
+    // It previously matched NOTHING and detected as unsupported; the bare pyproject
+    // fallback builds it correctly (`COPY pyproject.toml` + `pip install .`), which is
+    // why the guarantee above is scoped to "no manifest" rather than "no framework
+    // variant". The framework-specific start command is what is given up, and build
+    // recovery or the AI fill supplies it.
+    const recipe = registry.match(facts({ dependencies: ['flask'], files: ['pyproject.toml'] }));
+
+    expect(recipe?.id).toBe('python-app-pyproject');
+    expect(recipe?.installCommands).toEqual(['pip install .']);
+    expect(recipe?.dependencyFiles).toEqual(['pyproject.toml']);
   });
 });

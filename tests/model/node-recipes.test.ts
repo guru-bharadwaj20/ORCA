@@ -90,7 +90,25 @@ describe('seed behavior is preserved', () => {
     expect(registry.match(facts({ dependencies: ['express'] }))?.id).toBe('node-express');
   });
 
-  it('still returns null for a Node repo with no recognizable framework', () => {
-    expect(registry.match(facts({ dependencies: ['lodash'], files: ['package.json'] }))).toBeNull();
+  it('falls back to the bare node recipe when no framework matches', () => {
+    // WAS `toBeNull()`. That null was the bug: a Node repo with a manifest and an
+    // unrecognized framework (fastify, koa, hapi, anything bespoke) placed NOTHING and
+    // detected as `isSupported=false, confidence=0` — despite ORCA already knowing the
+    // runtime, the manifest, and the start script, which is all a container needs.
+    const recipe = registry.match(facts({ dependencies: ['lodash'], files: ['package.json'] }));
+
+    expect(recipe?.id).toBe('node-app');
+  });
+
+  it('never lets the bare fallback shadow a framework recipe', () => {
+    // The fallback matches on a manifest alone, so its LAST position in `ALL_RECIPES` is
+    // what keeps it from swallowing every Node repo. Pin that here rather than trusting
+    // list order to stay correct by inspection.
+    const files = ['package.json'];
+
+    expect(registry.match(facts({ dependencies: ['next', 'react'], files }))?.id).toBe('node-next');
+    expect(registry.match(facts({ dependencies: ['@nestjs/core'], files }))?.id).toBe('node-nest');
+    expect(registry.match(facts({ dependencies: ['react'], files }))?.id).toBe('node-react');
+    expect(registry.match(facts({ dependencies: ['express'], files }))?.id).toBe('node-express');
   });
 });
