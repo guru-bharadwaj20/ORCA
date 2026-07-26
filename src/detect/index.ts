@@ -326,7 +326,12 @@ async function detectStackScoped(repoPath: string): Promise<DetectionResult> {
   // Insights (incl. matched ecosystem components) are gathered before the support
   // decision, because a placeable ecosystem component (Go/Rust/JVM/.NET with a matched
   // recipe) makes a repo containerizable even without a seed frontend/backend.
-  const insights = await gatherInsights(repoPath, roots, monorepo);
+  const insights = await gatherInsights(
+    repoPath,
+    roots,
+    monorepo,
+    new Set(components.map((c) => c.rootDir))
+  );
   const hasEcosystem = insights.ecosystemComponents.length > 0 || insights.dockerfiles.length > 0;
 
   const isSupported = components.length > 0 || hasEcosystem;
@@ -486,7 +491,19 @@ async function filesAt(dir: string): Promise<string[]> {
 async function gatherInsights(
   repoPath: string,
   roots: string[],
-  monorepo: MonorepoInfo
+  monorepo: MonorepoInfo,
+  /**
+   * Roots the SEED path already placed as `DetectedComponent`s.
+   *
+   * This is the disjointness guard, and it replaces a hardcoded list of recipe ids
+   * (`recipe.id !== 'node-react' && recipe.id !== 'node-express'`, plus `'python-django'`).
+   * That list encoded the invariant indirectly and could only stay correct while exactly
+   * three frameworks were nameable — the moment the taxonomies opened and the detector
+   * could name `vue`, a Vue+Vite repo was placed TWICE (seed `vue` and ecosystem
+   * `node-vite`). The real rule was never about ids: a root that already became a
+   * component must not become a second one.
+   */
+  seedRoots: ReadonlySet<string> = new Set()
 ): Promise<RepoInsights> {
   const registry = defaultDetectorRegistry();
   const recipes = defaultRecipeRegistry();
@@ -576,7 +593,11 @@ async function gatherInsights(
     // roots stay on the seed frontend/backend path, so they're excluded below (by
     // runtime here, by recipe id further down) to avoid double-placing the same
     // directory.
+    // A root the seed path already placed must not be placed again (see `seedRoots`).
+    const alreadySeeded = seedRoots.has(rootDir);
+
     if (
+      !alreadySeeded &&
       runtimeClaim &&
       runtimeClaim.value.runtime !== 'node' &&
       runtimeClaim.value.runtime !== 'python'
@@ -602,9 +623,9 @@ async function gatherInsights(
     // only seed Python backend) but which matches an ecosystem recipe — FastAPI/Flask —
     // becomes an open 'service' too. Django carries a `manage.py`, so its recipe never
     // matches here; the seed backend detector owns it. This keeps the two paths disjoint.
-    if (hasPython) {
+    if (!alreadySeeded && hasPython) {
       const recipe = recipes.match({ runtime: 'python', dependencies, files });
-      if (recipe && recipe.id !== 'python-django') {
+      if (recipe) {
         const detected = await detectComponentRole(absDir, {
           dependencies,
           declaredPorts: rootPorts.map((p) => p.port),
@@ -626,9 +647,9 @@ async function gatherInsights(
     // — becomes an open 'service' too, mirroring the Python handling above. Plain
     // react/express are excluded by id so they stay on the seed path, keeping the two
     // paths disjoint (framework.ts already defers those roots out of 'react'/'express').
-    if (hasNode) {
+    if (!alreadySeeded && hasNode) {
       const recipe = recipes.match({ runtime: 'node', dependencies, files });
-      if (recipe && recipe.id !== 'node-react' && recipe.id !== 'node-express') {
+      if (recipe) {
         const detected = await detectComponentRole(absDir, {
           dependencies,
           declaredPorts: rootPorts.map((p) => p.port),
