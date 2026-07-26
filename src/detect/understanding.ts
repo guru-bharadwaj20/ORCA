@@ -82,6 +82,23 @@ export function assessUnderstanding(detection: DetectionResult): Understanding {
     }
   }
 
+  // A repo where SOME components placed and others did not was reporting full success:
+  // `isSupported` asks whether ANYTHING placed, never whether EVERYTHING did, so a
+  // dropped component only ever surfaced as a non-fatal warning and ORCA shipped a
+  // partial stack silently. Grading it here makes the existing tier-3 escalation fire on
+  // exactly the case that needs a second opinion — the component ORCA saw but could not
+  // place is precisely what an LLM might recognize.
+  const unplaced = detection.warnings.filter((w) => w.code === 'unplaced-component');
+  if (unplaced.length > 0) {
+    const roots = unplaced
+      .map((w) => /'([^']+)'/.exec(w.message)?.[1])
+      .filter((r): r is string => r !== undefined);
+    const named = roots.length > 0 ? ` (${roots.join(', ')})` : '';
+    gaps.push(
+      `${unplaced.length} detected component(s) could not be placed${named} — the generated stack is incomplete`
+    );
+  }
+
   // Nothing in the repo declares how it is built — no CI, no task runner, no README/script
   // block, no Dockerfile. Deterministic detection guessed the build entirely from shape.
   const declaresBuild =
