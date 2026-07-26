@@ -39,6 +39,11 @@ function dependencyFilesFor(pm: PackageManager): string[] {
     case 'poetry':
     case 'uv':
       return ['pyproject.toml'];
+    case 'pipenv':
+      // Matches the poetry/uv convention above: only the manifest is listed (not
+      // Pipfile.lock), since a lockfile isn't guaranteed to be committed and a missing
+      // COPY source would fail the Docker build outright.
+      return ['Pipfile'];
     default:
       return ['package.json'];
   }
@@ -58,6 +63,11 @@ function installCommandFor(pm: PackageManager): string {
       return 'poetry install';
     case 'uv':
       return 'uv sync --frozen';
+    case 'pipenv':
+      // No --deploy: dependencyFilesFor only COPYs the Pipfile (see above), so a
+      // Pipfile.lock isn't guaranteed to be present in the build context for --deploy
+      // to validate against. Plain --system installs from the Pipfile directly.
+      return 'pipenv install --system';
     default:
       return 'npm install';
   }
