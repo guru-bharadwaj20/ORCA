@@ -76,6 +76,13 @@ export const FRAMEWORK_SIGNATURES: readonly FrameworkSignature[] = [
   },
   { id: 'fastify', runtime: 'node', role: 'backend', anyDependency: ['fastify'], weight: 0.9 },
   { id: 'koa', runtime: 'node', role: 'backend', anyDependency: ['koa'], weight: 0.85 },
+  {
+    id: 'hapi',
+    runtime: 'node',
+    role: 'backend',
+    anyDependency: ['@hapi/hapi', 'hapi'],
+    weight: 0.85,
+  },
   { id: 'express', runtime: 'node', role: 'backend', anyDependency: ['express'], weight: 0.7 },
 
   // --- Python ---
