@@ -113,8 +113,6 @@ export interface ServiceNode {
   envFile?: string;
   /** Optional healthcheck; databases/caches usually have one. */
   healthcheck?: Healthcheck;
-  /** Optional override command; falls back to the image/Dockerfile default. */
-  command?: string;
   /**
    * Repo-relative root of the `DetectedComponent` this node was built from (e.g.
    * "services/api"). Only set for seed frontend/backend nodes — the ones that can now

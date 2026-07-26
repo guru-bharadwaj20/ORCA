@@ -138,8 +138,14 @@ const NODE_ENTRY_FILES = [
 /** Python entry files: a runnable app rather than an importable package. */
 const PYTHON_ENTRY_FILES = ['main.py', 'app.py', 'manage.py', 'wsgi.py', 'asgi.py', '__main__.py'];
 
-/** Scripts that mean "this starts a long-lived process". */
-const SERVER_SCRIPTS = ['start', 'dev', 'serve'];
+/**
+ * Scripts that mean "this starts a long-lived process". Exported so `componentRole.ts`
+ * shares this exact list instead of independently redeclaring it — two copies of the
+ * same list can silently drift (e.g. one gaining `preview` for Vite/Next apps but not
+ * the other), desyncing role classification between the two call sites that are
+ * supposed to agree.
+ */
+export const SERVER_SCRIPTS = ['start', 'dev', 'serve'];
 
 /** Resolve a detector context to the absolute directory it should inspect. */
 function dirOf(ctx: RepoContext): string {

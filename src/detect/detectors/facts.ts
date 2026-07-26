@@ -15,7 +15,7 @@
 
 import type { KindedValue } from '../../model/claim.js';
 import type { Runtime } from '../../model/recipe.js';
-import type { Entrypoint, Language, PackageManager, RunnableRole } from '../types.js';
+import type { Entrypoint, PackageManager, RunnableRole } from '../types.js';
 
 /** "This component's runtime is X" — emitted by the tier-1 manifest detectors. */
 export interface RuntimeFact extends KindedValue<'runtime'> {
@@ -35,12 +35,6 @@ export interface PackageManagerFact extends KindedValue<'packageManager'> {
   packageManager: PackageManager;
 }
 
-/** "This repo uses language X" — emitted by the language detector, one per language. */
-export interface LanguageFact extends KindedValue<'language'> {
-  kind: 'language';
-  language: Language;
-}
-
 /** "This component starts with X" — emitted by the entrypoint detector. */
 export interface EntrypointFact extends KindedValue<'entrypoint'> {
   kind: 'entrypoint';
@@ -48,8 +42,7 @@ export interface EntrypointFact extends KindedValue<'entrypoint'> {
 }
 
 /** Every fact kind the shipped detectors can emit. */
-export type DetectedFact =
-  RuntimeFact | RoleFact | PackageManagerFact | LanguageFact | EntrypointFact;
+export type DetectedFact = RuntimeFact | RoleFact | PackageManagerFact | EntrypointFact;
 
 /** Construct a `RuntimeFact`. */
 export function runtimeFact(runtime: Runtime): RuntimeFact {
@@ -64,11 +57,6 @@ export function roleFact(role: RunnableRole): RoleFact {
 /** Construct a `PackageManagerFact`. */
 export function packageManagerFact(packageManager: PackageManager): PackageManagerFact {
   return { kind: 'packageManager', packageManager };
-}
-
-/** Construct a `LanguageFact`. */
-export function languageFact(language: Language): LanguageFact {
-  return { kind: 'language', language };
 }
 
 /** Construct an `EntrypointFact`. */

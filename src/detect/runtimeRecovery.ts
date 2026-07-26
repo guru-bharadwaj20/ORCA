@@ -51,8 +51,12 @@ export interface RecoveredRuntimes {
  * than a recovered build command (it says how, not what to run), so it sits just below
  * `RECOVERY_WEIGHTS.ci`; cross-source agreement still compounds it via `combineConfidence`
  * exactly like any other independent evidence (§4).
+ *
+ * Module-private: unlike its sibling `DEFAULT_SOURCE_WEIGHTS` (signalSources.ts, which
+ * `index.ts` does consume), nothing outside this file uses this weight — it was
+ * previously exported with no consumer, implying a public contract that didn't exist.
  */
-export const RUNTIME_VERSION_WEIGHT = 0.15;
+const RUNTIME_VERSION_WEIGHT = 0.15;
 
 /**
  * Recover the runtime versions a repo's CI pins, as a `Claim`.
