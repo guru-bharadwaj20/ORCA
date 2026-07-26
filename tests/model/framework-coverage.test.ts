@@ -8,7 +8,16 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { defaultRecipeRegistry, ALL_RECIPES } from '../../src/model/recipes/index.js';
+import {
+  defaultRecipeRegistry,
+  ALL_RECIPES,
+  recipeForComponent,
+} from '../../src/model/recipes/index.js';
+import {
+  KNOWN_BACKEND_FRAMEWORKS,
+  KNOWN_FRONTEND_FRAMEWORKS,
+  type DetectedComponent,
+} from '../../src/detect/types.js';
 
 const registry = defaultRecipeRegistry();
 
@@ -114,4 +123,44 @@ describe('recipe registry invariants', () => {
       expect(recipe.baseImages.runtime).not.toBe('');
     }
   });
+});
+
+describe('naming a framework must never downgrade it', () => {
+  /**
+   * The trap this guards. `recipeForComponent` falls back to the BARE runtime recipe for
+   * any framework missing from `SEED_RECIPE_BY_FRAMEWORK`. So teaching the detector to
+   * name a framework, without also mapping it, silently makes that framework build WORSE
+   * than when it was an anonymous ecosystem component — it loses its build step and its
+   * real start command. The failure is invisible: detection looks better, output is worse.
+   */
+  const component = (framework: string, language: string): DetectedComponent =>
+    ({
+      role: 'backend',
+      rootDir: '.',
+      language,
+      packageManager: language === 'python' ? 'pip' : 'npm',
+      framework,
+      dependencies: [],
+      ports: [],
+      entrypoint: null,
+    }) as DetectedComponent;
+
+  for (const framework of KNOWN_FRONTEND_FRAMEWORKS) {
+    it(`maps frontend '${framework}' to a real recipe`, () => {
+      const recipe = recipeForComponent(component(framework, 'javascript'));
+
+      expect(recipe.id).not.toBe('node-app');
+      expect(recipe.id).not.toBe('python-app');
+    });
+  }
+
+  for (const framework of KNOWN_BACKEND_FRAMEWORKS) {
+    it(`maps backend '${framework}' to a real recipe`, () => {
+      const language = framework === 'django' ? 'python' : 'javascript';
+      const recipe = recipeForComponent(component(framework, language));
+
+      expect(recipe.id).not.toBe('node-app');
+      expect(recipe.id).not.toBe('python-app');
+    });
+  }
 });
