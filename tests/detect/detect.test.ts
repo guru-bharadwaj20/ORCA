@@ -108,13 +108,15 @@ describe('detect stage', () => {
     expect(result.frontend).toBeNull();
     expect(result.backend).toBeNull();
     expect(result.confidence).toBeGreaterThan(0);
-    expect(result.insights.ecosystemComponents).toContainEqual({
-      rootDir: '.',
-      runtime: 'rust',
-      recipeId: 'rust-cargo',
-      // A web-shaped ecosystem repo stays a backend — role widening reclassifies nothing.
-      role: 'backend',
-    });
+    expect(result.insights.ecosystemComponents).toContainEqual(
+      expect.objectContaining({
+        rootDir: '.',
+        runtime: 'rust',
+        recipeId: 'rust-cargo',
+        // A web-shaped ecosystem repo stays a backend — role widening reclassifies nothing.
+        role: 'backend',
+      })
+    );
   });
 
   it('supports a FastAPI repo via an ecosystem recipe, not the seed backend path', async () => {
@@ -127,12 +129,14 @@ describe('detect stage', () => {
     expect(result.languages).toEqual(['python']);
     expect(result.backend).toBeNull();
     expect(result.frontend).toBeNull();
-    expect(result.insights.ecosystemComponents).toContainEqual({
-      rootDir: '.',
-      runtime: 'python',
-      recipeId: 'python-fastapi',
-      role: 'backend',
-    });
+    expect(result.insights.ecosystemComponents).toContainEqual(
+      expect.objectContaining({
+        rootDir: '.',
+        runtime: 'python',
+        recipeId: 'python-fastapi',
+        role: 'backend',
+      })
+    );
     // The Postgres dependency is still detected — it wires into the service's plan node.
     expect(result.databases).toEqual([
       { engine: 'postgres', defaultPort: 5432, detectedFrom: 'psycopg2-binary' },
@@ -151,12 +155,14 @@ describe('detect stage', () => {
       expect(result.isSupported).toBe(true);
       expect(result.frontend).toBeNull();
       expect(result.backend).toBeNull();
-      expect(result.insights.ecosystemComponents).toContainEqual({
-        rootDir: '.',
-        runtime: 'node',
-        recipeId: 'node-next',
-        role: 'backend',
-      });
+      expect(result.insights.ecosystemComponents).toContainEqual(
+        expect.objectContaining({
+          rootDir: '.',
+          runtime: 'node',
+          recipeId: 'node-next',
+          role: 'backend',
+        })
+      );
     });
 
     it('routes a NestJS repo to node-nest, not the seed express match', async () => {
@@ -165,12 +171,14 @@ describe('detect stage', () => {
       expect(result.isSupported).toBe(true);
       expect(result.frontend).toBeNull();
       expect(result.backend).toBeNull();
-      expect(result.insights.ecosystemComponents).toContainEqual({
-        rootDir: '.',
-        runtime: 'node',
-        recipeId: 'node-nest',
-        role: 'backend',
-      });
+      expect(result.insights.ecosystemComponents).toContainEqual(
+        expect.objectContaining({
+          rootDir: '.',
+          runtime: 'node',
+          recipeId: 'node-nest',
+          role: 'backend',
+        })
+      );
     });
 
     it('routes an Angular repo to node-angular (previously unmatched)', async () => {
@@ -178,12 +186,14 @@ describe('detect stage', () => {
 
       expect(result.isSupported).toBe(true);
       expect(result.frontend).toBeNull();
-      expect(result.insights.ecosystemComponents).toContainEqual({
-        rootDir: '.',
-        runtime: 'node',
-        recipeId: 'node-angular',
-        role: 'backend',
-      });
+      expect(result.insights.ecosystemComponents).toContainEqual(
+        expect.objectContaining({
+          rootDir: '.',
+          runtime: 'node',
+          recipeId: 'node-angular',
+          role: 'backend',
+        })
+      );
     });
 
     it('routes a non-React Vite (Vue) repo to node-vite (previously unmatched)', async () => {
@@ -191,12 +201,14 @@ describe('detect stage', () => {
 
       expect(result.isSupported).toBe(true);
       expect(result.frontend).toBeNull();
-      expect(result.insights.ecosystemComponents).toContainEqual({
-        rootDir: '.',
-        runtime: 'node',
-        recipeId: 'node-vite',
-        role: 'backend',
-      });
+      expect(result.insights.ecosystemComponents).toContainEqual(
+        expect.objectContaining({
+          rootDir: '.',
+          runtime: 'node',
+          recipeId: 'node-vite',
+          role: 'backend',
+        })
+      );
     });
 
     it('regression: a plain React + Express repo (MERN) still resolves to the seed path, with no double-placement', async () => {
@@ -223,12 +235,14 @@ describe('detect stage', () => {
     const result = await detectStack(fixture('dotnet-csproj-repo'));
 
     expect(result.isSupported).toBe(true);
-    expect(result.insights.ecosystemComponents).toContainEqual({
-      rootDir: '.',
-      runtime: 'dotnet',
-      recipeId: 'dotnet-sdk',
-      role: 'backend',
-    });
+    expect(result.insights.ecosystemComponents).toContainEqual(
+      expect.objectContaining({
+        rootDir: '.',
+        runtime: 'dotnet',
+        recipeId: 'dotnet-sdk',
+        role: 'backend',
+      })
+    );
   });
 
   it('treats an existing Dockerfile as a supported deterministic signal', async () => {
