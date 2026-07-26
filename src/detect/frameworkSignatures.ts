@@ -74,6 +74,7 @@ export const FRAMEWORK_SIGNATURES: readonly FrameworkSignature[] = [
     anyDependency: ['react', 'react-dom'],
     weight: 0.7,
   },
+  { id: 'fastify', runtime: 'node', role: 'backend', anyDependency: ['fastify'], weight: 0.9 },
   { id: 'express', runtime: 'node', role: 'backend', anyDependency: ['express'], weight: 0.7 },
 
   // --- Python ---
