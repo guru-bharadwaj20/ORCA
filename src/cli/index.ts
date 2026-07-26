@@ -21,12 +21,50 @@ export function buildCli(): Command {
   return program;
 }
 
+/**
+ * Report a top-level failure the same way regardless of which entry path it came from,
+ * and set the process exit code accordingly.
+ */
+function reportFatalError(err: unknown): void {
+  if (err instanceof OrcaError) {
+    process.stderr.write(`error [${err.code}]: ${err.message}\n`);
+    process.exitCode = err.code === 'PLAN_REJECTED' ? 2 : 1;
+    return;
+  }
+  if (isAbortError(err)) {
+    process.stderr.write('error [CANCELLED]: run cancelled.\n');
+    process.exitCode = 1;
+    return;
+  }
+
+  const message = err instanceof Error ? err.message : String(err);
+  process.stderr.write(`error [UNEXPECTED]: ${message}\n`);
+  if (err instanceof Error && err.stack !== undefined) {
+    process.stderr.write(`\n${err.stack}\n`);
+  }
+  process.stderr.write(
+    '\nThis is a bug in ORCA. Please report it at ' +
+      'https://github.com/VivianSobers/ORCA/issues with the trace above.\n'
+  );
+  process.exitCode = 1;
+}
+
 export async function main(argv: string[], cli: Command = buildCli()): Promise<void> {
   const program = cli;
 
   if (argv.slice(2).length === 0) {
     if (process.stdout.isTTY ?? false) {
-      await runInteractiveMenu(packageVersion());
+      // The interactive menu has its own per-action error handling (runRepo(), etc.),
+      // but that only covers the actions it anticipates. Without this catch, anything
+      // else that throws (a future settings field, a terminal capability query) would
+      // propagate out of `main()` as an unhandled promise rejection — since this is
+      // invoked as `void main(...)` below — instead of the graceful error UX the
+      // non-interactive path below already gets for the exact same class of failure.
+      try {
+        await runInteractiveMenu(packageVersion());
+      } catch (err) {
+        reportFatalError(err);
+      }
     } else {
       program.outputHelp();
     }
@@ -36,27 +74,7 @@ export async function main(argv: string[], cli: Command = buildCli()): Promise<v
   try {
     await program.parseAsync(argv);
   } catch (err) {
-    if (err instanceof OrcaError) {
-      process.stderr.write(`error [${err.code}]: ${err.message}\n`);
-      process.exitCode = err.code === 'PLAN_REJECTED' ? 2 : 1;
-      return;
-    }
-    if (isAbortError(err)) {
-      process.stderr.write('error [CANCELLED]: run cancelled.\n');
-      process.exitCode = 1;
-      return;
-    }
-
-    const message = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`error [UNEXPECTED]: ${message}\n`);
-    if (err instanceof Error && err.stack !== undefined) {
-      process.stderr.write(`\n${err.stack}\n`);
-    }
-    process.stderr.write(
-      '\nThis is a bug in ORCA. Please report it at ' +
-        'https://github.com/VivianSobers/ORCA/issues with the trace above.\n'
-    );
-    process.exitCode = 1;
+    reportFatalError(err);
   }
 }
 
