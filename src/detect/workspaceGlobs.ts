@@ -15,9 +15,18 @@
  */
 
 import { readdir, stat } from 'node:fs/promises';
-import { join } from 'node:path';
 
-/** Resolve one workspace glob to existing, repo-relative directory paths. */
+import { resolveWithinRoot } from '../utils/fs.js';
+
+/**
+ * Resolve one workspace glob to existing, repo-relative directory paths.
+ *
+ * `workspaces`/`pnpm-workspace.yaml` entries are repo-controlled content (an attacker
+ * who controls the scanned repo controls these strings), so every path this resolves —
+ * the `dir/*` parent and the literal-path case — is checked against `resolveWithinRoot`
+ * before being touched. Without that, a glob like `"../../../"` (or a literal
+ * `"../secret"`) would make ORCA `readdir`/`stat` directories outside the cloned repo.
+ */
 async function expandGlob(repoPath: string, glob: string): Promise<string[]> {
   const normalized = glob.replace(/\/+$/, '');
 
@@ -27,7 +36,8 @@ async function expandGlob(repoPath: string, glob: string): Promise<string[]> {
   const star = /\/\*{1,2}$/.exec(normalized);
   if (star) {
     const parent = normalized.slice(0, star.index);
-    const parentAbs = join(repoPath, parent);
+    const parentAbs = resolveWithinRoot(repoPath, parent);
+    if (parentAbs === null) return [];
     try {
       const entries = await readdir(parentAbs, { withFileTypes: true });
       return entries
@@ -40,8 +50,10 @@ async function expandGlob(repoPath: string, glob: string): Promise<string[]> {
 
   // Literal path (or an unsupported non-trailing wildcard): include it if it's a real dir.
   if (normalized.includes('*')) return [];
+  const literalAbs = resolveWithinRoot(repoPath, normalized);
+  if (literalAbs === null) return [];
   try {
-    if ((await stat(join(repoPath, normalized))).isDirectory()) return [normalized];
+    if ((await stat(literalAbs)).isDirectory()) return [normalized];
   } catch {
     // not present
   }

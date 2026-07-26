@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { lstat, readdir, readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 /**
  * What an active read scope must provide. Declared here (rather than importing `FsCache`)
@@ -43,6 +43,26 @@ export function activeFsReadScope(): FsReadScope | undefined {
  */
 export function withFsReadScope<T>(scope: FsReadScope, fn: () => Promise<T>): Promise<T> {
   return readScope.run(scope, fn);
+}
+
+/**
+ * Resolve `candidate` (a repo-relative path, or one taken from repo-controlled content
+ * such as a `workspaces` glob, a CI `template:`/`include:` reference, or a generated
+ * file's relative path) against `root`, and return the absolute path only if it stays
+ * inside `root`.
+ *
+ * Several call sites across `src/detect/**` and `src/generate/writeConfigs.ts`
+ * previously did their own ad hoc `join(root, candidate)` with no such check, which let
+ * a malicious repo point `candidate` at `../../..` (or an absolute path) to make ORCA
+ * read or write outside the intended directory. Centralizing the check means every call
+ * site gets it, and gets it the same way.
+ */
+export function resolveWithinRoot(root: string, candidate: string): string | null {
+  const absRoot = resolve(root);
+  const abs = resolve(absRoot, candidate);
+  const rel = relative(absRoot, abs);
+  if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return null;
+  return abs;
 }
 
 export const DEFAULT_WALK_IGNORE: string[] = [
