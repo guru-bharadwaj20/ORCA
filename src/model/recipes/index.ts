@@ -143,14 +143,21 @@ const BARE_PYTHON_RECIPES = [
   },
 ];
 
-/** The `recipeForComponent` fallback for a framework-'unknown' Python component. */
-const BARE_PYTHON_RECIPE: BuildRecipe = {
-  ...BARE_PYTHON_COMMON,
-  id: 'python-app',
-  packageManager: 'pip',
-  dependencyFiles: ['requirements.txt'],
-  installCommands: ['pip install -r requirements.txt'],
-};
+/**
+ * The `recipeForComponent` fallback for a framework-'unknown' Python component.
+ *
+ * Read OFF the registered pip variant rather than re-declared. Both spellings existed and
+ * were byte-identical, which is precisely the setup where one gets edited and the other
+ * does not — the same duplication that let `startCommand: 'npm run dev'` survive in the
+ * Python fallback for as long as it did.
+ */
+const BARE_PYTHON_RECIPE: BuildRecipe = (() => {
+  const registered = BARE_PYTHON_RECIPES.find((e) => e.recipe.id === 'python-app')?.recipe;
+  if (registered === undefined) {
+    throw new Error('BARE_PYTHON_RECIPES must contain the pip variant with id "python-app"');
+  }
+  return registered;
+})();
 
 /**
  * The bare fallbacks as REGISTERED matchers, last in priority.
