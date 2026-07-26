@@ -226,6 +226,15 @@ const SEED_RECIPE_BY_FRAMEWORK: Readonly<Record<string, string>> = {
   react: 'node-react',
   express: 'node-express',
   django: 'python-django',
+  // Frameworks the detector can now NAME (the taxonomies in `detect/types.ts` are open).
+  // Each must resolve to a real recipe here, or a newly-nameable component would fall to
+  // the bare runtime fallback and build worse than it did as an ecosystem component —
+  // naming a framework has to be an upgrade, never a downgrade.
+  vue: 'node-vite',
+  svelte: 'node-vite',
+  fastify: 'node-fastify',
+  koa: 'node-koa',
+  hapi: 'node-hapi',
 };
 
 export function recipeForComponent(component: DetectedComponent): BuildRecipe {
