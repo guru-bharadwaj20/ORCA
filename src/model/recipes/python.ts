@@ -146,4 +146,11 @@ export const PYTHON_RECIPES: readonly RecipeEntry[] = [
     serverArgs: 'app:app --host 0.0.0.0 --port 8000',
     port: 8000,
   }),
+  ...pythonServiceRecipes({
+    id: 'python-streamlit',
+    dependency: 'streamlit',
+    server: 'streamlit',
+    serverArgs: 'run app.py --server.port 8501 --server.address 0.0.0.0',
+    port: 8501,
+  }),
 ];
