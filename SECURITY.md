@@ -46,7 +46,11 @@ volumes) is shown and approved. Non-interactive sessions **reject** by default;
   touch files ORCA itself generated (Dockerfiles, docker-compose.yml, .dockerignore,
   .env, entrypoint script). Paths are canonicalized against the workspace root —
   application source, `../` traversal, and absolute paths are rejected in
-  `src/build/selfHeal.ts` regardless of what the model returns.
+  `src/build/selfHeal.ts` regardless of what the model returns. Patch *contents* are
+  additionally scanned and rejected if they introduce privilege-escalating directives
+  (`privileged: true`, host networking/PID/IPC namespaces, `cap_add`, a host root bind
+  mount) — a heal loop can rewrite and re-run `docker compose up` without further human
+  review, so contents get the same non-negotiable rejection as an out-of-allowlist path.
 - Inferred `.env` values are local-dev placeholders; review them before reusing a
   generated stack anywhere non-local.
 

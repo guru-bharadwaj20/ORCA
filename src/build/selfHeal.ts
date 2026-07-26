@@ -10,7 +10,10 @@
  * SECURITY INVARIANT (code-enforced, not prompt-enforced): a heal patch may only
  * touch files ORCA itself generated (`ctx.generatedFiles`). Every patch path is
  * canonicalized against the workspace root; traversal attempts and application
- * source files are rejected here regardless of what the model claims.
+ * source files are rejected here regardless of what the model claims. Patch
+ * *contents* are additionally scanned for privilege-escalating directives
+ * (privileged mode, host networking/PID/IPC namespaces, cap_add, host root bind
+ * mounts) and rejected outright — see `containsDangerousDirective` below.
  */
 
 import { lstat, writeFile } from 'node:fs/promises';
@@ -32,6 +35,29 @@ function excerpt(errorOutput: string): string {
   return trimmed.length > ERROR_EXCERPT_CHARS
     ? `...${trimmed.slice(-ERROR_EXCERPT_CHARS)}`
     : trimmed;
+}
+
+/**
+ * A heal patch's target *path* is allowlisted, but its *contents* are otherwise an
+ * unconstrained model-generated string (unlike the initial-fill schema, which validates
+ * every field). Since a patch can rewrite `docker-compose.yml`/Dockerfiles that ORCA
+ * then `docker compose up`s with no further human review, reject any patch whose
+ * contents would grant container-escape-adjacent privileges — these directives have no
+ * legitimate role in fixing a build/run failure.
+ */
+const DANGEROUS_PATCH_PATTERNS: readonly RegExp[] = [
+  /privileged\s*:\s*true/i,
+  /network_mode\s*:\s*["']?host/i,
+  /pid\s*:\s*["']?host/i,
+  /ipc\s*:\s*["']?host/i,
+  /cap_add\s*:/i,
+  /security_opt\s*:/i,
+  /devices\s*:/i,
+  /^\s*-\s*["']?\/(?::|$)/m, // bind-mounting the host root filesystem
+];
+
+function containsDangerousDirective(contents: string): boolean {
+  return DANGEROUS_PATCH_PATTERNS.some((pattern) => pattern.test(contents));
 }
 
 /**
@@ -126,6 +152,15 @@ async function applyPatches(
       rejected.push(patch.file);
       ctx.logger.warn(
         `Rejected heal patch for '${patch.file}' — only ORCA-generated files may be patched.`
+      );
+      continue;
+    }
+    if (containsDangerousDirective(patch.contents)) {
+      rejected.push(patch.file);
+      ctx.logger.warn(
+        `Rejected heal patch for '${patch.file}' — proposed contents include a ` +
+          `privilege-escalating directive (e.g. privileged/host-network/cap_add/host ` +
+          `bind mount), which self-heal is never allowed to introduce.`
       );
       continue;
     }
