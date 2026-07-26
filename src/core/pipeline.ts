@@ -70,6 +70,7 @@ import {
   type EcosystemComponent,
 } from '../plan/servicePlan.js';
 import type { ServicePlan } from '../plan/types.js';
+import type { BuildRecipe } from '../model/recipe.js';
 import { ALL_RECIPES } from '../model/recipes/index.js';
 import { dockerfileVarsFor, selectDockerfileTemplate } from '../templates/registry.js';
 import { renderCompose, renderDockerfile } from '../templates/render.js';
@@ -138,6 +139,44 @@ async function readReadme(repoDir: string): Promise<string> {
 }
 
 /**
+ * Last-resort start command per runtime, used only when a recipe declares none AND the
+ * repo declared none either. A wrong-but-conventional command is recoverable (the review
+ * gate shows it, the heal loop can correct it); an EMPTY one emits a Dockerfile with a
+ * blank `CMD`, which is not.
+ */
+const CONVENTIONAL_START: Readonly<Record<string, string>> = {
+  node: 'npm start',
+  python: 'python main.py',
+};
+
+/**
+ * Resolve a recipe's start command by authority, highest first:
+ *
+ *   1. The recipe's own — a framework recipe knows how its framework starts.
+ *   2. Build recovery — already applied by `applyRecoveredBuild` before this runs.
+ *   3. The component's OWN manifest — the `start`/`dev` script or Procfile line that
+ *      `detectEntrypoint` resolved during detection.
+ *   4. Runtime convention.
+ *
+ * Only steps 3 and 4 are new. They exist because the bare runtime fallbacks declare no
+ * start command by design (they know the runtime, not the app), so without this a
+ * `fastify` repo whose only script is `start` emitted `CMD npm run dev` — an image that
+ * builds and then exits with `Missing script: "dev"`.
+ */
+function withStartCommand(
+  recipe: BuildRecipe,
+  eco: DetectionResult['insights']['ecosystemComponents'][number]
+): BuildRecipe {
+  if (recipe.startCommand.trim() !== '') return recipe;
+  const resolved = eco.startCommand?.trim();
+  const fallback = CONVENTIONAL_START[eco.runtime] ?? '';
+  return {
+    ...recipe,
+    startCommand: resolved !== undefined && resolved !== '' ? resolved : fallback,
+  };
+}
+
+/**
  * Resolve the detected ecosystem components (Go/Rust/JVM/.NET) into the
  * `EcosystemComponent[]` the plan places as open `'service'` nodes. Each id is the
  * root's basename (or "app" at the repo root); unknown recipe ids are skipped. The
@@ -155,7 +194,7 @@ async function ecosystemComponentsFrom(detection: DetectionResult): Promise<Ecos
     const { recipe, origins } = applyRecoveredBuild(matched, detection.insights.recoveredBuild);
     result.push({
       id,
-      recipe,
+      recipe: withStartCommand(recipe, eco),
       ...(origins.length > 0 ? { commandOrigins: origins } : {}),
       component: {
         // Detection's role, not a hardcoded 'backend' — this is what lets a worker/CLI
