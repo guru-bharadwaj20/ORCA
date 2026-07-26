@@ -153,4 +153,11 @@ export const PYTHON_RECIPES: readonly RecipeEntry[] = [
     serverArgs: 'run app.py --server.port 8501 --server.address 0.0.0.0',
     port: 8501,
   }),
+  ...pythonServiceRecipes({
+    id: 'python-bottle',
+    dependency: 'bottle',
+    server: 'gunicorn',
+    serverArgs: '--bind 0.0.0.0:8000 app:app',
+    port: 8000,
+  }),
 ];
