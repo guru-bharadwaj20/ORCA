@@ -132,4 +132,11 @@ export const PYTHON_RECIPES: readonly RecipeEntry[] = [
     serverArgs: 'main:app --host 0.0.0.0 --port 8000',
     port: 8000,
   }),
+  ...pythonServiceRecipes({
+    id: 'python-quart',
+    dependency: 'quart',
+    server: 'uvicorn',
+    serverArgs: 'app:app --host 0.0.0.0 --port 8000',
+    port: 8000,
+  }),
 ];
