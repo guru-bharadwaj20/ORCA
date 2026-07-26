@@ -123,6 +123,21 @@ export const NODE_FRAMEWORK_RECIPES: readonly RecipeEntry[] = [
     },
   },
   {
+    // Remix builds a server bundle; its start script serves it.
+    matcher: { runtime: 'node', anyDependency: ['@remix-run/node'] },
+    recipe: {
+      id: 'node-remix',
+      runtime: 'node',
+      packageManager: 'npm',
+      dependencyFiles: ['package.json'],
+      installCommands: ['npm install'],
+      buildCommands: ['npm run build'],
+      startCommand: 'npm run start',
+      defaultPorts: [3000],
+      baseImages: NODE_IMAGES,
+    },
+  },
+  {
     matcher: { runtime: 'node', anyDependency: ['@angular/core'] },
     recipe: {
       id: 'node-angular',
