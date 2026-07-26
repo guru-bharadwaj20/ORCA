@@ -109,6 +109,20 @@ export const NODE_FRAMEWORK_RECIPES: readonly RecipeEntry[] = [
     },
   },
   {
+    // Hono runs on plain Node via @hono/node-server; no build step of its own.
+    matcher: { runtime: 'node', anyDependency: ['hono'] },
+    recipe: {
+      id: 'node-hono',
+      runtime: 'node',
+      packageManager: 'npm',
+      dependencyFiles: ['package.json'],
+      installCommands: ['npm install'],
+      startCommand: 'npm run start',
+      defaultPorts: [3000],
+      baseImages: NODE_IMAGES,
+    },
+  },
+  {
     matcher: { runtime: 'node', anyDependency: ['@angular/core'] },
     recipe: {
       id: 'node-angular',
