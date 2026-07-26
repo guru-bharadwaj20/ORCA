@@ -81,6 +81,20 @@ export const NODE_FRAMEWORK_RECIPES: readonly RecipeEntry[] = [
     },
   },
   {
+    // Koa ships no CLI and no build step; the maintainer's script is the only start.
+    matcher: { runtime: 'node', anyDependency: ['koa'] },
+    recipe: {
+      id: 'node-koa',
+      runtime: 'node',
+      packageManager: 'npm',
+      dependencyFiles: ['package.json'],
+      installCommands: ['npm install'],
+      startCommand: 'npm run start',
+      defaultPorts: [3000],
+      baseImages: NODE_IMAGES,
+    },
+  },
+  {
     matcher: { runtime: 'node', anyDependency: ['@angular/core'] },
     recipe: {
       id: 'node-angular',
