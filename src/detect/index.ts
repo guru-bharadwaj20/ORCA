@@ -340,6 +340,26 @@ async function detectStackScoped(repoPath: string): Promise<DetectionResult> {
     });
   }
 
+  // Candidate roots that NOTHING placed — no seed component, no ecosystem recipe, no
+  // Dockerfile. Distinct from `unrecognized-component` above, which fires whenever the
+  // SEED path can't classify a root and so is emitted even for roots the ecosystem path
+  // went on to place successfully. That coarseness is why this is a separate code: it is
+  // the only signal that says "this directory is in the repo and ORCA is shipping
+  // nothing for it", which `assessUnderstanding` grades on.
+  const placedRoots = new Set<string>([
+    ...components.map((c) => c.rootDir),
+    ...insights.ecosystemComponents.map((e) => e.rootDir),
+    ...insights.dockerfiles.map((d) => d.rootDir),
+  ]);
+  for (const c of candidates) {
+    if (placedRoots.has(c.rootDir)) continue;
+    warnings.push({
+      code: 'unplaced-component',
+      message: `'${c.rootDir}' declares a manifest but nothing was placed for it — it will be missing from the generated stack.`,
+      detector: 'index',
+    });
+  }
+
   // Confidence stays boolean-per-role (does a frontend/backend exist at all), not scaled
   // by component count — a monorepo with 3 backends isn't inherently "more confidently
   // detected" than one with 1. See docs/universal-understanding-plan.md for the rationale
@@ -396,6 +416,13 @@ async function filesAt(dir: string): Promise<string[]> {
     'build.gradle',
     'build.gradle.kts',
     'manage.py',
+    // The Node manifest. Every Node recipe above the bare fallback matches on a
+    // DEPENDENCY, so this was never needed and was absent — which silently made the
+    // `node-app` fallback unreachable through this path even once it was registered
+    // (its matcher keys on the manifest alone, by design: knowing the runtime and having
+    // a manifest is the whole point of a bare fallback). Adding a marker only widens what
+    // the matcher can see; no existing recipe keys off it, so no existing match changes.
+    'package.json',
     // Python lockfiles/manifests: the FastAPI/Flask recipes select a uv/Poetry/pip
     // variant by which of these is present, so they must reach the matcher's `files`.
     'requirements.txt',
