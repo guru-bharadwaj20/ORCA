@@ -58,6 +58,26 @@ const COMMAND_BINARIES = new Set([
 /** `./server`, `./target/release/app`, `/app/server` — a compiled artifact to exec. */
 const EXECUTABLE_PATH = /^\.?\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/;
 
+/**
+ * `Runtime` (`src/model/recipe.ts`) is a deliberately open taxonomy — tier-3 inference
+ * exists precisely to name a runtime ORCA doesn't ship a recipe for — so this can't be a
+ * closed enum the way `packageManager` elsewhere is. It still must be a short, plain
+ * identifier: no shell metacharacters, no newlines (which would break out of the
+ * single-line Dockerfile comment `synthesizeDockerfile.ts` embeds it in), and not one of
+ * the `Object.prototype` member names that a plain-object lookup keyed by this value
+ * (`DEFAULT_BASE_IMAGES[runtime]`, `RUNTIME_DOCKERIGNORE[runtime]`) would otherwise
+ * resolve to instead of `undefined`.
+ */
+const RUNTIME_NAME = /^[a-z][a-z0-9._-]{0,31}$/;
+const RESERVED_OBJECT_KEYS = new Set([
+  '__proto__',
+  'constructor',
+  'prototype',
+  'toString',
+  'valueOf',
+  'hasOwnProperty',
+]);
+
 const head = (command: string): string => command.trim().split(/\s+/)[0] ?? '';
 
 const BASE_IMAGE = /^(node|python):[A-Za-z0-9][A-Za-z0-9._-]*$/;
@@ -197,7 +217,10 @@ export type InferredEnv = z.infer<typeof InferredEnvSchema>;
  * `reasoning` is required — an unexplained AI inference is rejected.
  */
 export const InferredBuildSchema = z.object({
-  runtime: z.string().min(1),
+  runtime: z
+    .string()
+    .regex(RUNTIME_NAME, 'runtime must be a short lowercase identifier (e.g. "node", "elixir")')
+    .refine((v) => !RESERVED_OBJECT_KEYS.has(v), 'runtime must not be a reserved object key'),
   packageManager: z.string().min(1).optional(),
   installCommands: stringList.default([]),
   buildCommands: stringList.default([]),
