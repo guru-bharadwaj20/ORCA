@@ -40,9 +40,18 @@ const GENERIC_BASE = { build: 'debian:bookworm', runtime: 'debian:bookworm-slim'
 /**
  * Resolve the build/runtime base images for a recipe, filling blanks (inferred recipes)
  * from the per-runtime defaults so synthesis never emits a bare `FROM`.
+ *
+ * `recipe.runtime` can originate from AI inference (`InferredBuild.runtime`), so it is
+ * not guaranteed to be a member of `Runtime` at this point. `Object.hasOwn` (rather than
+ * a plain `DEFAULT_BASE_IMAGES[recipe.runtime]` lookup) is required here: a value like
+ * `"__proto__"` or `"toString"` would otherwise resolve to a truthy `Object.prototype`
+ * member instead of `undefined`, silently skipping the `?? GENERIC_BASE` fallback and
+ * producing a broken `FROM undefined` (or worse) in the emitted Dockerfile.
  */
 function resolveBaseImages(recipe: BuildRecipe): { build: string; runtime: string } {
-  const fallback = DEFAULT_BASE_IMAGES[recipe.runtime as Runtime] ?? GENERIC_BASE;
+  const fallback = Object.hasOwn(DEFAULT_BASE_IMAGES, recipe.runtime)
+    ? DEFAULT_BASE_IMAGES[recipe.runtime as Runtime]
+    : GENERIC_BASE;
   return {
     build: recipe.baseImages.build || fallback.build,
     runtime: recipe.baseImages.runtime || fallback.runtime,
@@ -119,7 +128,12 @@ export function synthesizeDockerfile(recipe: BuildRecipe, options: SynthesisOpti
   const hasBuild = (recipe.buildCommands?.length ?? 0) > 0;
   const baseImages = resolveBaseImages(recipe);
 
-  const header = `# syntax=docker/dockerfile:1\n# ORCA synthesized image — recipe ${recipe.id} (${recipe.runtime}).`;
+  // recipe.id/recipe.runtime can trace back to AI inference over repo-controlled text
+  // (README/manifest excerpts). Strip any embedded newline before splicing them into a
+  // single-line Dockerfile comment — otherwise a value containing a newline breaks out
+  // of the comment and injects a real Dockerfile instruction ahead of the first FROM.
+  const singleLine = (s: string): string => s.replace(/[\r\n]+/g, ' ');
+  const header = `# syntax=docker/dockerfile:1\n# ORCA synthesized image — recipe ${singleLine(recipe.id)} (${singleLine(recipe.runtime)}).`;
 
   // Interpreted runtime (no build step): a single stage is simpler and smaller.
   if (!hasBuild) {
