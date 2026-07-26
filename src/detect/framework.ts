@@ -10,13 +10,6 @@ import { NODE_FRAMEWORK_RECIPES } from '../model/recipes/node.js';
  * registry's own ordering. Sourced directly from that registry so the two lists can
  * never drift apart.
  */
-const MORE_SPECIFIC_NODE_MARKERS: readonly string[] = NODE_FRAMEWORK_RECIPES.flatMap(
-  (entry) => entry.matcher.anyDependency ?? []
-);
-
-function hasMoreSpecificNodeFramework(deps: readonly string[]): boolean {
-  return MORE_SPECIFIC_NODE_MARKERS.some((marker) => deps.includes(marker));
-}
 
 /**
  * Seed frontend frameworks, in match order: the dependency that names each, and the
@@ -44,6 +37,36 @@ const NODE_BACKEND_MARKERS: ReadonlyArray<readonly [readonly string[], BackendFr
 const PYTHON_BACKEND_MARKERS: ReadonlyArray<readonly [readonly string[], BackendFramework]> = [
   [['django'], 'django'],
 ];
+
+/**
+ * Markers for frameworks the SEED detector can name itself, derived from the tables
+ * above so the two can never disagree.
+ *
+ * Subtracted from the recipe markers below, because "defer to a more specific recipe"
+ * has to mean "a framework this detector cannot name", NOT "a framework that has a
+ * recipe". Those were the same set only while react/express/django were the sole
+ * nameable frameworks. The moment `fastify`/`koa`/`hapi` gained recipes they joined the
+ * recipe markers too, so the seed detector started deferring on exactly the frameworks
+ * it had just learned to name — and every one of them silently returned `'unknown'`.
+ */
+const SEED_NAMEABLE: ReadonlySet<string> = new Set(
+  [...FRONTEND_MARKERS, ...NODE_BACKEND_MARKERS].flatMap(([markers]) => markers)
+);
+
+/**
+ * Dependency markers that select a more specific Node framework recipe the seed path
+ * cannot name (Next.js / NestJS / Angular). Those frameworks declare `react`/`express`
+ * themselves, so the seed checks must defer to them — the same reasoning
+ * `model/recipes/node.ts` documents for the registry's own ordering. Sourced from that
+ * registry so the two lists can never drift apart.
+ */
+const MORE_SPECIFIC_NODE_MARKERS: readonly string[] = NODE_FRAMEWORK_RECIPES.flatMap(
+  (entry) => entry.matcher.anyDependency ?? []
+).filter((marker) => !SEED_NAMEABLE.has(marker));
+
+function hasMoreSpecificNodeFramework(deps: readonly string[]): boolean {
+  return MORE_SPECIFIC_NODE_MARKERS.some((marker) => deps.includes(marker));
+}
 
 /** The first framework whose markers appear in `deps`, or null. */
 function firstMatch<T>(
