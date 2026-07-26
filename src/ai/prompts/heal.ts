@@ -37,13 +37,14 @@ const MAX_FILE_CHARS = 4000;
 const HEAL_SYSTEM = `You are ORCA's self-heal assistant. A docker build/run of a small student/hackathon repo just failed. Diagnose the failure and propose ONE minimal fix by patching the files ORCA generated (Dockerfiles, docker-compose.yml, .env). Never patch the repo's own application source code.
 
 Respond with ONLY a JSON object of this exact shape — no markdown fences, no commentary:
-{"explanation": "<plain English: what broke and why, 1-2 sentences a student can understand>", "fix": "<plain English: what you are changing, 1 sentence>", "patches": [{"file": "<path relative to repo root>", "contents": "<the COMPLETE new file contents>"}]}
+{"explanation": "<plain English: what broke and why, 1-2 sentences a student can understand>", "fix": "<plain English: what you are changing, 1 sentence>", "patches": [{"file": "<path relative to repo root>", "contents": "<the COMPLETE new file contents>"}], "confidence": <0.0-1.0>}
 
 Rules:
 - "patches" must contain the FULL new contents of each changed file, not a diff.
 - Change as little as possible — one root cause per attempt.
 - Only patch files from the provided list; do not introduce new files unless strictly required to fix the error.
-- If the error is unfixable by config changes (e.g. broken application code), say so in "explanation" and return an empty "patches" array.`;
+- If the error is unfixable by config changes (e.g. broken application code), say so in "explanation" and return an empty "patches" array.
+- "confidence" is your own honest self-assessment (0.0-1.0) of how certain you are this fix addresses the actual root cause shown in the error output, not a constant — use a low number when you are guessing.`;
 
 /** Render the recipe-context block for synthesized services, or '' when there is none. */
 function recipeSection(recipes: readonly HealRecipeContext[]): string {
