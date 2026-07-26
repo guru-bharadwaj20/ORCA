@@ -87,8 +87,29 @@ export function resolveOrcaHome(env: NodeJS.ProcessEnv = process.env): string {
 export class HealOverrideStore {
   private readonly filePath: string;
 
+  /**
+   * Serializes mutations (`save`/`evict`) issued against THIS store instance. Each
+   * mutation is an independent read-modify-write of the whole file; without this, two
+   * overlapping calls on the same instance (e.g. concurrent heal loops in one process)
+   * could both read the pre-mutation file, and whichever writes last would silently
+   * discard the other's change. This only serializes within one process/instance — it
+   * is not a cross-process file lock — but that is the concurrency this class can
+   * actually see and control.
+   */
+  private queue: Promise<unknown> = Promise.resolve();
+
   constructor(private readonly dir: string = resolveOrcaHome()) {
     this.filePath = join(dir, STORE_FILE);
+  }
+
+  private mutate<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.queue.then(fn, fn);
+    // A failed mutation must not wedge the queue for whatever comes after it.
+    this.queue = run.then(
+      () => undefined,
+      () => undefined
+    );
+    return run;
   }
 
   private async read(): Promise<StoreFile> {
@@ -121,17 +142,21 @@ export class HealOverrideStore {
 
   /** Persist (or replace) the override for its signature. */
   async save(record: HealOverrideRecord): Promise<void> {
-    const store = await this.read();
-    store.records[record.signature] = record;
-    await this.write(store);
+    return this.mutate(async () => {
+      const store = await this.read();
+      store.records[record.signature] = record;
+      await this.write(store);
+    });
   }
 
   /** Remove the override for `signature` if present (a no-op otherwise). */
   async evict(signature: string): Promise<void> {
-    const store = await this.read();
-    if (store.records[signature] === undefined) return;
-    delete store.records[signature];
-    await this.write(store);
+    return this.mutate(async () => {
+      const store = await this.read();
+      if (store.records[signature] === undefined) return;
+      delete store.records[signature];
+      await this.write(store);
+    });
   }
 }
 
