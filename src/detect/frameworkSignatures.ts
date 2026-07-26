@@ -99,6 +99,7 @@ export const FRAMEWORK_SIGNATURES: readonly FrameworkSignature[] = [
     anyDependency: ['@adonisjs/core'],
     weight: 0.9,
   },
+  { id: 'vue', runtime: 'node', role: 'frontend', anyDependency: ['vue'], weight: 0.8 },
   { id: 'express', runtime: 'node', role: 'backend', anyDependency: ['express'], weight: 0.7 },
 
   // --- Python ---
