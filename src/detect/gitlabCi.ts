@@ -204,7 +204,7 @@ async function collectJobs(
   depth: number
 ): Promise<Omit<GitlabCiConfig, 'file'> | null> {
   const absPath = resolve(filePath);
-  if (stack.has(absPath) || depth > MAX_INCLUDE_DEPTH) return null;
+  if (stack.has(absPath) || depth >= MAX_INCLUDE_DEPTH) return null;
   stack.add(absPath);
 
   try {

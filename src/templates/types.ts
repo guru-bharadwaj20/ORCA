@@ -6,17 +6,6 @@
  */
 export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'pip' | 'poetry' | 'uv' | (string & {});
 
-/** The package managers ORCA has explicit, hand-tuned handling for. */
-export const KNOWN_PACKAGE_MANAGERS = [
-  'npm',
-  'yarn',
-  'pnpm',
-  'pip',
-  'poetry',
-  'uv',
-  'pipenv',
-] as const;
-
 export type ServiceKind = 'frontend' | 'backend' | 'database';
 
 export interface DockerfileVars {

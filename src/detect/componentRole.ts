@@ -28,7 +28,12 @@ import { join } from 'node:path';
 
 import { bestClaim, reasoning, type Claim } from '../model/claim.js';
 import type { RoleFact } from './detectors/facts.js';
-import { ROLE_DETECTORS, hasWebDependency, hasWorkerDependency } from './detectors/role.js';
+import {
+  ROLE_DETECTORS,
+  SERVER_SCRIPTS,
+  hasWebDependency,
+  hasWorkerDependency,
+} from './detectors/role.js';
 
 import { readPackageJson } from './manifest.js';
 import { readFileIfExists } from '../utils/fs.js';
@@ -58,9 +63,6 @@ export interface RoleFacts {
  */
 const WORKER_COMMAND =
   /\b(?:celery|sidekiq|dramatiq|huey|resque|faktory)\b|\brq\s+worker\b|\bworker(?:\.[a-z]+)?\b|\bconsumer(?:\.[a-z]+)?\b/i;
-
-/** Scripts that mean "this starts a long-lived server", which rules out `cli`. */
-const SERVER_SCRIPTS = ['start', 'dev', 'serve'];
 
 /**
  * Classify a component root as `worker` or `cli` when the evidence is unambiguous.

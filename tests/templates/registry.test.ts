@@ -10,7 +10,6 @@ import type {
   PackageManager,
 } from '../../src/detect/types.js';
 import { dockerfileVarsFor, selectDockerfileTemplate } from '../../src/templates/registry.js';
-import { KNOWN_PACKAGE_MANAGERS } from '../../src/templates/types.js';
 
 function component(overrides: Partial<DetectedComponent>): DetectedComponent {
   return {
@@ -207,22 +206,5 @@ describe('open PackageManager taxonomy', () => {
     // edit. `cargo` is not a known member, yet it's a valid PackageManager.
     const cargo: PackageManager = 'cargo';
     expect(cargo).toBe('cargo');
-  });
-
-  it('exposes the known managers as the closed hand-tuned core', () => {
-    expect([...KNOWN_PACKAGE_MANAGERS]).toEqual([
-      'npm',
-      'yarn',
-      'pnpm',
-      'pip',
-      'poetry',
-      'uv',
-      'pipenv',
-    ]);
-    // Every known member is, of course, assignable to the open type.
-    for (const pm of KNOWN_PACKAGE_MANAGERS) {
-      const assigned: PackageManager = pm;
-      expect(assigned).toBe(pm);
-    }
   });
 });

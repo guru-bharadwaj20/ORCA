@@ -222,7 +222,7 @@ async function expandJobEntries(
 
     if (isTemplateRef(entry)) {
       const templateFile = resolveTemplatePath(repoPath, fromFile, entry.template);
-      if (templateFile === null || stack.has(templateFile) || depth > MAX_TEMPLATE_DEPTH) continue;
+      if (templateFile === null || stack.has(templateFile) || depth >= MAX_TEMPLATE_DEPTH) continue;
       stack.add(templateFile);
       try {
         const templateEntries = await loadTemplateArray(templateFile, entry.parameters ?? {});
@@ -276,7 +276,7 @@ async function expandStageEntries(
 
     if (isTemplateRef(entry)) {
       const templateFile = resolveTemplatePath(repoPath, fromFile, entry.template);
-      if (templateFile === null || stack.has(templateFile) || depth > MAX_TEMPLATE_DEPTH) continue;
+      if (templateFile === null || stack.has(templateFile) || depth >= MAX_TEMPLATE_DEPTH) continue;
       stack.add(templateFile);
       try {
         const templateEntries = await loadTemplateArray(templateFile, entry.parameters ?? {});
