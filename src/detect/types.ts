@@ -235,6 +235,17 @@ export interface RepoInsights {
      * resolved to a service before this field existed still resolves to one.
      */
     role: RunnableRole;
+    /**
+     * The start command this root's OWN manifest declares (a `package.json` script, a
+     * `Procfile` web line), when one was found.
+     *
+     * Only consulted when the matched recipe declares no start command of its own — a
+     * framework recipe's command is framework-correct and wins. It exists for the bare
+     * runtime fallbacks, which by construction know the runtime but not how to run the
+     * app: without it a `fastify` repo whose only script is `start` was emitting
+     * `CMD npm run dev`, an image that builds and then exits with `Missing script: "dev"`.
+     */
+    startCommand?: string;
   }[];
   /**
    * The build/run shape recovered from every source that declares one — CI (GitHub
