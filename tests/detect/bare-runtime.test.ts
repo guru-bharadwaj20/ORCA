@@ -83,3 +83,32 @@ describe('bare-runtime start command', () => {
     expect(ids.indexOf('node-app')).toBeGreaterThan(ids.indexOf('node-vite'));
   });
 });
+
+describe('bare fallback and workspace roots', () => {
+  const MONOREPO = join(
+    dirname(fileURLToPath(import.meta.url)),
+    '..',
+    'fixtures',
+    'react-express-nodb-repo'
+  );
+
+  it('does not place a workspace root as a phantom service', async () => {
+    const result = await detectStack(MONOREPO);
+
+    // The root here is `{ "private": true, "workspaces": [...] }` — no deps, no scripts.
+    // The bare fallback matches on a manifest ALONE, so without a guard it placed this
+    // root as a service that would run `npm start` in a directory with nothing to start,
+    // alongside the real client/server components from its own workspaces.
+    expect(result.insights.ecosystemComponents).toEqual([]);
+  });
+
+  it('still places the real components from that monorepo', async () => {
+    const result = await detectStack(MONOREPO);
+
+    // The guard must not cost coverage — only the phantom.
+    expect(result.components.map((c) => `${c.rootDir}:${c.framework}`).sort()).toEqual([
+      'client:react',
+      'server:express',
+    ]);
+  });
+});
