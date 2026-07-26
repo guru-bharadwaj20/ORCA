@@ -308,8 +308,16 @@ export function buildServicePlan(
   }));
 
   const shared = sharedRootDirs(detection.components);
-  const refined = (component: DetectedComponent, role: 'frontend' | 'backend'): DockerfileVars =>
-    refinedComponentVars(component, role, filled);
+  // AI-fill only ever refines the primary component per role (mirrors writeConfigs.ts,
+  // which generates the actual Dockerfile the same way) — an additional same-role
+  // component in a monorepo must build from recipe/template defaults. Without this
+  // gate, a non-primary component's plan (ports, env) reflected the primary's AI-filled
+  // values while its generated Dockerfile did not, silently mismatching the two.
+  const refined = (
+    component: DetectedComponent,
+    role: 'frontend' | 'backend',
+    isPrimary: boolean
+  ): DockerfileVars => refinedComponentVars(component, role, isPrimary ? filled : {});
 
   // Backend nodes: one per detected backend-role component, not just detection.backend.
   // The hint-preferred primary (detection.backend) keeps the literal 'backend' id, so a
@@ -321,7 +329,7 @@ export function buildServicePlan(
   for (const component of detection.components) {
     if (component.role !== 'backend') continue;
     const isPrimary = detection.backend?.rootDir === component.rootDir;
-    const vars = refined(component, 'backend');
+    const vars = refined(component, 'backend', isPrimary);
     const id = uniqueId(isPrimary ? 'backend' : idFromRootDir(component.rootDir), usedIds);
     usedIds.add(id);
     const node: ServiceNode = {
@@ -365,7 +373,7 @@ export function buildServicePlan(
   for (const component of detection.components) {
     if (component.role !== 'frontend') continue;
     const isPrimary = detection.frontend?.rootDir === component.rootDir;
-    const vars = refined(component, 'frontend');
+    const vars = refined(component, 'frontend', isPrimary);
     const id = uniqueId(isPrimary ? 'frontend' : idFromRootDir(component.rootDir), usedIds);
     usedIds.add(id);
     const node: ServiceNode = {
