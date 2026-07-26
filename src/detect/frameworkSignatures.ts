@@ -83,6 +83,7 @@ export const FRAMEWORK_SIGNATURES: readonly FrameworkSignature[] = [
     anyDependency: ['@hapi/hapi', 'hapi'],
     weight: 0.85,
   },
+  { id: 'hono', runtime: 'node', role: 'backend', anyDependency: ['hono'], weight: 0.85 },
   { id: 'express', runtime: 'node', role: 'backend', anyDependency: ['express'], weight: 0.7 },
 
   // --- Python ---
