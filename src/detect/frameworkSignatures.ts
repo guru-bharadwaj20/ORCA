@@ -91,6 +91,7 @@ export const FRAMEWORK_SIGNATURES: readonly FrameworkSignature[] = [
     anyDependency: ['@remix-run/node', '@remix-run/react'],
     weight: 0.9,
   },
+  { id: 'astro', runtime: 'node', role: 'fullstack', anyDependency: ['astro'], weight: 0.9 },
   { id: 'express', runtime: 'node', role: 'backend', anyDependency: ['express'], weight: 0.7 },
 
   // --- Python ---
