@@ -79,21 +79,33 @@ export const DEFAULT_WALK_IGNORE: string[] = [
 ];
 
 /**
- * Read a file, returning null when it is absent — bypassing any active scope.
+ * Byte cap for a single `readFileUncached` call. Detection only ever needs text
+ * evidence (manifests, README excerpts, CI YAML, shell scripts) — no legitimate one of
+ * those approaches this size. Repos scanned here are untrusted, so without a cap a
+ * single crafted multi-gigabyte file at a well-known path (`README.md`, `package.json`)
+ * would be read entirely into memory as one JS string, a straightforward
+ * memory-exhaustion DoS. 8 MiB comfortably covers any real-world text file this module
+ * reads while still bounding the worst case.
+ */
+export const MAX_READ_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Read a file, returning null when it is absent, oversized, or a symlink — bypassing
+ * any active scope.
  *
  * Refuses to follow symlinks: detection reads fixed, well-known filenames
  * (`package.json`, `README.md`, …) out of an untrusted cloned repo, and `readFile`
  * dereferences symlinks by default. A repo that commits one of those names as a
  * symlink to a sensitive host path (`~/.ssh/id_rsa`, `~/.aws/credentials`, …) would
  * otherwise have its target's real contents read and forwarded to the configured AI
- * provider as "detection evidence." An `lstat` up front (treating a symlink the same
- * as a missing file) closes that off without needing every one of the ~85 call sites
- * to know about it.
+ * provider as "detection evidence." An `lstat` up front (treating a symlink, or a file
+ * over `MAX_READ_BYTES`, the same as a missing file) closes both of these off without
+ * needing every one of the ~85 call sites to know about it.
  */
 export async function readFileUncached(path: string): Promise<string | null> {
   try {
     const stats = await lstat(path);
-    if (stats.isSymbolicLink()) return null;
+    if (stats.isSymbolicLink() || stats.size > MAX_READ_BYTES) return null;
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
     if (code === 'ENOENT') return null;
