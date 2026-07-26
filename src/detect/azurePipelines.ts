@@ -8,7 +8,7 @@
  * package. No AI.
  */
 
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import { parse as parseYaml } from 'yaml';
 
@@ -18,7 +18,7 @@ import {
   type CiCommand,
   type CiRuntimeVersion,
 } from './ci.js';
-import { readFileIfExists } from '../utils/fs.js';
+import { readFileIfExists, resolveWithinRoot } from '../utils/fs.js';
 
 /** A job recovered from an Azure Pipelines config. */
 export interface AzurePipelinesJob {
@@ -83,9 +83,14 @@ function substituteParameters(text: string, parameters: Record<string, unknown>)
   });
 }
 
-/** Azure `template:` paths are relative to the directory of the file that references them. */
-function resolveTemplatePath(fromFile: string, templatePath: string): string {
-  return join(dirname(fromFile), templatePath);
+/**
+ * Azure `template:` paths are relative to the directory of the file that references
+ * them, but `templatePath` is repo-controlled content — a crafted
+ * `template: ../../../../some/path/file.yml` must not escape `repoPath`. Returns null
+ * (treated the same as a missing/unparseable template) when it would.
+ */
+function resolveTemplatePath(repoPath: string, fromFile: string, templatePath: string): string | null {
+  return resolveWithinRoot(repoPath, join(dirname(fromFile), templatePath));
 }
 
 /**
@@ -204,6 +209,7 @@ function jobFrom(
  */
 async function expandJobEntries(
   entries: unknown[],
+  repoPath: string,
   fromFile: string,
   stage: string | null,
   fallbackImage: string | null,
@@ -215,16 +221,16 @@ async function expandJobEntries(
     if (entry === null || typeof entry !== 'object') continue;
 
     if (isTemplateRef(entry)) {
-      const templateFile = resolveTemplatePath(fromFile, entry.template);
-      const absPath = resolve(templateFile);
-      if (stack.has(absPath) || depth > MAX_TEMPLATE_DEPTH) continue;
-      stack.add(absPath);
+      const templateFile = resolveTemplatePath(repoPath, fromFile, entry.template);
+      if (templateFile === null || stack.has(templateFile) || depth > MAX_TEMPLATE_DEPTH) continue;
+      stack.add(templateFile);
       try {
         const templateEntries = await loadTemplateArray(templateFile, entry.parameters ?? {});
         if (templateEntries !== null) {
           jobs.push(
             ...(await expandJobEntries(
               templateEntries,
+              repoPath,
               templateFile,
               stage,
               fallbackImage,
@@ -234,7 +240,7 @@ async function expandJobEntries(
           );
         }
       } finally {
-        stack.delete(absPath);
+        stack.delete(templateFile);
       }
       continue;
     }
@@ -258,6 +264,7 @@ interface ExpandedStage {
  */
 async function expandStageEntries(
   entries: unknown[],
+  repoPath: string,
   fromFile: string,
   rootImage: string | null,
   stack: Set<string>,
@@ -268,16 +275,16 @@ async function expandStageEntries(
     if (entry === null || typeof entry !== 'object') continue;
 
     if (isTemplateRef(entry)) {
-      const templateFile = resolveTemplatePath(fromFile, entry.template);
-      const absPath = resolve(templateFile);
-      if (stack.has(absPath) || depth > MAX_TEMPLATE_DEPTH) continue;
-      stack.add(absPath);
+      const templateFile = resolveTemplatePath(repoPath, fromFile, entry.template);
+      if (templateFile === null || stack.has(templateFile) || depth > MAX_TEMPLATE_DEPTH) continue;
+      stack.add(templateFile);
       try {
         const templateEntries = await loadTemplateArray(templateFile, entry.parameters ?? {});
         if (templateEntries !== null) {
           stages.push(
             ...(await expandStageEntries(
               templateEntries,
+              repoPath,
               templateFile,
               rootImage,
               stack,
@@ -286,7 +293,7 @@ async function expandStageEntries(
           );
         }
       } finally {
-        stack.delete(absPath);
+        stack.delete(templateFile);
       }
       continue;
     }
@@ -297,7 +304,7 @@ async function expandStageEntries(
 
     let jobs: AzurePipelinesJob[] = [];
     if (Array.isArray(se.jobs)) {
-      jobs = await expandJobEntries(se.jobs, fromFile, stageName, stageImage, stack, depth);
+      jobs = await expandJobEntries(se.jobs, repoPath, fromFile, stageName, stageImage, stack, depth);
     } else if (Array.isArray(se.steps)) {
       jobs = [jobFrom(se as JobLike, stageName, stageImage)];
     }
@@ -315,6 +322,7 @@ async function expandStageEntries(
  */
 async function parseConfig(
   doc: unknown,
+  repoPath: string,
   filePath: string,
   stack: Set<string>,
   depth: number
@@ -327,13 +335,15 @@ async function parseConfig(
   const jobs: AzurePipelinesJob[] = [];
 
   if (Array.isArray(root.stages)) {
-    const expanded = await expandStageEntries(root.stages, filePath, rootImage, stack, depth);
+    const expanded = await expandStageEntries(root.stages, repoPath, filePath, rootImage, stack, depth);
     for (const stage of expanded) {
       if (stage.name !== null) stages.push(stage.name);
       jobs.push(...stage.jobs);
     }
   } else if (Array.isArray(root.jobs)) {
-    jobs.push(...(await expandJobEntries(root.jobs, filePath, null, rootImage, stack, depth)));
+    jobs.push(
+      ...(await expandJobEntries(root.jobs, repoPath, filePath, null, rootImage, stack, depth))
+    );
   } else if (Array.isArray(root.steps)) {
     jobs.push(jobFrom({ steps: root.steps }, null, rootImage));
   }
@@ -359,7 +369,7 @@ export async function analyzeAzurePipelines(repoPath: string): Promise<AzurePipe
     } catch {
       continue;
     }
-    const parsed = await parseConfig(doc, file, new Set(), 0);
+    const parsed = await parseConfig(doc, repoPath, file, new Set(), 0);
     if (parsed === null) continue;
     configs.push({ file, ...parsed });
   }
