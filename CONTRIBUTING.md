@@ -109,6 +109,25 @@ item someone is **actively working on** shows **that person's** colour instead.
 **When you start on a red item, change its stub to your colour; when you finish, make it
 green.**
 
+### Audit — framework taxonomy pass
+
+Findings from auditing the taxonomy work itself, all fixed. Recorded because three of the
+four were **invisible in the tests that existed** and only surfaced by probing real
+manifests or sweeping every fixture for double-placement.
+
+| Fix                                         | What was wrong                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| :------------------------------------------ | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Defer list swallowed its own frameworks** | `MORE_SPECIFIC_NODE_MARKERS` was derived from `NODE_FRAMEWORK_RECIPES`, so adding `fastify`/`koa`/`hapi` recipes made the seed detector _defer_ to exactly the frameworks it had just learned to name — all three silently returned `'unknown'` again. "Defer to a more specific recipe" now means "a framework this detector cannot name", computed by subtracting the seed tables.                                                                                                                                                                 |
+| **Detected entrypoint ignored**             | `dockerfileVarsFor` used `recipe.startCommand` unconditionally, so `component.entrypoint` — resolved by `detectEntrypoint`, evidence-backed at 0.85, surfaced in the reasoning trail — never reached the Dockerfile. For frameworks that ship no CLI (fastify/koa/hapi/hono) the hardcoded `npm run start` was pure guesswork and died on any repo whose script is `dev` or `serve`. Those recipes now declare `startCommand: ''` and `startCommandFor` resolves recipe → detected → convention, mirroring `withStartCommand` on the ecosystem path. |
+| **Phantom service on workspace roots**      | The bare fallback matches on a manifest ALONE, so a monorepo root holding only `{ "private": true, "workspaces": [...] }` was placed as a service running `npm start` in a directory with nothing to start — beside the real components from its own workspaces. Found by sweeping every fixture for double-placement, not by a failing test.                                                                                                                                                                                                        |
+| **Duplicate `python-app` definition**       | The recipe existed twice, byte-identical, one registered and one for `recipeForComponent` — exactly the setup where one gets edited and the other does not. Now read off the registered entry.                                                                                                                                                                                                                                                                                                                                                       |
+
+Two invariants are now permanent tests rather than manual checks: naming a framework must
+never DOWNGRADE its build (a framework the detector can name but
+`SEED_RECIPE_BY_FRAMEWORK` does not map falls to the bare fallback and silently loses its
+build step), and a blank `startCommand` is allow-listed to the recipes where blank
+genuinely means "ask the repo".
+
 ### Architectural debt — verified, prioritized
 
 These are **confirmed** findings from a codebase review (not speculative improvements):
