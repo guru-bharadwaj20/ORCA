@@ -89,7 +89,11 @@ function substituteParameters(text: string, parameters: Record<string, unknown>)
  * `template: ../../../../some/path/file.yml` must not escape `repoPath`. Returns null
  * (treated the same as a missing/unparseable template) when it would.
  */
-function resolveTemplatePath(repoPath: string, fromFile: string, templatePath: string): string | null {
+function resolveTemplatePath(
+  repoPath: string,
+  fromFile: string,
+  templatePath: string
+): string | null {
   return resolveWithinRoot(repoPath, join(dirname(fromFile), templatePath));
 }
 
@@ -304,7 +308,15 @@ async function expandStageEntries(
 
     let jobs: AzurePipelinesJob[] = [];
     if (Array.isArray(se.jobs)) {
-      jobs = await expandJobEntries(se.jobs, repoPath, fromFile, stageName, stageImage, stack, depth);
+      jobs = await expandJobEntries(
+        se.jobs,
+        repoPath,
+        fromFile,
+        stageName,
+        stageImage,
+        stack,
+        depth
+      );
     } else if (Array.isArray(se.steps)) {
       jobs = [jobFrom(se as JobLike, stageName, stageImage)];
     }
@@ -335,7 +347,14 @@ async function parseConfig(
   const jobs: AzurePipelinesJob[] = [];
 
   if (Array.isArray(root.stages)) {
-    const expanded = await expandStageEntries(root.stages, repoPath, filePath, rootImage, stack, depth);
+    const expanded = await expandStageEntries(
+      root.stages,
+      repoPath,
+      filePath,
+      rootImage,
+      stack,
+      depth
+    );
     for (const stage of expanded) {
       if (stage.name !== null) stages.push(stage.name);
       jobs.push(...stage.jobs);
