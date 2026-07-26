@@ -75,7 +75,11 @@ export const NODE_FRAMEWORK_RECIPES: readonly RecipeEntry[] = [
       installCommands: ['npm install'],
       // The maintainer's own `start` script, not `node server.js` — a guessed filename is
       // the single most common way a generated image dies at startup.
-      startCommand: 'npm run start',
+      // Empty by design: these frameworks ship no CLI and no start convention, so the
+      // only correct answer is the script the maintainer actually wrote. `dockerfileVarsFor`
+      // fills it from the detected entrypoint; hardcoding `npm run start` here produced a
+      // container that died on any repo whose script is named `dev` or `serve`.
+      startCommand: '',
       defaultPorts: [3000],
       baseImages: NODE_IMAGES,
     },
@@ -89,7 +93,11 @@ export const NODE_FRAMEWORK_RECIPES: readonly RecipeEntry[] = [
       packageManager: 'npm',
       dependencyFiles: ['package.json'],
       installCommands: ['npm install'],
-      startCommand: 'npm run start',
+      // Empty by design: these frameworks ship no CLI and no start convention, so the
+      // only correct answer is the script the maintainer actually wrote. `dockerfileVarsFor`
+      // fills it from the detected entrypoint; hardcoding `npm run start` here produced a
+      // container that died on any repo whose script is named `dev` or `serve`.
+      startCommand: '',
       defaultPorts: [3000],
       baseImages: NODE_IMAGES,
     },
@@ -103,7 +111,11 @@ export const NODE_FRAMEWORK_RECIPES: readonly RecipeEntry[] = [
       packageManager: 'npm',
       dependencyFiles: ['package.json'],
       installCommands: ['npm install'],
-      startCommand: 'npm run start',
+      // Empty by design: these frameworks ship no CLI and no start convention, so the
+      // only correct answer is the script the maintainer actually wrote. `dockerfileVarsFor`
+      // fills it from the detected entrypoint; hardcoding `npm run start` here produced a
+      // container that died on any repo whose script is named `dev` or `serve`.
+      startCommand: '',
       defaultPorts: [3000],
       baseImages: NODE_IMAGES,
     },
@@ -117,7 +129,11 @@ export const NODE_FRAMEWORK_RECIPES: readonly RecipeEntry[] = [
       packageManager: 'npm',
       dependencyFiles: ['package.json'],
       installCommands: ['npm install'],
-      startCommand: 'npm run start',
+      // Empty by design: these frameworks ship no CLI and no start convention, so the
+      // only correct answer is the script the maintainer actually wrote. `dockerfileVarsFor`
+      // fills it from the detected entrypoint; hardcoding `npm run start` here produced a
+      // container that died on any repo whose script is named `dev` or `serve`.
+      startCommand: '',
       defaultPorts: [3000],
       baseImages: NODE_IMAGES,
     },
