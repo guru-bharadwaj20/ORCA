@@ -173,7 +173,23 @@ const BARE_PYTHON_RECIPE: BuildRecipe = {
  * detectors, not here — this list answers "how would this build", not "should it run".
  */
 export const BARE_RUNTIME_RECIPES = [
-  { matcher: { runtime: 'node' as const, anyFile: ['package.json'] }, recipe: BARE_NODE_RECIPE },
+  {
+    matcher: { runtime: 'node' as const, anyFile: ['package.json'] },
+    // NOTE the empty `startCommand`, and that it differs from `BARE_NODE_RECIPE` above.
+    // A bare fallback knows the runtime but NOT how the app starts, and saying so is the
+    // point: empty means "unknown", which lets the fill chain in `ecosystemComponentsFrom`
+    // use the repo's own declared command. Hardcoding `npm run dev` here instead produced
+    // an image that built and then exited with `Missing script: "dev"` on the very common
+    // repo whose only script is `start`. `BARE_NODE_RECIPE` keeps the old literal because
+    // it feeds `recipeForComponent`, whose golden output must not move.
+    recipe: { ...BARE_NODE_RECIPE, startCommand: '' },
+  },
+  // The Python fallbacks KEEP their start commands, deliberately. `python main.py` is a
+  // convention guess, but the uv/poetry variants wrap it (`uv run …`, `poetry run …`) so
+  // the app resolves the managed environment — emptying them would drop that wrapper and
+  // let a raw command run outside the venv. `detectEntrypoint` also finds a Python start
+  // command far less often than a Node one (package scripts vs. only Procfile/manage.py),
+  // so blanking them would frequently leave nothing to fill and emit an empty CMD.
   ...BARE_PYTHON_RECIPES,
 ];
 
