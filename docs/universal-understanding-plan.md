@@ -759,7 +759,13 @@ Two things the doc names that are **partly** true and worth stating precisely:
   **no `php-symfony` recipe** — Symfony exists only as a row in the framework _signature_
   table (`detect/frameworkSignatures.ts`), so a Symfony repo is identified but builds
   through the generic `php-composer` recipe.
-- **`FrontendFramework`/`BackendFramework` are still closed unions.** They no longer gate
-  what ORCA can build, but they do still gate what the seed frontend/backend detector will
-  place, which is why a Node CLI or a Vue app reaches the plan through the ecosystem/
-  Dockerfile paths rather than as a first-class component.
+- ~~**`FrontendFramework`/`BackendFramework` are still closed unions.**~~ **RESOLVED.**
+  Both are now open taxonomies (`'react' | 'vue' | 'svelte' | (string & {})`, and the
+  backend equivalent), matching `Runtime`/`PackageManager`. Framework matching is a table
+  in `detect/framework.ts` rather than an `if` chain, so naming a framework is one row.
+  A Vue app is now an ordinary frontend component that says what it is, instead of an
+  anonymous `'service'` node. Two things had to land with it: `SEED_RECIPE_BY_FRAMEWORK`
+  gained entries for every newly-nameable framework (otherwise naming one DOWNGRADED it to
+  the bare fallback), and seed/ecosystem disjointness is now enforced by "this root was
+  already placed" rather than a hardcoded pair of recipe ids that could not scale past
+  three frameworks.
