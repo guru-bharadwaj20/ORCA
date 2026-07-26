@@ -126,12 +126,20 @@ interface DatabaseNodes {
 function databaseNodes(databases: DetectedDatabase[]): DatabaseNodes {
   const nodes: ServiceNode[] = [];
   const pairs: DatabasePair[] = [];
+  const usedIds = new Set<string>();
   let primaryTaken = false;
 
   for (const db of databases) {
     const spec = DB_SPECS[db.engine];
     const isCache = db.engine === 'redis';
-    const id = isCache ? 'cache' : primaryTaken ? db.engine : 'db';
+    // uniqueId (not a bare candidate) is required here: every cache previously got the
+    // literal id 'cache', and only the SECOND non-primary database of a given engine was
+    // disambiguated (a third collided with the second). ServiceNode.id becomes the
+    // compose service key, so a collision silently dropped a whole service — the later
+    // definition overwrote the earlier one in the emitted YAML mapping.
+    const candidate = isCache ? 'cache' : primaryTaken ? db.engine : 'db';
+    const id = uniqueId(candidate, usedIds);
+    usedIds.add(id);
     if (!isCache) primaryTaken = true;
 
     const node: ServiceNode = {
