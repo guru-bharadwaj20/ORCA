@@ -50,10 +50,19 @@ const RUNTIME_DOCKERIGNORE: Record<string, readonly string[]> = {
   ruby: ['.bundle', 'vendor/bundle'],
 };
 
-/** The `.dockerignore` for a synthesized service: the base set plus its runtime's outputs. */
+/**
+ * The `.dockerignore` for a synthesized service: the base set plus its runtime's
+ * outputs.
+ *
+ * `runtime` can originate from AI inference, so it is not guaranteed to be one of the
+ * keys declared above. `Object.hasOwn` avoids a plain-object lookup here: a value like
+ * `"toString"` would otherwise resolve to a truthy `Object.prototype` member (a
+ * function, not a string array), and `extra.join` further down would throw.
+ */
 function dockerignoreFor(runtime: string): string {
+  if (!Object.hasOwn(RUNTIME_DOCKERIGNORE, runtime)) return DOCKERIGNORE;
   const extra = RUNTIME_DOCKERIGNORE[runtime];
-  if (extra === undefined || extra.length === 0) return DOCKERIGNORE;
+  if (extra.length === 0) return DOCKERIGNORE;
   return `${DOCKERIGNORE}${extra.join('\n')}\n`;
 }
 
