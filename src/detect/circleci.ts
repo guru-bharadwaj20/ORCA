@@ -379,10 +379,17 @@ function workflowJobs(list: unknown): WorkflowJob[] {
  * within the workflow. A cycle (which CircleCI itself would reject) cannot be ordered, so
  * the unresolved remainder is appended in declaration order rather than dropped — losing
  * jobs would be worse than reporting an imperfect order for a config that cannot run.
+ *
+ * Bounded the same way `MAX_COMMAND_DEPTH` bounds command-block recursion: `.circleci/
+ * config.yml` is untrusted repo content, so a crafted config with a very large
+ * `workflows:` job list is capped rather than processed in full.
  */
+const MAX_WORKFLOW_JOBS = 2_000;
+
 function topologicalOrder(jobs: readonly WorkflowJob[]): string[] {
-  const known = new Set(jobs.map((j) => j.name));
-  const remaining = [...jobs];
+  const bounded = jobs.length > MAX_WORKFLOW_JOBS ? jobs.slice(0, MAX_WORKFLOW_JOBS) : jobs;
+  const known = new Set(bounded.map((j) => j.name));
+  let remaining = [...bounded];
   const settled = new Set<string>();
   const order: string[] = [];
 
@@ -396,11 +403,13 @@ function topologicalOrder(jobs: readonly WorkflowJob[]): string[] {
     }
     // Collect the whole level before settling it, so jobs at the same level never
     // satisfy each other's dependencies.
-    for (const job of ready) order.push(job.name);
     for (const job of ready) {
+      order.push(job.name);
       settled.add(job.name);
-      remaining.splice(remaining.indexOf(job), 1);
     }
+    // A single filter pass over `remaining`, not an indexOf+splice per ready job — the
+    // latter made job removal O(ready.length × remaining.length) per level.
+    remaining = remaining.filter((job) => !settled.has(job.name));
   }
   return order;
 }
