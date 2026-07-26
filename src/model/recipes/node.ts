@@ -153,6 +153,21 @@ export const NODE_FRAMEWORK_RECIPES: readonly RecipeEntry[] = [
     },
   },
   {
+    // SvelteKit's adapter-node build emits build/index.js; exec it directly.
+    matcher: { runtime: 'node', anyDependency: ['@sveltejs/kit'] },
+    recipe: {
+      id: 'node-sveltekit',
+      runtime: 'node',
+      packageManager: 'npm',
+      dependencyFiles: ['package.json'],
+      installCommands: ['npm install'],
+      buildCommands: ['npm run build'],
+      startCommand: 'node build',
+      defaultPorts: [3000],
+      baseImages: NODE_IMAGES,
+    },
+  },
+  {
     matcher: { runtime: 'node', anyDependency: ['@angular/core'] },
     recipe: {
       id: 'node-angular',
