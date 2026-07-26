@@ -1,0 +1,5 @@
+{
+  "name": "gateway",
+  "dependencies": { "fastify": "^4.26.0" },
+  "scripts": { "start": "node server.js" }
+}
