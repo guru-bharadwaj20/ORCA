@@ -104,6 +104,7 @@ export const FRAMEWORK_SIGNATURES: readonly FrameworkSignature[] = [
   { id: 'express', runtime: 'node', role: 'backend', anyDependency: ['express'], weight: 0.7 },
 
   // --- Python ---
+  { id: 'litestar', runtime: 'python', role: 'backend', anyDependency: ['litestar'], weight: 0.9 },
   { id: 'django', runtime: 'python', role: 'backend', anyDependency: ['django'], weight: 0.9 },
   { id: 'fastapi', runtime: 'python', role: 'backend', anyDependency: ['fastapi'], weight: 0.9 },
   { id: 'flask', runtime: 'python', role: 'backend', anyDependency: ['flask'], weight: 0.85 },
