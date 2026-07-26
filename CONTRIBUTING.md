@@ -67,16 +67,16 @@ item someone is **actively working on** shows **that person's** colour instead.
 
 ### Ecosystem recipe coverage
 
-| Stub | Ecosystem | Recipes                                               |
-| :--: | --------- | ----------------------------------------------------- |
-|  🟢  | Node      | react · express · next · nest · angular · vite        |
-|  🟢  | Python    | django · fastapi · flask (uv / poetry / pip variants) |
-|  🟢  | PHP       | composer · laravel                                    |
-|  🟢  | Ruby      | bundler · rails · sinatra                             |
-|  🟢  | Go        | go-mod (distroless)                                   |
-|  🟢  | Rust      | cargo                                                 |
-|  🟢  | JVM       | maven · gradle                                        |
-|  🟢  | .NET      | dotnet-sdk                                            |
+| Stub | Ecosystem | Recipes                                                                                                                                          |
+| :--: | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+|  🟢  | Node      | react · express · next · nest · angular · vite · fastify · koa · hapi · hono · remix · nuxt · sveltekit · astro · adonis · bare-runtime fallback |
+|  🟢  | Python    | django · fastapi · flask · litestar · starlette · quart · sanic · streamlit · bottle (uv / poetry / pip variants) · bare-runtime fallback        |
+|  🟢  | PHP       | composer · laravel                                                                                                                               |
+|  🟢  | Ruby      | bundler · rails · sinatra                                                                                                                        |
+|  🟢  | Go        | go-mod (distroless)                                                                                                                              |
+|  🟢  | Rust      | cargo                                                                                                                                            |
+|  🟢  | JVM       | maven · gradle                                                                                                                                   |
+|  🟢  | .NET      | dotnet-sdk                                                                                                                                       |
 
 ### Remaining work — free to pick up
 
