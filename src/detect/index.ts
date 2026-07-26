@@ -20,7 +20,7 @@ import {
 } from '../model/claim.js';
 import type { RepoContext } from '../model/detector.js';
 import type { Runtime } from '../model/recipe.js';
-import { defaultRecipeRegistry } from '../model/recipes/index.js';
+import { BARE_RUNTIME_RECIPE_IDS, defaultRecipeRegistry } from '../model/recipes/index.js';
 import { activeFsReadScope, DEFAULT_WALK_IGNORE, readFileIfExists } from '../utils/fs.js';
 import { withFsCache } from '../utils/fsCache.js';
 import { OrcaError } from '../utils/errors.js';
@@ -39,7 +39,7 @@ import { detectEntrypoint } from './entrypoint.js';
 import { detectBackendFramework, detectFrontendFramework } from './framework.js';
 import { matchFrameworks } from './frameworkSignatures.js';
 import { detectLanguages } from './language.js';
-import { readAllDependencies } from './manifest.js';
+import { readAllDependencies, readPackageJson } from './manifest.js';
 import {
   readDotnetDependencies,
   readGoDependencies,
@@ -414,6 +414,26 @@ async function hasFile(dir: string, ...names: string[]): Promise<boolean> {
 }
 
 /**
+ * True when a manifest declares workspaces — i.e. the directory is a CONTAINER for
+ * packages, not an app itself.
+ *
+ * Used to keep the bare runtime fallback off such a root. The fallback matches on a
+ * manifest alone (that is its whole point), which means a monorepo root holding nothing
+ * but `{ "private": true, "workspaces": [...] }` matched it and was placed as a service —
+ * a phantom container running `npm start` in a directory with nothing to start, alongside
+ * the real components from its own workspaces. A FRAMEWORK recipe matching here is a
+ * different matter and still places: that needs real dependencies, so the root is an app.
+ */
+async function declaresWorkspaces(absDir: string): Promise<boolean> {
+  const pkg = await readPackageJson(absDir);
+  if (pkg === null) return false;
+  const workspaces = (pkg as { workspaces?: unknown }).workspaces;
+  return Array.isArray(workspaces)
+    ? workspaces.length > 0
+    : typeof workspaces === 'object' && workspaces !== null;
+}
+
+/**
  * The start command a root's own manifest declares, as a spreadable partial.
  *
  * Detection already resolves this (`detectEntrypoint` reads package scripts, Procfile,
@@ -649,7 +669,12 @@ async function gatherInsights(
     // paths disjoint (framework.ts already defers those roots out of 'react'/'express').
     if (!alreadySeeded && hasNode) {
       const recipe = recipes.match({ runtime: 'node', dependencies, files });
-      if (recipe) {
+      // A workspace root is a container for packages, not a service (see `declaresWorkspaces`).
+      const phantom =
+        recipe !== null &&
+        BARE_RUNTIME_RECIPE_IDS.has(recipe.id) &&
+        (await declaresWorkspaces(absDir));
+      if (recipe && !phantom) {
         const detected = await detectComponentRole(absDir, {
           dependencies,
           declaredPorts: rootPorts.map((p) => p.port),
