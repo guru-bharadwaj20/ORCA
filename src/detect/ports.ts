@@ -1,9 +1,11 @@
-import { basename, extname, join } from 'node:path';
+import { readdir } from 'node:fs/promises';
+import { basename, extname, join, sep } from 'node:path';
 
 import { dockerfilePortsAt } from './dockerfile.js';
 import { analyzeReadme } from './readme.js';
-import { readFileIfExists, walk } from '../utils/fs.js';
-import type { DetectedPort, ComponentRole } from './types.js';
+import { DEFAULT_WALK_IGNORE, readFileIfExists, walk } from '../utils/fs.js';
+
+import { MANIFEST_FILES, type DetectedPort, type ComponentRole } from './types.js';
 
 const SCANNABLE_EXTENSIONS = new Set(['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs', '.py']);
 
@@ -69,8 +71,43 @@ async function portsFromReadme(componentPath: string): Promise<number[]> {
   return analysis.ports.filter((port) => isValidPort(port) && !KNOWN_SERVICE_PORTS.has(port));
 }
 
+/**
+ * Subdirectories of `componentPath` that declare their OWN manifest, as absolute path
+ * prefixes to exclude from a source scan.
+ *
+ * A directory with its own manifest is a DIFFERENT component, so its ports belong to it.
+ * Without this, a scan is recursive from the root and a monorepo root claims every child's
+ * ports — `react-express-nodb-repo` reported 5173 and 5000, the client's and the server's.
+ * That contaminated role detection at every parent: `detectComponentRole`'s master gate
+ * ("declares a port ⇒ it is a service") and `libraryDetector`'s first check both consult
+ * `declaredPorts`, so a workspace root always looked like a listening service and could
+ * never be recognized as the package container it is.
+ */
+async function nestedComponentDirs(componentPath: string): Promise<string[]> {
+  let entries;
+  try {
+    entries = await readdir(componentPath, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const nested: string[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory() || DEFAULT_WALK_IGNORE.includes(entry.name)) continue;
+    const dir = join(componentPath, entry.name);
+    for (const manifest of MANIFEST_FILES) {
+      if ((await readFileIfExists(join(dir, manifest))) !== null) {
+        nested.push(dir + sep);
+        break;
+      }
+    }
+  }
+  return nested;
+}
+
 async function portsFromCode(componentPath: string): Promise<number[]> {
+  const nested = await nestedComponentDirs(componentPath);
   const files = (await walk(componentPath))
+    .filter((f) => !nested.some((prefix) => f.startsWith(prefix)))
     .filter((f) => SCANNABLE_EXTENSIONS.has(extname(f)) || basename(f).startsWith('vite.config'))
     .slice(0, MAX_SCANNED_FILES);
 
