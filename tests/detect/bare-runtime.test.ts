@@ -13,6 +13,8 @@ import { dirname, join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 
 import { detectStack } from '../../src/detect/index.js';
+import { declaredPorts } from '../../src/detect/ports.js';
+import { detectComponentRole } from '../../src/detect/componentRole.js';
 import { assessUnderstanding } from '../../src/detect/understanding.js';
 import { synthesizeDockerfile } from '../../src/generate/synthesizeDockerfile.js';
 import { ALL_RECIPES } from '../../src/model/recipes/index.js';
@@ -100,6 +102,40 @@ describe('bare fallback and workspace roots', () => {
     // root as a service that would run `npm start` in a directory with nothing to start,
     // alongside the real client/server components from its own workspaces.
     expect(result.insights.ecosystemComponents).toEqual([]);
+  });
+
+  it('scopes a port scan to the component, not its children', async () => {
+    // The ROOT CAUSE of the phantom. `portsFromCode` walks recursively, so the monorepo
+    // root used to report [5173, 5000] — the client's port and the server's. Both
+    // `detectComponentRole`'s master gate ("declares a port ⇒ it is a service") and
+    // `libraryDetector`'s first check read `declaredPorts`, so a workspace root always
+    // looked like a listening service and could never be recognized as a package
+    // container. A directory with its own manifest is a different component.
+    expect(await declaredPorts(MONOREPO)).toEqual([]);
+  });
+
+  it("leaves each real component's own ports intact", async () => {
+    // The scoping fix must not cost detection: children still see their own ports.
+    expect(await declaredPorts(join(MONOREPO, 'client'))).toEqual([
+      { port: 5173, protocol: 'tcp', source: 'code' },
+    ]);
+    expect(await declaredPorts(join(MONOREPO, 'server'))).toEqual([
+      { port: 5000, protocol: 'tcp', source: 'code' },
+    ]);
+  });
+
+  it('suppresses the fallback by ROLE, not by a workspace special case', async () => {
+    // The general rule: a bare fallback carries no evidence the directory runs anything,
+    // so if the role detectors independently say `library` the two signals disagree and
+    // nothing is placed. This covers Go/Rust/Python library shapes too, not just the
+    // npm-workspaces spelling the first fix keyed on.
+    const role = await detectComponentRole(MONOREPO, {
+      dependencies: [],
+      declaredPorts: [],
+      startCommand: '',
+    });
+
+    expect(role?.role).toBe('library');
   });
 
   it('still places the real components from that monorepo', async () => {
