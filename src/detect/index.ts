@@ -39,7 +39,7 @@ import { detectEntrypoint } from './entrypoint.js';
 import { detectBackendFramework, detectFrontendFramework } from './framework.js';
 import { matchFrameworks } from './frameworkSignatures.js';
 import { detectLanguages } from './language.js';
-import { readAllDependencies, readPackageJson } from './manifest.js';
+import { readAllDependencies } from './manifest.js';
 import {
   readDotnetDependencies,
   readGoDependencies,
@@ -56,6 +56,7 @@ import { detectServices } from './services.js';
 import { analyzeShellScripts } from './shellScript.js';
 import { recoverTasks } from './taskRunners.js';
 import { expandWorkspaceGlobs } from './workspaceGlobs.js';
+import { MANIFEST_FILES } from './types.js';
 import type {
   BackendFramework,
   DetectedComponent,
@@ -70,26 +71,6 @@ import type {
 } from './types.js';
 
 export type { DetectionResult } from './types.js';
-
-/**
- * Any of these marks a directory as a component root worth inspecting. The seed-stack
- * manifests come first; the ecosystem manifests (Go/Rust/JVM/.NET) widen candidate
- * discovery so those components surface, match a `BuildRecipe`, and containerize via
- * the open-role 'service' path.
- */
-const MANIFEST_FILES = [
-  'package.json',
-  'requirements.txt',
-  'pyproject.toml',
-  'manage.py',
-  'go.mod',
-  'Cargo.toml',
-  'pom.xml',
-  'build.gradle',
-  'build.gradle.kts',
-  'composer.json',
-  'Gemfile',
-];
 
 /** Conventional directory names that disambiguate multiple candidates per role. */
 const FRONTEND_DIR_HINT = /^(client|frontend|web|ui)$/i;
@@ -414,26 +395,6 @@ async function hasFile(dir: string, ...names: string[]): Promise<boolean> {
 }
 
 /**
- * True when a manifest declares workspaces — i.e. the directory is a CONTAINER for
- * packages, not an app itself.
- *
- * Used to keep the bare runtime fallback off such a root. The fallback matches on a
- * manifest alone (that is its whole point), which means a monorepo root holding nothing
- * but `{ "private": true, "workspaces": [...] }` matched it and was placed as a service —
- * a phantom container running `npm start` in a directory with nothing to start, alongside
- * the real components from its own workspaces. A FRAMEWORK recipe matching here is a
- * different matter and still places: that needs real dependencies, so the root is an app.
- */
-async function declaresWorkspaces(absDir: string): Promise<boolean> {
-  const pkg = await readPackageJson(absDir);
-  if (pkg === null) return false;
-  const workspaces = (pkg as { workspaces?: unknown }).workspaces;
-  return Array.isArray(workspaces)
-    ? workspaces.length > 0
-    : typeof workspaces === 'object' && workspaces !== null;
-}
-
-/**
  * The start command a root's own manifest declares, as a spreadable partial.
  *
  * Detection already resolves this (`detectEntrypoint` reads package scripts, Procfile,
@@ -669,24 +630,29 @@ async function gatherInsights(
     // paths disjoint (framework.ts already defers those roots out of 'react'/'express').
     if (!alreadySeeded && hasNode) {
       const recipe = recipes.match({ runtime: 'node', dependencies, files });
-      // A workspace root is a container for packages, not a service (see `declaresWorkspaces`).
-      const phantom =
-        recipe !== null &&
-        BARE_RUNTIME_RECIPE_IDS.has(recipe.id) &&
-        (await declaresWorkspaces(absDir));
-      if (recipe && !phantom) {
+      if (recipe) {
         const detected = await detectComponentRole(absDir, {
           dependencies,
           declaredPorts: rootPorts.map((p) => p.port),
           startCommand: recipe.startCommand,
         });
-        ecosystemComponents.push({
-          rootDir,
-          runtime: 'node',
-          recipeId: recipe.id,
-          role: detected?.role ?? 'backend',
-          ...(await ownStartCommand(absDir, detected?.role ?? 'backend')),
-        });
+        // A bare fallback matched on a MANIFEST ALONE — it carries no evidence that this
+        // directory runs anything. If the role detectors independently say `library`
+        // ("imported, not run" — no bin, no start script, no entry module), then the only
+        // two signals we have disagree, and placing a service would emit a container that
+        // starts nothing. A workspace root is the common case: `{ private, workspaces }`
+        // and nothing else. A FRAMEWORK recipe is different — matching one needs real
+        // dependencies, so it outweighs the negative evidence and still places.
+        const unrunnable = BARE_RUNTIME_RECIPE_IDS.has(recipe.id) && detected?.role === 'library';
+        if (!unrunnable) {
+          ecosystemComponents.push({
+            rootDir,
+            runtime: 'node',
+            recipeId: recipe.id,
+            role: detected?.role ?? 'backend',
+            ...(await ownStartCommand(absDir, detected?.role ?? 'backend')),
+          });
+        }
       }
     }
   }
