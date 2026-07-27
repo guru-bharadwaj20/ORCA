@@ -353,3 +353,23 @@ export interface DetectionResult {
   /** Non-fatal issues surfaced during detection. */
   warnings: DetectionWarning[];
 }
+
+/**
+ * Any of these marks a directory as a component root worth inspecting. The seed-stack
+ * manifests come first; the ecosystem manifests (Go/Rust/JVM/.NET) widen candidate
+ * discovery so those components surface, match a `BuildRecipe`, and containerize via
+ * the open-role 'service' path.
+ */
+export const MANIFEST_FILES = [
+  'package.json',
+  'requirements.txt',
+  'pyproject.toml',
+  'manage.py',
+  'go.mod',
+  'Cargo.toml',
+  'pom.xml',
+  'build.gradle',
+  'build.gradle.kts',
+  'composer.json',
+  'Gemfile',
+];
