@@ -1,7 +1,8 @@
 /**
- * Golden tests for the ecosystem example repos under `examples/`. Unlike the seed
- * stacks (which render Handlebars templates — see tests/templates/golden.test.ts), the
- * Go/Rust/JVM/.NET examples are containerized by the generic SYNTHESIZER. Each case
+ * Golden tests for the ecosystem example repos under `examples/`. These and the seed
+ * stacks (tests/templates/golden.test.ts) now go through the SAME synthesizer; this file
+ * covers the recipes that come straight from the registry, while the seed file covers the
+ * ones reached through the vars overlay. Each case
  * resolves the recipe the example's manifest would match, synthesizes its Dockerfile,
  * and asserts it byte-for-byte against the committed `.orca-golden/Dockerfile` — so a
  * change to the synthesizer or a recipe that would alter a shipped example's image is

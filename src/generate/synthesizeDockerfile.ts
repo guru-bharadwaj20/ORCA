@@ -79,6 +79,29 @@ function runLines(commands: readonly string[]): string {
   return commands.map((c) => `RUN ${c}`).join('\n');
 }
 
+/**
+ * Collapse any line break to a space. `recipe.id`/`recipe.runtime` can trace back to AI
+ * inference over repo-controlled text (README/manifest excerpts), and `recipe.env` can
+ * come from a recipe assembled at runtime from AI-refined vars — a value carrying a
+ * newline would break out of its own single-line instruction and inject a real Dockerfile
+ * directive after it. Every instruction that splices a recipe string into one line runs
+ * through here.
+ */
+function singleLine(value: string): string {
+  return value.replace(/[\r\n]+/g, ' ');
+}
+
+/**
+ * One `ENV key=value` per entry, or `[]` when the recipe declares none. Emitted in EVERY
+ * stage: a builder that lacks `NODE_ENV=development` installs a different dependency set
+ * than the runtime stage expects, which is exactly the class of bug an image-level env is
+ * there to prevent.
+ */
+function envLines(recipe: BuildRecipe): string[] {
+  const entries = Object.entries(recipe.env ?? {});
+  return entries.map(([key, value]) => `ENV ${singleLine(key)}=${singleLine(value)}`);
+}
+
 /** apt-get install block for a recipe's system packages, or '' when none. */
 function systemPackagesBlock(recipe: BuildRecipe): string {
   if (!recipe.systemPackages || recipe.systemPackages.length === 0) return '';
@@ -133,18 +156,15 @@ export function synthesizeDockerfile(recipe: BuildRecipe, options: SynthesisOpti
   const hasBuild = (recipe.buildCommands?.length ?? 0) > 0;
   const baseImages = resolveBaseImages(recipe);
 
-  // recipe.id/recipe.runtime can trace back to AI inference over repo-controlled text
-  // (README/manifest excerpts). Strip any embedded newline before splicing them into a
-  // single-line Dockerfile comment — otherwise a value containing a newline breaks out
-  // of the comment and injects a real Dockerfile instruction ahead of the first FROM.
-  const singleLine = (s: string): string => s.replace(/[\r\n]+/g, ' ');
   const header = `# syntax=docker/dockerfile:1\n# ORCA synthesized image — recipe ${singleLine(recipe.id)} (${singleLine(recipe.runtime)}).`;
+  const env = envLines(recipe);
 
   // Interpreted runtime (no build step): a single stage is simpler and smaller.
   if (!hasBuild) {
     return [
       header,
       `FROM ${baseImages.runtime}`,
+      ...env,
       `WORKDIR ${workdir}`,
       '',
       systemPackagesBlock(recipe),
@@ -165,6 +185,7 @@ export function synthesizeDockerfile(recipe: BuildRecipe, options: SynthesisOpti
   return [
     header,
     `FROM ${baseImages.build} AS builder`,
+    ...env,
     `WORKDIR ${workdir}`,
     '',
     systemPackagesBlock(recipe),
@@ -175,6 +196,7 @@ export function synthesizeDockerfile(recipe: BuildRecipe, options: SynthesisOpti
     runLines(recipe.buildCommands ?? []),
     '',
     `FROM ${baseImages.runtime}`,
+    ...env,
     `WORKDIR ${workdir}`,
     `COPY --from=builder ${workdir} ${workdir}`,
     '',

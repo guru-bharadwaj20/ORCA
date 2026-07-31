@@ -73,9 +73,10 @@ current status, so the reasoning that motivated the roadmap is not lost:
   `installCommandFor`, `startCommandFor`, `defaultPortFor` are all hardcoded control
   flow over the closed enums.
   → **Largely resolved (Phase A/E).** 19 recipes are data behind `RecipeRegistry.match()`,
-  and `synthesizeDockerfile` emits images from them. `templates/registry.ts` still serves
-  the three seed stacks through their hand-tuned Handlebars templates — deliberate, not
-  pending: they are hand-verified goldens and the generic path does not improve them.
+  and `synthesizeDockerfile` emits images from them. **Fully resolved:** the seed stacks
+  render through that same synthesizer too — the `.hbs` Dockerfile templates are deleted
+  and `templates/registry.ts` now only derives the AI-refinable vars, which are folded
+  back onto the component's recipe before rendering (`generate/dockerfileFromVars.ts`).
 - **Detection is single-pass and static-only.** There is no notion of CI parsing,
   README understanding as a _detection source_, or an inference ladder that escalates
   when deterministic signals run out.
@@ -339,15 +340,13 @@ _The enabling work everything else depends on._
   django) behind a `RecipeRegistry.match()` — proving decision #1 with zero
   capability change. Existing tests must stay green (115 when this was
   written; 550 today).
-  **PARTIAL — verified:** the seed recipes exist, but `templates/registry.ts` still
-  holds the `switch (framework)` and `describeComponent` is still called from
-  `pipeline.ts` and `servicePlan.ts`, while `defaultRecipeRegistry()` is used only
-  inside `gatherInsights` ("advisory"). Two live generation paths remain — templates
-  for seed stacks, recipes for ecosystem components — which is precisely the
-  "parallel hardcoded path" decision #1 rules out. Tracked as **P1**.
-- **Exit criterion (partially met):** the three current stacks run identically and the
-  contracts exist, but they run through the _legacy_ path, not the generic engine. The
-  refactor was additive rather than replacing — closing this is P1 in CONTRIBUTING.md.
+  **DONE.** The `switch (framework)` and `describeComponent` are gone, and the second
+  generation path went with them: seed stacks and ecosystem components now render through
+  one function, `synthesizeDockerfile`. The seed goldens were re-approved deliberately for
+  that move (see the note in `tests/templates/golden.test.ts`) — no instruction changed,
+  only the header comment, blank-line layout, and Django's ENV/entrypoint spelling.
+- **Exit criterion (met):** the three current stacks run through the generic engine, not
+  a legacy path beside it. The refactor finished replacing rather than adding.
 
 ### Phase B — Widen deterministic detection (brief's Phase 1 + 2)
 
@@ -403,8 +402,10 @@ _Dockerfiles generated from the recipe, not from `.hbs` templates keyed on frame
 - [x] A synthesizer that turns a `BuildRecipe` into a multi-stage Dockerfile
       (builder stage → slim runtime stage copying `artifacts`), inferring base image,
       package-manager install, system packages, ports, and a healthcheck.
-- [x] Keep the handful of hand-tuned `.hbs` templates only where a recipe explicitly
-      references one; default path is synthesis.
+- [x] Synthesis is now the ONLY path: the hand-tuned `.hbs` Dockerfile templates are
+      deleted, and a recipe's `env` field carries the last thing they expressed that a
+      recipe could not. Handlebars still renders `docker-compose.yml`, which is a
+      different artifact, not a second Dockerfile renderer.
 - **Exit criterion (met):** the Go/Rust/Java recipes from Phase B produce working multi-stage
   images with no per-framework template file, pinned byte-for-byte by
   `tests/examples/ecosystem-golden.test.ts`.
@@ -534,15 +535,15 @@ Landed on `feat/universal-understanding` (behind the full test suite):
   `BuildRecipe` (registry-matched or AI-inferred) into an actual Dockerfile: multi-stage
   (builder → slim runtime) for compiled runtimes, single-stage for interpreted ones, with
   system-package blocks, `EXPOSE`, and `{{binary}}`/`{{jar}}`/`{{dll}}` placeholder
-  resolution. The seed stacks keep their handwritten Handlebars templates; everything else
-  flows through here. Verified end-to-end producing idiomatic Rust and Go (distroless)
+  resolution. EVERY component flows through here — seed stacks included, via the
+  vars-to-recipe overlay in `generate/dockerfileFromVars.ts`. Verified end-to-end producing idiomatic Rust and Go (distroless)
   images.
 
 - **Open-role containerization (landed)** — ecosystem components now flow end-to-end:
   detection surfaces them (`insights.ecosystemComponents`: root + matched recipe id),
   `buildServicePlan` places them as open `'service'` nodes (`ServiceKind` widened; the
   build source carries a `recipeId`), and both `writeConfigs` and the dry-run preview
-  synthesize their multi-stage Dockerfiles via the `dockerfileFor` recipe branch. A repo
+  synthesize their multi-stage Dockerfiles via `synthesizeDockerfile`. A repo
   with a matched ecosystem recipe is now `isSupported`, so e.g. a Rust or Go repo
   containerizes without a seed frontend/backend. Verified end-to-end through `runPipeline`
   on the Rust fixture (dry-run preview shows the synthesized cargo multi-stage image).

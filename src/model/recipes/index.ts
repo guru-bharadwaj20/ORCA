@@ -60,6 +60,12 @@ const BARE_NODE_RECIPE: BuildRecipe = {
   startCommand: 'npm run dev',
   defaultPorts: [3000],
   baseImages: { build: 'node:20-slim', runtime: 'node:20-slim' },
+  // The `node.Dockerfile.hbs` template set this on EVERY node image it rendered,
+  // classified or not, so the unclassified component this recipe serves keeps it. It is
+  // inherited by the registered ecosystem fallback too, which is correct rather than
+  // incidental: ORCA generates a dev stack (compose bind-mounts the source and already
+  // sets `NODE_ENV=development` on the service), so a bare node image is a dev image.
+  env: { NODE_ENV: 'development' },
 };
 
 /**
@@ -79,6 +85,10 @@ const BARE_PYTHON_COMMON = {
   startCommand: 'python main.py',
   defaultPorts: [8000],
   baseImages: { build: 'python:3.12-slim', runtime: 'python:3.12-slim' },
+  // Carried over from `python.Dockerfile.hbs`, which set both on every Python image:
+  // unbuffered stdout is what makes container logs appear at all, and skipping .pyc
+  // writes keeps a bind-mounted source tree clean. Neither is dev-only.
+  env: { PYTHONUNBUFFERED: '1', PYTHONDONTWRITEBYTECODE: '1' },
 };
 
 /**

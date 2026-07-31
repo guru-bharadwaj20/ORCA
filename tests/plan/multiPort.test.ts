@@ -11,7 +11,8 @@ import { describe, expect, it } from 'vitest';
 import { detectStack } from '../../src/detect/index.js';
 import { planToComposeVars } from '../../src/generate/composeVars.js';
 import { buildServicePlan, refinedComponentVars } from '../../src/plan/servicePlan.js';
-import { renderCompose, renderDockerfile } from '../../src/templates/render.js';
+import { dockerfileFromVars } from '../../src/generate/dockerfileFromVars.js';
+import { renderCompose } from '../../src/templates/render.js';
 
 const fixture = (name: string): string =>
   fileURLToPath(new URL(`../fixtures/${name}`, import.meta.url));
@@ -43,7 +44,7 @@ describe('multi-port repos publish every detected port', () => {
 
     // The synthesized Dockerfile EXPOSEs both, not just the primary port.
     const dockerfileVars = refinedComponentVars(detection.backend!, 'backend', {});
-    const dockerfileText = renderDockerfile(dockerfileVars);
+    const dockerfileText = dockerfileFromVars(detection.backend!, dockerfileVars);
     expect(dockerfileText).toContain('EXPOSE 3000');
     expect(dockerfileText).toContain('EXPOSE 9090');
     // The primary port (index 0) still drives PORT/start-command concerns unchanged.
@@ -62,7 +63,7 @@ describe('multi-port repos publish every detected port', () => {
     expect(backendSpec?.ports).toEqual(['3000:3000']);
 
     const dockerfileVars = refinedComponentVars(detection.backend!, 'backend', {});
-    const dockerfileText = renderDockerfile(dockerfileVars);
+    const dockerfileText = dockerfileFromVars(detection.backend!, dockerfileVars);
     expect(dockerfileText).toContain('EXPOSE 3000');
     // Exactly one EXPOSE line — no accidental extra ports leaking in.
     expect(dockerfileText.match(/^EXPOSE /gm)).toHaveLength(1);
