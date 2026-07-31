@@ -1,0 +1,5 @@
+{
+  "name": "mixed-roles-repo",
+  "private": true,
+  "workspaces": ["api", "worker", "cli", "lib"]
+}

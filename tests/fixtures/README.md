@@ -51,6 +51,15 @@ the model could not represent before `ComponentRole` widened.
 | `go-worker-repo`     | `worker`     | `go.mod` + `asynq`, no web framework, no port — the end-to-end case  |
 | `celery-worker-repo` | `worker`     | `Procfile` with `worker:` and no `web:` — the explicit-intent rule   |
 | `node-cli-repo`      | `cli`        | `package.json` `bin`, no server script, Dockerfile with no `EXPOSE`  |
+| `mixed-roles-repo`   | all four     | a worker, a cli and a library BESIDE a listening service, under one workspace root |
+
+`mixed-roles-repo` backs `tests/detect/parent-role.test.ts` and exists for the parent
+case the three single-role fixtures above cannot express. Every role path gates on
+`declaredPorts`, so while `portsFromCode` walked recursively a parent inherited its
+children's ports and could never resolve to anything but a service. That test reads its
+facts from disk for exactly this reason — hand-passing `declaredPorts: []` would have
+passed throughout the period the bug was live. Its root must stay free of a `bin`, a
+start script and an entry module, or the root assertion stops testing anything.
 
 `go-worker-repo` carries the load: it proves a worker reaches the plan as a `'service'`
 node with **no published port**, even though its `go-mod` recipe declares

@@ -1,0 +1,13 @@
+{
+  "name": "seedctl",
+  "private": true,
+  "bin": {
+    "seedctl": "./bin/seedctl.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "commander": "^12.1.0"
+  }
+}
