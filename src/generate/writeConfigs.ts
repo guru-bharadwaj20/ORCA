@@ -20,7 +20,8 @@ import { renderCompose } from '../templates/render.js';
 import { OrcaError } from '../utils/errors.js';
 import { readFileIfExists, resolveWithinRoot } from '../utils/fs.js';
 import { planToComposeVars } from './composeVars.js';
-import { dockerfileFor } from './dockerfileFor.js';
+import { dockerfileFromVars } from './dockerfileFromVars.js';
+import { synthesizeDockerfile } from './synthesizeDockerfile.js';
 
 /** Junk that must never be COPY'd into an image (mirrors the golden samples). */
 const DOCKERIGNORE = `node_modules
@@ -168,11 +169,11 @@ export async function writeConfigs(ctx: RunContext): Promise<GeneratedFile[]> {
       node.componentRootDir ===
       (role === 'backend' ? detection.backend : detection.frontend)?.rootDir;
     const vars = refinedComponentVars(component, role, isPrimary ? filled : {});
-    // Seed stacks render their hand-verified template; the `dockerfileFor` seam is
-    // where ecosystem/inferred components will synthesize instead (open-role work).
+    // Seed stacks go through the SAME synthesizer as everything else: the vars (recipe
+    // defaults, AI-refined) are folded back onto the component's recipe and rendered once.
     await write(
       inContext(node.source.context, node.source.dockerfile),
-      dockerfileFor({ kind: 'template', vars }),
+      dockerfileFromVars(component, vars),
       'dockerfile'
     );
 
@@ -203,7 +204,7 @@ export async function writeConfigs(ctx: RunContext): Promise<GeneratedFile[]> {
 
     await write(
       inContext(node.source.context, node.source.dockerfile),
-      dockerfileFor({ kind: 'recipe', recipe }),
+      synthesizeDockerfile(recipe),
       'dockerfile'
     );
     if (!contextsSeen.has(node.source.context)) {

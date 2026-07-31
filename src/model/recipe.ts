@@ -8,11 +8,11 @@
  * per ecosystem (Go, Rust, Java, …) and AI-synthesized recipes join them — all without
  * touching control flow.
  *
- * PHASE: A (foundation) — REAL code. Decision #1 is complete: the old
- * `describeComponent` / `switch (framework)` in `templates/registry.ts` is gone, and a
- * seed component's build knowledge is now sourced from its recipe here via
- * `recipeForComponent` (`model/recipes/index.ts`). The .hbs templates remain only as the
- * node/python renderer behind the single `dockerfileFor` seam.
+ * PHASE: A (foundation) — REAL code. Decision #1 is complete, renderer included: the old
+ * `describeComponent` / `switch (framework)` in `templates/registry.ts` is gone, a seed
+ * component's build knowledge is sourced from its recipe here via `recipeForComponent`
+ * (`model/recipes/index.ts`), and the `.hbs` Dockerfile templates are deleted — seed and
+ * ecosystem components alike render through `synthesizeDockerfile`.
  */
 
 import type { PackageManager } from '../templates/types.js';
@@ -48,6 +48,15 @@ export interface BuildRecipe {
   systemPackages?: string[];
   /** Optional entrypoint script (e.g. Django migrate-then-run). */
   entrypointScript?: string;
+  /**
+   * Image-level environment a runtime needs to behave, e.g. `NODE_ENV=development` or
+   * Python's unbuffered/no-bytecode pair. Data, like everything else here: this is the
+   * last thing the seed `.hbs` templates expressed that a recipe could not, and carrying
+   * it means one synthesizer can emit the seed images as faithfully as the ecosystem ones.
+   * NOT app configuration — secrets and per-deployment values belong in compose `environment`
+   * and the generated `.env`, which is where `inferEnv` puts them.
+   */
+  env?: Record<string, string>;
 }
 
 /**
@@ -102,6 +111,7 @@ export const SEED_RECIPES: readonly RecipeEntry[] = [
       startCommand: 'npm run dev',
       defaultPorts: [5173],
       baseImages: { build: 'node:20-slim', runtime: 'node:20-slim' },
+      env: { NODE_ENV: 'development' },
     },
   },
   {
@@ -115,6 +125,7 @@ export const SEED_RECIPES: readonly RecipeEntry[] = [
       startCommand: 'npm run dev',
       defaultPorts: [3000],
       baseImages: { build: 'node:20-slim', runtime: 'node:20-slim' },
+      env: { NODE_ENV: 'development' },
     },
   },
   {
@@ -130,6 +141,7 @@ export const SEED_RECIPES: readonly RecipeEntry[] = [
       baseImages: { build: 'python:3.12-slim', runtime: 'python:3.12-slim' },
       systemPackages: ['libpq-dev', 'gcc'],
       entrypointScript: 'entrypoint.sh',
+      env: { PYTHONUNBUFFERED: '1', PYTHONDONTWRITEBYTECODE: '1' },
     },
   },
 ];

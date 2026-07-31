@@ -67,17 +67,13 @@ function detectionResult(parts: {
 
 describe('selectDockerfileTemplate', () => {
   it('picks the node template for JS/TS components', () => {
-    expect(selectDockerfileTemplate(component({ language: 'javascript' }))).toBe(
-      'node.Dockerfile.hbs'
-    );
-    expect(selectDockerfileTemplate(component({ language: 'typescript' }))).toBe(
-      'node.Dockerfile.hbs'
-    );
+    expect(selectDockerfileTemplate(component({ language: 'javascript' }))).toBe('node');
+    expect(selectDockerfileTemplate(component({ language: 'typescript' }))).toBe('node');
   });
 
   it('picks the python template for python components', () => {
     expect(selectDockerfileTemplate(component({ language: 'python', framework: 'django' }))).toBe(
-      'python.Dockerfile.hbs'
+      'python'
     );
   });
 });
@@ -178,8 +174,8 @@ describe('representative DetectionResults (MERN + Django)', () => {
       databases: [{ engine: 'mongodb', defaultPort: 27017, detectedFrom: 'mongoose' }],
     });
 
-    expect(selectDockerfileTemplate(result.frontend!)).toBe('node.Dockerfile.hbs');
-    expect(selectDockerfileTemplate(result.backend!)).toBe('node.Dockerfile.hbs');
+    expect(selectDockerfileTemplate(result.frontend!)).toBe('node');
+    expect(selectDockerfileTemplate(result.backend!)).toBe('node');
     expect(result.databases[0]!.engine).toBe('mongodb');
   });
 
@@ -194,7 +190,7 @@ describe('representative DetectionResults (MERN + Django)', () => {
       databases: [{ engine: 'postgres', defaultPort: 5432, detectedFrom: 'psycopg2' }],
     });
 
-    expect(selectDockerfileTemplate(result.backend!)).toBe('python.Dockerfile.hbs');
+    expect(selectDockerfileTemplate(result.backend!)).toBe('python');
     expect(dockerfileVarsFor(result.backend!).systemPackages).toEqual(['libpq-dev', 'gcc']);
     expect(result.databases[0]!.engine).toBe('postgres');
   });

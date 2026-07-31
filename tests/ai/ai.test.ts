@@ -95,7 +95,7 @@ describe('ai stage (mocked LLM)', () => {
     expect(createMock).toHaveBeenCalledTimes(1);
     const request = createMock.mock.calls[0]?.[0];
     expect(request.model).toBe('claude-opus-4-8');
-    expect(request.messages[0].content).toContain('node.Dockerfile.hbs');
+    expect(request.messages[0].content).toContain('node');
     expect(request.system).toContain('JSON');
   });
 

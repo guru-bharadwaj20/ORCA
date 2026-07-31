@@ -6,10 +6,16 @@ import type { BuildRecipe } from '../model/recipe.js';
 import { recipeForComponent } from '../model/recipes/index.js';
 import type { DockerfileVars, PackageManager } from './types.js';
 
-export type DockerfileTemplateName = 'node.Dockerfile.hbs' | 'python.Dockerfile.hbs';
+/**
+ * Which runtime's image the AI is being asked to refine vars for. This used to name a
+ * `.hbs` file; there are no Dockerfile templates any more (one synthesizer renders every
+ * component), so it names the runtime instead — which is what the label was ever telling
+ * the model anyway, and is now true rather than a stale filename.
+ */
+export type DockerfileTarget = 'node' | 'python';
 
 export interface TemplateDescriptor {
-  template: DockerfileTemplateName;
+  template: DockerfileTarget;
   defaults: DockerfileVars;
 }
 
@@ -17,8 +23,8 @@ function isPython(component: DetectedComponent): boolean {
   return component.language === 'python';
 }
 
-export function selectDockerfileTemplate(component: DetectedComponent): DockerfileTemplateName {
-  return isPython(component) ? 'python.Dockerfile.hbs' : 'node.Dockerfile.hbs';
+export function selectDockerfileTemplate(component: DetectedComponent): DockerfileTarget {
+  return isPython(component) ? 'python' : 'node';
 }
 
 function resolvePackageManager(detected: DetectedPackageManager, python: boolean): PackageManager {

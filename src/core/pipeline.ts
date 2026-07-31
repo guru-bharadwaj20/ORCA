@@ -59,7 +59,8 @@ import { assessUnderstanding, describeUnderstanding } from '../detect/understand
 import type { DetectedComponent, DetectionResult } from '../detect/types.js';
 import { reasoning } from '../model/claim.js';
 import { planToComposeVars } from '../generate/composeVars.js';
-import { dockerfileFor } from '../generate/dockerfileFor.js';
+import { dockerfileFromVars } from '../generate/dockerfileFromVars.js';
+import { synthesizeDockerfile } from '../generate/synthesizeDockerfile.js';
 import { writeConfigs } from '../generate/writeConfigs.js';
 import { buildEnvFile } from '../orchestrate/envFiles.js';
 import { resolveHostPortConflicts } from '../plan/hostPorts.js';
@@ -73,7 +74,7 @@ import type { ServicePlan } from '../plan/types.js';
 import type { BuildRecipe } from '../model/recipe.js';
 import { ALL_RECIPES } from '../model/recipes/index.js';
 import { dockerfileVarsFor, selectDockerfileTemplate } from '../templates/registry.js';
-import { renderCompose, renderDockerfile } from '../templates/render.js';
+import { renderCompose } from '../templates/render.js';
 import { OrcaError, PlanRejectedError, UnsupportedStackError } from '../utils/errors.js';
 import { readFileIfExists, walk } from '../utils/fs.js';
 import type { Logger, RunContext } from './context.js';
@@ -346,7 +347,7 @@ function renderPreview(
     if (component === null || node === undefined || node.source.type !== 'build') continue;
     sections.push(
       `# --- ${node.source.context}/${node.source.dockerfile} (${role}, preview) ---`,
-      renderDockerfile(refinedComponentVars(component, role, filled)).trimEnd()
+      dockerfileFromVars(component, refinedComponentVars(component, role, filled)).trimEnd()
     );
   }
 
@@ -358,7 +359,7 @@ function renderPreview(
     if (recipe === undefined) continue;
     sections.push(
       `# --- ${context}/${dockerfile} (${node.id}, preview) ---`,
-      dockerfileFor({ kind: 'recipe', recipe }).trimEnd()
+      synthesizeDockerfile(recipe).trimEnd()
     );
   }
 

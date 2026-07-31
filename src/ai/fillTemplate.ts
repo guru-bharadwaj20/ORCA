@@ -17,7 +17,7 @@ export async function fillTemplate(
   const user = [
     prompt.user,
     '',
-    '## Chosen template',
+    '## Target runtime',
     template.template,
     '',
     '## Default variables (refine these; only change what the repo justifies)',
