@@ -17,6 +17,23 @@ export interface Settings {
   dockerTimeoutMs: number;
   llmTimeoutMs: number;
   maxOutputTokens: number;
+  /**
+   * Tier-4 dynamic probing (Phase G). OFF BY DEFAULT and deliberately so — this is the
+   * one feature that executes repo code, and clause 2 of the prober security contract
+   * requires an explicit opt-in. With this false, `runProbers` returns before a container
+   * can be created and ORCA behaves exactly as it does with no tier 4 at all.
+   */
+  enableProbing: boolean;
+  /** Wall-clock cap on each docker call a probe makes. */
+  probeTimeoutMs: number;
+  /** How long to let a probed container settle before reading its state. */
+  probeSettleMs: number;
+  /** Memory cap for a probe container (also its swap cap — see `isolationArgs`). */
+  probeMemory: string;
+  /** CPU cap for a probe container. */
+  probeCpus: number;
+  /** Process cap for a probe container — the fork-bomb guard. */
+  probePidsLimit: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -32,6 +49,12 @@ export const DEFAULT_SETTINGS: Settings = {
   dockerTimeoutMs: 10 * 60 * 1000,
   llmTimeoutMs: 60 * 1000,
   maxOutputTokens: 4096,
+  enableProbing: false,
+  probeTimeoutMs: 60 * 1000,
+  probeSettleMs: 3000,
+  probeMemory: '512m',
+  probeCpus: 1,
+  probePidsLimit: 256,
 };
 
 export const ENV_KEYS = {
@@ -49,7 +72,22 @@ export const ENV_KEYS = {
   dockerTimeoutMs: 'ORCA_DOCKER_TIMEOUT_MS',
   llmTimeoutMs: 'ORCA_LLM_TIMEOUT_MS',
   maxOutputTokens: 'ORCA_MAX_OUTPUT_TOKENS',
+  enableProbing: 'ORCA_ENABLE_PROBING',
+  probeTimeoutMs: 'ORCA_PROBE_TIMEOUT_MS',
+  probeSettleMs: 'ORCA_PROBE_SETTLE_MS',
+  probeMemory: 'ORCA_PROBE_MEMORY',
+  probeCpus: 'ORCA_PROBE_CPUS',
+  probePidsLimit: 'ORCA_PROBE_PIDS_LIMIT',
 } as const;
+
+/**
+ * Only an explicit, affirmative value turns probing on. Anything else — unset, empty,
+ * `0`, `false`, or a typo — leaves it off, because this is the flag that decides whether
+ * repo code executes at all and a permissive parse would be the wrong kind of forgiving.
+ */
+function asOptIn(value: string | undefined): boolean {
+  return value === '1' || value?.toLowerCase() === 'true';
+}
 
 function asProvider(value: string | undefined): ProviderName | undefined {
   return value === 'qwen' || value === 'anthropic' ? value : undefined;
@@ -95,5 +133,11 @@ export function loadSettings(env: NodeJS.ProcessEnv = process.env): Settings {
     llmTimeoutMs: asPositiveInt(env[ENV_KEYS.llmTimeoutMs]) ?? DEFAULT_SETTINGS.llmTimeoutMs,
     maxOutputTokens:
       asPositiveInt(env[ENV_KEYS.maxOutputTokens]) ?? DEFAULT_SETTINGS.maxOutputTokens,
+    enableProbing: asOptIn(env[ENV_KEYS.enableProbing]),
+    probeTimeoutMs: asPositiveInt(env[ENV_KEYS.probeTimeoutMs]) ?? DEFAULT_SETTINGS.probeTimeoutMs,
+    probeSettleMs: asPositiveInt(env[ENV_KEYS.probeSettleMs]) ?? DEFAULT_SETTINGS.probeSettleMs,
+    probeMemory: env[ENV_KEYS.probeMemory] || DEFAULT_SETTINGS.probeMemory,
+    probeCpus: asPositiveInt(env[ENV_KEYS.probeCpus]) ?? DEFAULT_SETTINGS.probeCpus,
+    probePidsLimit: asPositiveInt(env[ENV_KEYS.probePidsLimit]) ?? DEFAULT_SETTINGS.probePidsLimit,
   });
 }

@@ -25,6 +25,19 @@ export type ClaimSource = 'deterministic' | 'ci' | 'ai' | 'probe';
  */
 export const AI_CONFIDENCE_CEILING = 0.7;
 
+/**
+ * The maximum confidence a PROBE-sourced claim may reach on its own — the code-level
+ * enforcement of "a probe can only reinforce or fill gaps left by tiers 1–3, never bypass
+ * the deterministic-first ordering" (`model/prober.ts`, security contract).
+ *
+ * Higher than the AI ceiling, because a probe reports what a process ACTUALLY did rather
+ * than what a model guessed. Still below what a deterministic detector reaches (0.95 for
+ * a lockfile), because an observation is of one run under one isolated configuration: a
+ * container denied a network may never reach the code path that binds its real port, so
+ * "did not observe" must never be able to outweigh "the manifest says so".
+ */
+export const PROBE_CONFIDENCE_CEILING = 0.8;
+
 /** One piece of support for a claim, so every inference is explainable. */
 export interface Evidence {
   /** The detector that observed this signal, e.g. "manifest:cargo", "ci:github-actions". */
@@ -108,6 +121,7 @@ export function claim<T>(value: T, evidence: Evidence[], source: ClaimSource): C
   }
   let confidence = combineConfidence(evidence);
   if (source === 'ai') confidence = Math.min(confidence, AI_CONFIDENCE_CEILING);
+  if (source === 'probe') confidence = Math.min(confidence, PROBE_CONFIDENCE_CEILING);
   return { value, confidence, evidence, source };
 }
 
