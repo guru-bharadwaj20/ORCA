@@ -1,0 +1,8 @@
+{
+  "name": "@mixed/shared",
+  "private": true,
+  "main": "./src/format.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  }
+}

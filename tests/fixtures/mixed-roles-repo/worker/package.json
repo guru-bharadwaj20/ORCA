@@ -1,0 +1,10 @@
+{
+  "name": "worker",
+  "private": true,
+  "scripts": {
+    "start": "node worker.js"
+  },
+  "dependencies": {
+    "bullmq": "^5.8.0"
+  }
+}
