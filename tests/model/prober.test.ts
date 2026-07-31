@@ -1,8 +1,11 @@
 /**
- * PHASE G (seam-only) tests — the tier-4 `Prober` contract. There is no shipped prober
- * and no runner that executes one; these assert the *shape* of the seam and the two
- * code-level halves of the security contract: probing is tier 4, and a disabled context
- * yields no claims. A throwaway in-test prober stands in for a future implementation.
+ * PHASE G — the tier-4 `Prober` CONTRACT, tested against a throwaway in-test prober.
+ *
+ * Deliberately kept separate from the shipped implementation's tests (`tests/probe/`):
+ * this file pins what the seam demands of ANY prober — tier 4, and a disabled context
+ * yields no claims — so it keeps holding for a prober written years from now against a
+ * different runtime. `tests/probe/` covers the probers ORCA actually ships and the
+ * isolation they run under.
  */
 import { describe, expect, it } from 'vitest';
 

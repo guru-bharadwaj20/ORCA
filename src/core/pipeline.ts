@@ -32,7 +32,7 @@ import {
   unroutableModelWarning,
 } from '../ai/router.js';
 import type { FilledTemplateVars, InferredEnv } from '../ai/schema.js';
-import { assertDockerAvailable, composeDown } from '../build/docker.js';
+import { assertDockerAvailable, composeDown, composeImages } from '../build/docker.js';
 import { formatDiagnosisLog } from '../build/diagnosisLog.js';
 import {
   HealOverrideStore,
@@ -49,7 +49,7 @@ import {
   createWorkspace,
   type Workspace,
 } from '../clone/workspace.js';
-import { ENV_KEYS, type KeyResolver } from '../config/settings.js';
+import { ENV_KEYS, loadSettings, type KeyResolver } from '../config/settings.js';
 import { inferBuild, type InferenceInput } from '../detect/aiInference.js';
 import { applyRecoveredBuild } from '../detect/buildRecovery.js';
 import { detectComponentRole } from '../detect/componentRole.js';
@@ -72,6 +72,7 @@ import {
 } from '../plan/servicePlan.js';
 import type { ServicePlan } from '../plan/types.js';
 import type { BuildRecipe } from '../model/recipe.js';
+import { describeProbeClaims, describeProbePlan, runProbers } from '../probe/runner.js';
 import { ALL_RECIPES } from '../model/recipes/index.js';
 import { dockerfileVarsFor, selectDockerfileTemplate } from '../templates/registry.js';
 import { renderCompose } from '../templates/render.js';
@@ -364,6 +365,65 @@ function renderPreview(
   }
 
   return `${sections.join('\n\n')}\n`;
+}
+
+/**
+ * STAGE 6 (tier 4): observe what the built images actually do, when probing is opted into.
+ *
+ * Deliberately the last thing that happens on a successful run. Probing cannot change the
+ * plan — the plan was approved long before, which is exactly what clause 3 of the security
+ * contract requires — so its value is corroboration: a port the container really bound
+ * that ORCA never published is a gap worth naming, and the container's own log lines
+ * explain a half-working stack better than any static signal can.
+ *
+ * Every failure here is swallowed. Tier 4 is additive by construction, and a healthy stack
+ * must never be reported as a failure because an optional observation did not work.
+ */
+async function probeRunningStack(ctx: RunContext): Promise<void> {
+  const settings = loadSettings();
+  if (!settings.enableProbing) return;
+
+  const plan = ctx.plan;
+  if (plan === undefined) return;
+
+  try {
+    const images = await composeImages(ctx.workspaceDir, ctx.options.signal);
+    const published = new Set(plan.services.flatMap((s) => s.ports.map((p) => p.container)));
+
+    for (const node of plan.services) {
+      if (node.source.type !== 'build') continue;
+      const image = images[node.name];
+      if (image === undefined) continue;
+
+      ctx.logger.info(describeProbePlan(image, settings));
+      const outcome = await runProbers({
+        repoPath: ctx.workspaceDir,
+        scopeDir: node.componentRootDir ?? '.',
+        image,
+        gate: { enabled: settings.enableProbing, approved: ctx.approved },
+        settings,
+      });
+      if (outcome.skipped !== null) {
+        ctx.logger.info(`Probe skipped for ${node.name}: ${outcome.skipped}.`);
+        continue;
+      }
+      for (const line of describeProbeClaims(outcome.claims)) {
+        ctx.logger.info(`Probe (${node.name}): ${line}`);
+      }
+      // The one finding worth raising rather than merely logging: the container listens
+      // somewhere the plan does not publish, so the service is unreachable on that port.
+      for (const claim of outcome.claims) {
+        if (claim.value.kind === 'port' && !published.has(claim.value.port)) {
+          ctx.logger.warn(
+            `${node.name} bound port ${claim.value.port}, which the plan does not publish.`
+          );
+        }
+      }
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    ctx.logger.warn('Probing failed — the stack is unaffected.', { message });
+  }
 }
 
 /** The end-of-run success summary: URLs, heal log, and how to stop the stack. */
@@ -720,6 +780,12 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
         ctx.logger.warn('Could not persist the heal override.', { message });
       }
     }
+
+    // TIER 4: dynamic probing. Off unless explicitly opted into, and gated on the same
+    // approval that let the stack build at all. Runs LAST, once the stack is healthy,
+    // because a probe observes a real image — and it never affects whether the run
+    // succeeded: its claims are added to the evidence trail, nothing more.
+    await probeRunningStack(ctx);
 
     keepWorkspace = true; // the running stack lives here — don't delete it
     output.write(renderSuccess(ctx));

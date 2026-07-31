@@ -13,10 +13,12 @@ real seams, and every proposed contract extends one that already exists.
 1. **Generic engine, templates become data.** The runtime/build/run model is the
    primary abstraction. The current React/Express/Django logic is re-expressed as
    data-driven **recipes** inside it — not kept as a parallel hardcoded path.
-2. **Dynamic probing (Phase 6) is designed-for but deferred.** We cut the seams so
-   sandboxed execution can slot in later; we do **not** build arbitrary-code
-   execution in the near-term roadmap. Static + CI + AI inference reaches the large
-   majority of repos without that security surface.
+2. **Dynamic probing (Phase 6) is designed-for, then built behind its own contract.**
+   The seams were cut first and execution slotted in afterwards (`src/probe/`), gated on
+   an off-by-default opt-in and the existing approve-before-run gate. The deferral held
+   as long as it was the honest call: static + CI + AI inference still reaches the large
+   majority of repos, so probing corroborates rather than rescues, and it stays inert
+   unless a user asks for it.
 3. **Deterministic-first stays sacred.** AI is a fallback that _fills gaps and
    ranks_, never the primary source of truth. Every output carries a confidence
    score and a reasoning trail.
@@ -239,8 +241,8 @@ CI Analysis             ── deterministic, tier 2  (Phase 4)  — often the g
   ↓ (only if gaps remain)                                        [PARTIAL — see §4 note]
 AI Inference            ── fallback, tier 3       (Phase 5)  — proposes claims, schema-validated
   ↓                                                                                    [LANDED]
-[Dynamic Probing]       ── tier 4, DESIGNED, DEFERRED (Phase 6) — seam only, not built now
-  ↓                                                                               [SEAM ONLY]
+[Dynamic Probing]       ── tier 4, opt-in + approval-gated (Phase 6) — observes a real image
+  ↓                                                                                    [LANDED]
 Docker Synthesis        ── generic, recipe-driven (Phase 7)                            [LANDED]
   ↓
 Build → Observe → Self-Heal (Phase 8, recipe-aware)                                    [LANDED]
@@ -419,9 +421,10 @@ _Dockerfiles generated from the recipe, not from `.hbs` templates keyed on frame
 - **Exit criterion (met):** a build that fails on a missing `libpq-dev` self-corrects and
   the correction persists for that repo shape (`healStore.ts` + `repoSignature.ts`).
 
-### Phase G — Dynamic probing (brief's Phase 6) — SEAMS ONLY, then STOP
+### Phase G — Dynamic probing (brief's Phase 6)
 
-_Per decision #2: design the interface, do not build execution now._
+_Decision #2 said: design the interface first, build execution only behind it. Both
+halves are now done._
 
 - [x] Define the `Prober` interface and its `Claim<T>` outputs (observed ports,
       processes, logs, artifacts) so tier-4 has a home on the ladder. — landed in
@@ -432,8 +435,17 @@ _Per decision #2: design the interface, do not build execution now._
       host; behind an explicit opt-in flag; with the same approve-before-run gate. —
       written as the SECURITY CONTRACT block in `prober.ts`, with two of its halves pinned
       by code: `tier: 4` and "`enabled === false` ⇒ no claims" (`tests/model/prober.test.ts`).
-- **Exit criterion (met):** the ladder has a tier-4 slot and a written security contract.
-  No arbitrary execution ships. Revisit build/no-build as a separate decision later.
+- [x] Build execution behind the seam, satisfying every clause of that contract.
+      — `src/probe/`: `sandbox.ts` is the single code path that can start a process and
+      spawns nothing but `docker`; `probers.ts` holds three probers (ports from
+      `/proc/net/tcp`, the running process table, notable log lines) that are pure parsers
+      over one shared reading, so N probers still cost ONE container; `runner.ts` checks
+      the opt-in flag and the plan-approval bit BEFORE constructing the sandbox. Wired
+      into the pipeline as the last step of a healthy run, where it can corroborate but
+      never alter an already-approved plan.
+- **Exit criterion (met):** the ladder has a tier-4 slot, a written security contract, and
+  an implementation that satisfies it — off by default, so a run that does not ask for
+  probing behaves exactly as it did before tier 4 existed.
 
 ---
 
@@ -495,10 +507,12 @@ it does mean "which framework is this" and "how do I build it" are answered by t
 different mechanisms with different vocabularies. Unifying them is the natural successor
 to decision #1, and is a refactor rather than a fix.
 
-**This remains the case for keeping decision #2 deferred.** Every gap closed since the
-first review was closed with static analysis alone — no execution, and in the last two
-cases no AI either. The failures were registration and reporting, not the limits of what
-can be learned without running code.
+**This is why probing stays OFF by default rather than becoming the answer.** Every gap
+closed since the first review was closed with static analysis alone — no execution, and in
+the last two cases no AI either. The failures were registration and reporting, not the
+limits of what can be learned without running code. Probing now exists and satisfies its
+security contract, but it earns its place by corroborating a plan that was already built
+without it, not by rescuing one.
 
 ---
 
@@ -583,13 +597,16 @@ Landed on `feat/universal-understanding` (behind the full test suite):
   stack starts clean instead of replaying a stale fix. An override that is applied and
   still fails to produce a healthy stack is also evicted.
 
-- **Dynamic-probing seam (Phase G, landed — seam only)** — the tier-4 `Prober` contract
-  (`src/model/prober.ts`) gives probing a home on the ladder: `Prober`/`ProbeContext`/
-  `ProbeObservation` mirror the `Detector` seam and emit ordinary evidence-backed
-  `Claim<ProbeObservation>`s. The security contract (isolation, opt-in, approve-before-run,
-  ephemerality, explainability) is written into the file, with two halves code-enforced
-  (`tier: 4`; a disabled context yields no claims). No prober implementation and no runner
-  ship — per decision #2 this is the interface, not execution.
+- **Dynamic probing (Phase G, landed)** — the tier-4 `Prober` contract
+  (`src/model/prober.ts`) gives probing a home on the ladder, and `src/probe/` implements
+  it. All five contract clauses are code-enforced rather than promised: isolation lives in
+  one file whose flag list is asserted flag-by-flag (`--network none`, `--read-only`,
+  `--cap-drop ALL`, `--security-opt no-new-privileges`, memory == memory-swap, `--cpus`,
+  `--pids-limit`, no bind mount); the opt-in is `ORCA_ENABLE_PROBING`, off by default and
+  parsed strictly; approval reuses the one plan gate; the container is removed in a
+  `finally`; and `PROBE_CONFIDENCE_CEILING` keeps an observation from outranking a
+  deterministic claim. The tests are hermetic — a stub sandbox counts its calls, so
+  "the gate declined" is proven as _nothing ran_, not merely _nothing was returned_.
 
 - **README / shell-script parsing (landed, Phase 3 / tier 1)** — `detect/readme.ts` and
   `detect/shellScript.ts` recover build/run commands and advertised ports from the two
@@ -697,8 +714,7 @@ Next.js port correction. `node-vite` is registered last among the Node entries s
 React + Vite repo still resolves to `node-react`, while Vue/Svelte/Solid/vanilla Vite
 repos get a recipe instead of nothing.
 
-Remaining toward "build any repo": a probing _implementation_ (deferred by decision #2 —
-the seam exists, execution is a separate later call), and per-ecosystem entrypoint scripts
+Remaining toward "build any repo": per-ecosystem entrypoint scripts
 (e.g. a JVM/.NET migrate-then-run analogue to the Django entrypoint) — deferred until a
 recipe actually needs one, to avoid unused machinery.
 
@@ -744,7 +760,7 @@ speculative). Open rows are prioritized as P0/P1/P2 in
 | 6   | **Correcting an AI-inferred plan at the gate.** The reviewer can approve or reject, not edit.                                                                                                                                                                                                                                                                                                                                                                                                                              | §5 Phase D exit criterion |
 | 7   | **`cli`/`job` as one-shot services.** They become ordinary portless `'service'` nodes; there is no `restart: no` / "runnable, not long-lived" affordance.                                                                                                                                                                                                                                                                                                                                                                  | §2.3                      |
 | 8   | ~~**`library` and `job` detection.**~~ **RESOLVED.** `detect/detectors/role.ts` ships `jobDetector` (cron table / Procfile `release:`) and `libraryDetector` (negative evidence, per-ecosystem); neither role takes a port.                                                                                                                                                                                                                                                                                                | §2.3                      |
-| 9   | **Probing implementation.** Seam only, by decision #2. This one is a _choice_, not a gap.                                                                                                                                                                                                                                                                                                                                                                                                                                  | §5 Phase G                |
+| 9   | ~~**Probing implementation.**~~ **RESOLVED.** Execution ships behind the seam in `src/probe/`, off by default (`ORCA_ENABLE_PROBING`) and gated on the existing plan approval.                                                                                                                                                                                                                                                                                                                                             | §5 Phase G                |
 | 10  | ~~**Two component slots, not N.**~~ **RESOLVED.** `DetectionResult.components: DetectedComponent[]` is now authoritative; `pickPrimary` replaces `pickCandidate` and drops nothing; `buildServicePlan` emits one `ServiceNode` per component, paired via `componentRootDir`. Verified by `tests/plan/multi-component.test.ts` (3 same-role components → 3 distinct compose services, no `ambiguous-*` warning).                                                                                                            | §2.1, §2.3                |
 | 11  | ~~**Node/Python barred from the generic path.**~~ **RESOLVED (superseded).** The capability this row wanted — a multi-service Node/Python repo wiring a DB to every service — landed on the **seed** path instead: `components[]` places N same-role components and `buildServicePlan` gives each backend the shared connection env and health-gated `depends_on`. The two exclusions deliberately remain, because deleting them double-places every plain react/express/django root. See the P0 row in `CONTRIBUTING.md`. | §5 Phase B                |
 | 12  | ~~**Unbounded repo walks, no caching.**~~ **RESOLVED.** `walk()` is bounded (`MAX_WALK_DEPTH` 24, `MAX_WALK_ENTRIES` 20k) and truncates rather than throwing; reads are memoized by an ambient `AsyncLocalStorage` scope (`withFsCache`), measured at 237 hits / 202 misses on a 4-root repo. (Symlink cycles were never a risk: `isDirectory()` is false for symlinks, so they are never followed.)                                                                                                                       | §3                        |
