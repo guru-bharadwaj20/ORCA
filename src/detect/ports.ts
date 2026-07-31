@@ -2,7 +2,9 @@ import { readdir } from 'node:fs/promises';
 import { basename, extname, join, sep } from 'node:path';
 
 import { dockerfilePortsAt } from './dockerfile.js';
+import { detectMonorepo } from './monorepo.js';
 import { analyzeReadme } from './readme.js';
+import { expandWorkspaceGlobs } from './workspaceGlobs.js';
 import { DEFAULT_WALK_IGNORE, readFileIfExists, walk } from '../utils/fs.js';
 
 import { MANIFEST_FILES, type DetectedPort, type ComponentRole } from './types.js';
@@ -71,9 +73,62 @@ async function portsFromReadme(componentPath: string): Promise<number[]> {
   return analysis.ports.filter((port) => isValidPort(port) && !KNOWN_SERVICE_PORTS.has(port));
 }
 
+/** True when `dir` holds a manifest of its own — i.e. it is a component in its own right. */
+async function hasOwnManifest(dir: string): Promise<boolean> {
+  for (const manifest of MANIFEST_FILES) {
+    if ((await readFileIfExists(join(dir, manifest))) !== null) return true;
+  }
+  return false;
+}
+
+/** Immediate subdirectories of `componentPath` that declare their own manifest. */
+async function immediateComponentDirs(componentPath: string): Promise<string[]> {
+  let entries;
+  try {
+    entries = await readdir(componentPath, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const dirs: string[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory() || DEFAULT_WALK_IGNORE.includes(entry.name)) continue;
+    const dir = join(componentPath, entry.name);
+    if (await hasOwnManifest(dir)) dirs.push(dir);
+  }
+  return dirs;
+}
+
 /**
- * Subdirectories of `componentPath` that declare their OWN manifest, as absolute path
- * prefixes to exclude from a source scan.
+ * Package directories the repo's own workspace config declares, resolved to absolute
+ * paths. These are the components a `packages/*` / `apps/*` layout nests ONE LEVEL DEEPER
+ * than `immediateComponentDirs` can see: `packages/` holds no manifest itself, so the
+ * first-level check walks straight through it and into `packages/api`, whose ports then
+ * come back attached to the root.
+ *
+ * Read from `detectMonorepo` + `expandWorkspaceGlobs` rather than by descending blindly,
+ * because those two already answer exactly this question and answer it from what the repo
+ * DECLARES. A generic deeper walk would have to guess how far down a package may sit and
+ * would start excluding ordinary source subtrees (`src/api/`) that are not components at
+ * all — silencing ports the root really does own.
+ */
+async function workspaceComponentDirs(componentPath: string): Promise<string[]> {
+  const { packageGlobs } = await detectMonorepo(componentPath);
+  if (packageGlobs.length === 0) return [];
+
+  const dirs: string[] = [];
+  for (const relative of await expandWorkspaceGlobs(componentPath, packageGlobs)) {
+    const dir = join(componentPath, relative);
+    // A glob that resolves back to the component itself (`.`, `./`) would exclude the
+    // ENTIRE scan and silently report no ports for anything. Never exclude self.
+    if (dir === componentPath) continue;
+    if (await hasOwnManifest(dir)) dirs.push(dir);
+  }
+  return dirs;
+}
+
+/**
+ * Subdirectories of `componentPath` that are components in their OWN right, as absolute
+ * path prefixes to exclude from a source scan.
  *
  * A directory with its own manifest is a DIFFERENT component, so its ports belong to it.
  * Without this, a scan is recursive from the root and a monorepo root claims every child's
@@ -82,26 +137,19 @@ async function portsFromReadme(componentPath: string): Promise<number[]> {
  * ("declares a port ⇒ it is a service") and `libraryDetector`'s first check both consult
  * `declaredPorts`, so a workspace root always looked like a listening service and could
  * never be recognized as the package container it is.
+ *
+ * Two sources, because one level of nesting is not enough: the flat `client/` + `server/`
+ * shape is caught by the immediate check, while pnpm/turbo's `packages/api` sits a level
+ * below any directory holding a manifest and is only visible through the workspace globs
+ * the repo declares.
  */
 async function nestedComponentDirs(componentPath: string): Promise<string[]> {
-  let entries;
-  try {
-    entries = await readdir(componentPath, { withFileTypes: true });
-  } catch {
-    return [];
-  }
-  const nested: string[] = [];
-  for (const entry of entries) {
-    if (!entry.isDirectory() || DEFAULT_WALK_IGNORE.includes(entry.name)) continue;
-    const dir = join(componentPath, entry.name);
-    for (const manifest of MANIFEST_FILES) {
-      if ((await readFileIfExists(join(dir, manifest))) !== null) {
-        nested.push(dir + sep);
-        break;
-      }
-    }
-  }
-  return nested;
+  const [immediate, workspace] = await Promise.all([
+    immediateComponentDirs(componentPath),
+    workspaceComponentDirs(componentPath),
+  ]);
+  // Deduped: a workspace glob may name a first-level package both sources found.
+  return [...new Set([...immediate, ...workspace])].map((dir) => dir + sep);
 }
 
 async function portsFromCode(componentPath: string): Promise<number[]> {

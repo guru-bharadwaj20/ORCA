@@ -61,6 +61,12 @@ facts from disk for exactly this reason — hand-passing `declaredPorts: []` wou
 passed throughout the period the bug was live. Its root must stay free of a `bin`, a
 start script and an entry module, or the root assertion stops testing anything.
 
+`pnpm-packages-repo` (backing `tests/detect/nested-port-scoping.test.ts`) is the same
+concern one level deeper: its packages live at `packages/api` and `apps/web`, so the
+manifest-less `packages/` and `apps/` directories used to let a root scan straight
+through to them. Its `pnpm-workspace.yaml` is load-bearing — the exclusion is read from
+the globs the repo declares, so deleting it turns the root's port assertions back on.
+
 `go-worker-repo` carries the load: it proves a worker reaches the plan as a `'service'`
 node with **no published port**, even though its `go-mod` recipe declares
 `defaultPorts: [8080]`. If that assertion ever flips to publishing 8080, role-aware port
