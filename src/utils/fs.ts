@@ -160,7 +160,9 @@ export interface WalkOptions {
  * hardened against pathological trees: recursion stops at `maxDepth`, and collection
  * stops once `maxEntries` files have been gathered. Hitting either cap **truncates**
  * rather than throwing — a partial file list still yields useful detection, whereas an
- * exception would fail the whole run over a repo that is merely large.
+ * exception would fail the whole run over a repo that is merely large. An unreadable
+ * directory (permissions, or one deleted mid-walk) truncates the same way, so the
+ * guarantee is "never throws", not merely "never throws on a cap".
  *
  * Symlinks are never followed: `readdir(withFileTypes)` reports a symlink as neither
  * `isDirectory()` nor `isFile()` (lstat semantics), so a symlink cycle terminates on its
@@ -204,7 +206,18 @@ async function walkInto(
 ): Promise<void> {
   if (depth > maxDepth || out.length >= maxEntries) return;
 
-  const entries = await readdir(dir, { withFileTypes: true });
+  // An unreadable directory truncates this branch, exactly like hitting a cap does.
+  // Previously only the CAPS truncated while an I/O error propagated, so the documented
+  // "a partial file list still yields useful detection, whereas an exception would fail
+  // the whole run" held for a large repo but not for a permission-denied subdirectory —
+  // or for a directory that vanished mid-walk, which a repo being cloned or cleaned up
+  // underneath detection can genuinely do.
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
   entries.sort((a, b) => a.name.localeCompare(b.name));
 
   for (const entry of entries) {

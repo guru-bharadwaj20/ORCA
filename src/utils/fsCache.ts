@@ -67,7 +67,7 @@ export class FsCache implements FsReadScope {
     this.missCount++;
     // Must call the UNCACHED primitive: when this cache is the active scope, the public
     // `readFileIfExists` would route straight back here and recurse forever.
-    const pending = readFileUncached(path);
+    const pending = this.forget(this.files, path, readFileUncached(path));
     this.files.set(path, pending);
     return pending;
   }
@@ -84,9 +84,28 @@ export class FsCache implements FsReadScope {
       return cached;
     }
     this.missCount++;
-    const pending = walkUncached(dir, options);
+    const pending = this.forget(this.walks, key, walkUncached(dir, options));
     this.walks.set(key, pending);
     return pending;
+  }
+
+  /**
+   * Cache a pending read, but evict it if it REJECTS.
+   *
+   * Memoizing a rejection turns one transient failure into a permanent one: an EMFILE
+   * under `Promise.all` fan-out, or an EACCES on a directory that is momentarily locked,
+   * would be replayed to every later caller for the rest of the run, and the run would
+   * behave as though the file were permanently unreadable. Successes are still cached
+   * forever, which is the whole point — a run reads a static checkout.
+   *
+   * Note this returns the SAME promise it stores, so a rejection is delivered to the
+   * caller exactly once and never becomes an unhandled rejection.
+   */
+  private forget<T>(store: Map<string, Promise<T>>, key: string, pending: Promise<T>): Promise<T> {
+    return pending.catch((err: unknown) => {
+      store.delete(key);
+      throw err;
+    });
   }
 
   /** Hit/miss counters — how much repeat I/O this run avoided. */
