@@ -33,8 +33,11 @@
  *  3. APPROVE-BEFORE-RUN. The same approval gate that guards `docker compose up` guards
  *     probing: the user sees WHAT would be executed and WHY before anything runs.
  *     → `runProbers` requires `gate.approved`, and the pipeline passes `ctx.approved` —
- *       the flag set by the one `reviewPlan`/`approvePlan` gate. `describeProbePlan()`
- *       renders what would run for that gate to display.
+ *       the flag set by the one `reviewPlan`/`approvePlan` gate. The gate itself PRINTS
+ *       the disclosure (`renderProbeNotice` in `plan/review.ts`): what will be executed,
+ *       under which isolation flags, and how to decline. Approving the plan is what
+ *       approves probing, so the disclosure has to be in front of that decision — logging
+ *       it afterwards, which is what this originally did, satisfies nothing.
  *  4. EPHEMERALITY. The probe environment is created per-run and destroyed after, with no
  *     persistence and no reuse across repos.
  *     → `--rm` plus an unconditional `docker rm -f` in a `finally`, against a container
