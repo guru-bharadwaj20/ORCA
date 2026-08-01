@@ -392,7 +392,11 @@ async function probeRunningStack(ctx: RunContext): Promise<void> {
 
     for (const node of plan.services) {
       if (node.source.type !== 'build') continue;
-      const image = images[node.name];
+      // `node.id` is the compose service key (`planToComposeVars` writes `name: node.id`),
+      // which is what `composeImages` keys its result by. `node.name` is the diagram's
+      // display label and only happens to hold the same string today — reading it here
+      // was a lookup against a field whose documented job is to be human-facing.
+      const image = images[node.id];
       if (image === undefined) continue;
 
       ctx.logger.info(describeProbePlan(image, settings));
@@ -404,18 +408,18 @@ async function probeRunningStack(ctx: RunContext): Promise<void> {
         settings,
       });
       if (outcome.skipped !== null) {
-        ctx.logger.info(`Probe skipped for ${node.name}: ${outcome.skipped}.`);
+        ctx.logger.info(`Probe skipped for ${node.id}: ${outcome.skipped}.`);
         continue;
       }
       for (const line of describeProbeClaims(outcome.claims)) {
-        ctx.logger.info(`Probe (${node.name}): ${line}`);
+        ctx.logger.info(`Probe (${node.id}): ${line}`);
       }
       // The one finding worth raising rather than merely logging: the container listens
       // somewhere the plan does not publish, so the service is unreachable on that port.
       for (const claim of outcome.claims) {
         if (claim.value.kind === 'port' && !published.has(claim.value.port)) {
           ctx.logger.warn(
-            `${node.name} bound port ${claim.value.port}, which the plan does not publish.`
+            `${node.id} bound port ${claim.value.port}, which the plan does not publish.`
           );
         }
       }
