@@ -11,6 +11,8 @@
  */
 
 import { chmod, writeFile } from 'node:fs/promises';
+
+import { restrictToOwner } from '../utils/filePerms.js';
 import { join } from 'node:path';
 
 import type { GeneratedFile, RunContext } from '../core/context.js';
@@ -144,7 +146,17 @@ export async function writeConfigs(ctx: RunContext): Promise<GeneratedFile[]> {
     // An env file holds credentials — placeholders today, but this is the file users edit
     // to add real ones. Default 0644 would leave those world-readable on a shared machine,
     // so narrow it to the owner. Other generated files are ordinary config.
-    if (kind === 'env') await chmod(abs, 0o600);
+    //
+    // `chmod` alone was silently doing NOTHING on Windows (Node maps it onto the single
+    // read-only attribute), so `restrictToOwner` sets an ACL there instead — and reports
+    // whether it worked, because a security control that fails quietly is worse than one
+    // that is absent. The user is told, rather than left believing the file is protected.
+    if (kind === 'env' && !(await restrictToOwner(abs))) {
+      ctx.logger.warn(
+        `Could not restrict '${relPath}' to your user account — it may be readable by ` +
+          `others on this machine. Tighten it yourself before putting real credentials in it.`
+      );
+    }
     generated.push({ path: relPath, kind });
   };
 

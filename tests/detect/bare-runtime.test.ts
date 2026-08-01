@@ -75,6 +75,30 @@ describe('bare-runtime start command', () => {
     expect(synthesizeDockerfile(bare!)).not.toContain('npm run dev');
   });
 
+  it('carries the container env the node template used to hardcode', () => {
+    // `BARE_NODE_RECIPE` gained `env: { NODE_ENV: 'development' }` when the .hbs
+    // templates were deleted, so that an unclassified SEED component keeps the env the
+    // node template set on every image it rendered. The registered ecosystem fallback is
+    // a spread of that same recipe, so it inherited the env too — a real change to
+    // ecosystem output that no golden covered and no test noticed. Pinned here so the
+    // next change to it is a decision rather than a side effect.
+    const bare = ALL_RECIPES.find((e) => e.recipe.id === 'node-app')?.recipe;
+
+    expect(bare?.env).toEqual({ NODE_ENV: 'development' });
+    expect(synthesizeDockerfile(bare!)).toContain('ENV NODE_ENV=development');
+  });
+
+  it('emits the python container env on the bare python fallback', () => {
+    // Same story for `BARE_PYTHON_COMMON`: unbuffered stdout is what makes container logs
+    // appear at all, so losing it would silently degrade every bare-Python image.
+    const bare = ALL_RECIPES.find((e) => e.recipe.id === 'python-app')?.recipe;
+
+    expect(bare?.env).toEqual({ PYTHONUNBUFFERED: '1', PYTHONDONTWRITEBYTECODE: '1' });
+    const dockerfile = synthesizeDockerfile(bare!);
+    expect(dockerfile).toContain('ENV PYTHONUNBUFFERED=1');
+    expect(dockerfile).toContain('ENV PYTHONDONTWRITEBYTECODE=1');
+  });
+
   it('never lets the fallback shadow a framework recipe', () => {
     // The fallback matches on a manifest alone, so its LAST position is what keeps it
     // from swallowing every Node repo.

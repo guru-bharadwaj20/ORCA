@@ -76,8 +76,16 @@ describe('writeConfigs', () => {
 
     expect(generated.find((f) => f.kind === 'env')?.path).toBe('.env');
     // An env file is where users put real credentials — keep it owner-only, not 0644.
-    const mode = (await stat(join(ctx.workspaceDir, '.env'))).mode & 0o777;
-    expect(mode).toBe(0o600);
+    //
+    // Asserted only where mode bits MEAN something. Windows has none: Node maps `chmod`
+    // onto the single read-only attribute, so this assertion used to fail there with
+    // 0o666 — and that failure was real, not a test artifact. `restrictToOwner` now sets
+    // an ACL on Windows instead, which `filePerms.test.ts` covers; asserting a POSIX mode
+    // here on a platform that has no such thing would only be re-testing Node's fallback.
+    if (process.platform !== 'win32') {
+      const mode = (await stat(join(ctx.workspaceDir, '.env'))).mode & 0o777;
+      expect(mode).toBe(0o600);
+    }
     const envText = await readFile(join(ctx.workspaceDir, '.env'), 'utf8');
     expect(envText).toContain('JWT_SECRET=change-me');
 

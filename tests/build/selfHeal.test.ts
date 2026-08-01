@@ -145,8 +145,28 @@ describe('runSelfHealLoop', () => {
   });
 });
 
+/**
+ * Symlink creation requires elevation (or Developer Mode) on Windows. A test that the
+ * platform cannot run should SKIP, not fail: a red suite that is red for environmental
+ * reasons trains people to ignore red suites, and hides the failures that matter.
+ */
+async function canSymlink(): Promise<boolean> {
+  const dir = await mkdtemp(join(tmpdir(), 'orca-symcheck-'));
+  try {
+    await mkdir(join(dir, 'target'));
+    await symlink(join(dir, 'target'), join(dir, 'link'), 'dir');
+    return true;
+  } catch {
+    return false;
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+const symlinksAvailable = await canSymlink();
+
 describe('resolveAllowedRealPath symlink guard', () => {
-  it('rejects an allowlisted path that is a symlink', async () => {
+  it.runIf(symlinksAvailable)('rejects an allowlisted path that is a symlink', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'orca-symheal-'));
     const outside = join(dir, 'outside.txt');
     await writeFile(outside, 'original');
