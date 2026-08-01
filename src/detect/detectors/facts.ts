@@ -41,9 +41,6 @@ export interface EntrypointFact extends KindedValue<'entrypoint'> {
   entrypoint: Entrypoint;
 }
 
-/** Every fact kind the shipped detectors can emit. */
-export type DetectedFact = RuntimeFact | RoleFact | PackageManagerFact | EntrypointFact;
-
 /** Construct a `RuntimeFact`. */
 export function runtimeFact(runtime: Runtime): RuntimeFact {
   return { kind: 'runtime', runtime };

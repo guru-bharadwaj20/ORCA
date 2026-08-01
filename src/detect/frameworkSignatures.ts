@@ -33,7 +33,7 @@ export interface FrameworkSignature {
  * meta-framework (Next.js) is preferred over the library it builds on (React). Kept
  * intentionally broad per the Phase-1 spec across JS/TS, Python, Go, JVM, and .NET.
  */
-export const FRAMEWORK_SIGNATURES: readonly FrameworkSignature[] = [
+const FRAMEWORK_SIGNATURES: readonly FrameworkSignature[] = [
   // --- JavaScript / TypeScript ---
   { id: 'nextjs', runtime: 'node', role: 'fullstack', anyDependency: ['next'], weight: 0.9 },
   { id: 'nuxt', runtime: 'node', role: 'fullstack', anyDependency: ['nuxt'], weight: 0.9 },

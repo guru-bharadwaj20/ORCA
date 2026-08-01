@@ -191,6 +191,21 @@ async function candidateDirs(repoPath: string): Promise<string[]> {
 }
 
 /**
+ * True when `dir` ships a container file of any recognized variant.
+ *
+ * THE ONE DEFINITION, shared by everything that asks "is this directory a component?".
+ * `findCandidateRoots` promotes a directory on "manifest OR container file" while
+ * `nestedComponentDirs` used to exclude it from a parent's port scan on the manifest
+ * alone, so a Dockerfile-only subdirectory was a component for detection and invisible
+ * for scoping — and its source ports came back attached to its parent. Two predicates
+ * that are supposed to agree were spelled out twice, which is the same shape as the
+ * original port-scoping bug rather than a new one.
+ */
+export async function hasContainerFile(dir: string): Promise<boolean> {
+  return (await dockerfileFiles(dir)).length > 0;
+}
+
+/**
  * Exposed ports declared by any Dockerfile/Containerfile variant in a single directory,
  * deduplicated and in declaration order. Shares the name matching and EXPOSE parsing with
  * `analyzeDockerfiles`, so a component's port lookup honors `Containerfile`, `Dockerfile.prod`,

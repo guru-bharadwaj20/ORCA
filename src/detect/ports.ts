@@ -1,7 +1,7 @@
 import { readdir } from 'node:fs/promises';
 import { basename, extname, join, sep } from 'node:path';
 
-import { dockerfilePortsAt } from './dockerfile.js';
+import { dockerfilePortsAt, hasContainerFile } from './dockerfile.js';
 import { detectMonorepo } from './monorepo.js';
 import { analyzeReadme } from './readme.js';
 import { expandWorkspaceGlobs } from './workspaceGlobs.js';
@@ -73,12 +73,22 @@ async function portsFromReadme(componentPath: string): Promise<number[]> {
   return analysis.ports.filter((port) => isValidPort(port) && !KNOWN_SERVICE_PORTS.has(port));
 }
 
-/** True when `dir` holds a manifest of its own — i.e. it is a component in its own right. */
-async function hasOwnManifest(dir: string): Promise<boolean> {
+/**
+ * True when `dir` is a component in its own right — it declares a manifest, OR ships a
+ * container file.
+ *
+ * THE DOCKERFILE HALF MATTERS. `findCandidateRoots` (`detect/index.ts`) promotes a
+ * directory to a component on "manifest OR Dockerfile", so a subdirectory holding only a
+ * `Dockerfile` is a separate component everywhere EXCEPT here — where a manifest-only
+ * check let the parent keep scanning into it and claim its source ports as its own. Two
+ * definitions of "is this a component" disagreeing is exactly the shape of the original
+ * port-scoping bug, one predicate over.
+ */
+async function isComponentRoot(dir: string): Promise<boolean> {
   for (const manifest of MANIFEST_FILES) {
     if ((await readFileIfExists(join(dir, manifest))) !== null) return true;
   }
-  return false;
+  return hasContainerFile(dir);
 }
 
 /** Immediate subdirectories of `componentPath` that declare their own manifest. */
@@ -93,7 +103,7 @@ async function immediateComponentDirs(componentPath: string): Promise<string[]> 
   for (const entry of entries) {
     if (!entry.isDirectory() || DEFAULT_WALK_IGNORE.includes(entry.name)) continue;
     const dir = join(componentPath, entry.name);
-    if (await hasOwnManifest(dir)) dirs.push(dir);
+    if (await isComponentRoot(dir)) dirs.push(dir);
   }
   return dirs;
 }
@@ -121,7 +131,7 @@ async function workspaceComponentDirs(componentPath: string): Promise<string[]> 
     // A glob that resolves back to the component itself (`.`, `./`) would exclude the
     // ENTIRE scan and silently report no ports for anything. Never exclude self.
     if (dir === componentPath) continue;
-    if (await hasOwnManifest(dir)) dirs.push(dir);
+    if (await isComponentRoot(dir)) dirs.push(dir);
   }
   return dirs;
 }

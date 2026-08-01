@@ -4,7 +4,7 @@ import type { AIProvider, CompletionOptions, ProviderCompletion } from './types.
 
 const PRICING = { inputPerMTok: 1, outputPerMTok: 5 };
 
-export function estimateQwenUsd(inputTokens: number, outputTokens: number): number {
+function estimateQwenUsd(inputTokens: number, outputTokens: number): number {
   return (
     (inputTokens / 1_000_000) * PRICING.inputPerMTok +
     (outputTokens / 1_000_000) * PRICING.outputPerMTok

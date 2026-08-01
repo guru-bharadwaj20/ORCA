@@ -60,6 +60,22 @@ describe('each nested package keeps its own ports', () => {
   });
 });
 
+describe('a Dockerfile-only child is a component too', () => {
+  const REPO = fixture('dockerfile-child-repo');
+
+  it('does not hand the parent its child port', async () => {
+    // `findCandidateRoots` promotes a directory on "manifest OR container file", but port
+    // scoping asked only about manifests — so `edge/` was a component for detection and
+    // invisible for scoping, and its 7099 came back attached to the root alongside the
+    // root's own 7010. Both predicates now come from one definition.
+    expect(await declaredPorts(REPO)).toEqual([{ port: 7010, protocol: 'tcp', source: 'code' }]);
+  });
+
+  it('leaves the child owning its own port', async () => {
+    expect((await declaredPorts(join(REPO, 'edge'))).map((p) => p.port)).toContain(7099);
+  });
+});
+
 describe('the one-level case stays green', () => {
   it('still scopes a flat client/server workspace root', async () => {
     // The shape the original fix was written for. Excluding MORE must not stop the

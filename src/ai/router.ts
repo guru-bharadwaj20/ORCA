@@ -46,7 +46,7 @@ export function resolveRouterConfig(env: NodeJS.ProcessEnv = process.env): Route
   };
 }
 
-export function modelProviderFor(model: string): ProviderName | null {
+function modelProviderFor(model: string): ProviderName | null {
   if (model.startsWith('claude')) return 'anthropic';
   if (model.startsWith('qwen')) return 'qwen';
   return null;

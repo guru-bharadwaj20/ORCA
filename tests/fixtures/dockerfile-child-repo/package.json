@@ -1,0 +1,7 @@
+{
+  "name": "dockerfile-child-repo",
+  "private": true,
+  "dependencies": {
+    "express": "^4.19.0"
+  }
+}

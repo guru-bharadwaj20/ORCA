@@ -87,7 +87,7 @@ export const DEFAULT_WALK_IGNORE: string[] = [
  * memory-exhaustion DoS. 8 MiB comfortably covers any real-world text file this module
  * reads while still bounding the worst case.
  */
-export const MAX_READ_BYTES = 8 * 1024 * 1024;
+const MAX_READ_BYTES = 8 * 1024 * 1024;
 
 /**
  * Read a file, returning null when it is absent, oversized, or a symlink — bypassing
