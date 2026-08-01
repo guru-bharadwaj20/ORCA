@@ -390,24 +390,32 @@ async function probeRunningStack(ctx: RunContext): Promise<void> {
     const images = await composeImages(ctx.workspaceDir, ctx.options.signal);
     const published = new Set(plan.services.flatMap((s) => s.ports.map((p) => p.container)));
 
-    for (const node of plan.services) {
-      if (node.source.type !== 'build') continue;
-      // `node.id` is the compose service key (`planToComposeVars` writes `name: node.id`),
-      // which is what `composeImages` keys its result by. `node.name` is the diagram's
-      // display label and only happens to hold the same string today — reading it here
-      // was a lookup against a field whose documented job is to be human-facing.
-      const image = images[node.id];
-      if (image === undefined) continue;
-
-      ctx.logger.info(describeProbePlan(image, settings));
-      const outcome = await runProbers({
-        repoPath: ctx.workspaceDir,
-        scopeDir: node.componentRootDir ?? '.',
-        image,
-        gate: { enabled: settings.enableProbing, approved: ctx.approved },
-        settings,
-        ...(ctx.options.signal !== undefined ? { signal: ctx.options.signal } : {}),
+    // Each service's probe is an independent container with its own settle period, so
+    // they run CONCURRENTLY: a five-service stack takes about as long as one probe
+    // instead of five in a row. Results are collected first and logged afterwards, so the
+    // interleaving of concurrent probes cannot scramble the output.
+    const probes = plan.services
+      .filter((node) => node.source.type === 'build' && images[node.id] !== undefined)
+      .map(async (node) => {
+        // `node.id` is the compose service key (`planToComposeVars` writes `name:
+        // node.id`), which is what `composeImages` keys its result by. `node.name` is the
+        // diagram's display label and only happens to hold the same string today.
+        const image = images[node.id]!;
+        ctx.logger.info(describeProbePlan(image, settings));
+        return {
+          node,
+          outcome: await runProbers({
+            repoPath: ctx.workspaceDir,
+            scopeDir: node.componentRootDir ?? '.',
+            image,
+            gate: { enabled: settings.enableProbing, approved: ctx.approved },
+            settings,
+            ...(ctx.options.signal !== undefined ? { signal: ctx.options.signal } : {}),
+          }),
+        };
       });
+
+    for (const { node, outcome } of await Promise.all(probes)) {
       if (outcome.skipped !== null) {
         ctx.logger.info(`Probe skipped for ${node.id}: ${outcome.skipped}.`);
         continue;
@@ -786,14 +794,15 @@ export async function runPipeline(ctx: RunContext, io: PipelineIO = {}): Promise
       }
     }
 
-    // TIER 4: dynamic probing. Off unless explicitly opted into, and gated on the same
-    // approval that let the stack build at all. Runs LAST, once the stack is healthy,
-    // because a probe observes a real image — and it never affects whether the run
-    // succeeded: its claims are added to the evidence trail, nothing more.
-    await probeRunningStack(ctx);
-
     keepWorkspace = true; // the running stack lives here — don't delete it
     output.write(renderSuccess(ctx));
+
+    // TIER 4: dynamic probing. Off unless explicitly opted into, and gated on the same
+    // approval that let the stack build at all. It never affects whether the run
+    // succeeded — its claims are added to the evidence trail, nothing more — so it runs
+    // AFTER the success summary is printed rather than holding it back for one settle
+    // period per service. The stack is already up and reachable while this happens.
+    await probeRunningStack(ctx);
     logCost(ctx.cost, ctx.logger);
     return ctx;
   } finally {
