@@ -23,7 +23,7 @@
 
 import { loadSettings, type Settings } from '../config/settings.js';
 import type { Claim } from '../model/claim.js';
-import type { ProbeContext, ProbeObservation, ProbeReading, Prober } from '../model/prober.js';
+import type { ProbeContext, ProbeObservation, Prober } from '../model/prober.js';
 import { PROBERS } from './probers.js';
 import { dockerProbeSandbox, isolationArgs, type ProbeSandbox } from './sandbox.js';
 
@@ -52,10 +52,13 @@ export interface ProbeRequest {
 export interface ProbeOutcome {
   /** Tier-4 claims, empty when the gates declined or nothing was observed. */
   claims: Claim<ProbeObservation>[];
-  /** Why probing did not run, when it did not. Null when it did. */
+  /**
+   * Why probing did not run, when it did not. Null when it did.
+   *
+   * This is the field that keeps "produced nothing" distinguishable from "never ran" —
+   * two outcomes that both yield zero claims and mean completely different things.
+   */
   skipped: string | null;
-  /** The raw reading, for callers that want to log it. Null when nothing ran. */
-  reading: ProbeReading | null;
 }
 
 /**
@@ -85,15 +88,11 @@ export async function runProbers(request: ProbeRequest): Promise<ProbeOutcome> {
 
   // GATE 1 — opt-in. Before the sandbox exists.
   if (!request.gate.enabled) {
-    return {
-      claims: [],
-      skipped: 'probing is disabled (set ORCA_ENABLE_PROBING=1)',
-      reading: null,
-    };
+    return { claims: [], skipped: 'probing is disabled (set ORCA_ENABLE_PROBING=1)' };
   }
   // GATE 2 — approve-before-run. Same bit as `docker compose up`.
   if (!request.gate.approved) {
-    return { claims: [], skipped: 'the plan was not approved', reading: null };
+    return { claims: [], skipped: 'the plan was not approved' };
   }
 
   const sandbox = request.sandbox ?? dockerProbeSandbox(settings);
@@ -120,7 +119,7 @@ export async function runProbers(request: ProbeRequest): Promise<ProbeOutcome> {
     }
   }
 
-  return { claims, skipped: null, reading };
+  return { claims, skipped: null };
 }
 
 /** One reasoning line per probe claim, for the run's evidence trail. */
