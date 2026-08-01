@@ -16,8 +16,10 @@
  * mounts) and rejected outright — see `containsDangerousDirective` below.
  */
 
-import { lstat, writeFile } from 'node:fs/promises';
-import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { lstat, realpath, writeFile } from 'node:fs/promises';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+
+import { parse as parseYaml } from 'yaml';
 
 import { ai } from '../ai/client.js';
 import { buildHealPrompt, type HealRecipeContext } from '../ai/prompts/heal.js';
@@ -57,13 +59,91 @@ const DANGEROUS_PATCH_PATTERNS: readonly RegExp[] = [
 ];
 
 /**
+ * Compose keys that grant container-escape-adjacent privileges. Checked STRUCTURALLY
+ * (after YAML parsing) rather than by matching source text, so the spelling of the
+ * document cannot hide them.
+ */
+const DANGEROUS_KEYS = new Set([
+  'privileged',
+  'cap_add',
+  'security_opt',
+  'devices',
+  'network_mode',
+  'pid',
+  'ipc',
+  'userns_mode',
+  'cgroup_parent',
+]);
+
+/** Values of `network_mode`/`pid`/`ipc` that share a host namespace. */
+const HOST_NAMESPACE = /^(?:host|container:)/i;
+
+/** A volume entry that bind-mounts the host root (or the Docker socket) into the image. */
+function isDangerousVolume(value: unknown): boolean {
+  if (typeof value === 'string') {
+    const source = value.split(':')[0]?.trim() ?? '';
+    return (
+      source === '/' || source === '/var/run/docker.sock' || source === '//var/run/docker.sock'
+    );
+  }
+  if (typeof value === 'object' && value !== null) {
+    const source = (value as { source?: unknown }).source;
+    return typeof source === 'string' && (source === '/' || source.endsWith('docker.sock'));
+  }
+  return false;
+}
+
+/** True when this key/value pair grants a privilege self-heal may never introduce. */
+function isDangerousEntry(key: string, value: unknown): boolean {
+  const name = key.toLowerCase();
+  if (name === 'volumes' && Array.isArray(value)) return value.some(isDangerousVolume);
+  if (!DANGEROUS_KEYS.has(name)) return false;
+  if (name === 'privileged') return value === true || value === 'true';
+  if (name === 'network_mode' || name === 'pid' || name === 'ipc') {
+    return typeof value === 'string' && HOST_NAMESPACE.test(value.trim());
+  }
+  // cap_add / security_opt / devices / userns_mode / cgroup_parent: presence with any
+  // content is enough — none of them has a legitimate role in fixing a build failure.
+  return Array.isArray(value) ? value.length > 0 : value !== undefined && value !== null;
+}
+
+/** Walk a parsed YAML document looking for a dangerous key anywhere in it. */
+function hasDangerousNode(node: unknown): boolean {
+  if (Array.isArray(node)) return node.some(hasDangerousNode);
+  if (typeof node !== 'object' || node === null) return false;
+  for (const [key, value] of Object.entries(node)) {
+    if (isDangerousEntry(key, value)) return true;
+    if (hasDangerousNode(value)) return true;
+  }
+  return false;
+}
+
+/**
+ * Reject patch contents that would grant container-escape-adjacent privileges.
+ *
+ * TWO PASSES, because one is not sound on its own. The regex list catches Dockerfiles and
+ * anything that does not parse as YAML. The STRUCTURAL pass parses compose documents and
+ * inspects the resulting object, which is what closes the spellings a text scan cannot
+ * see: YAML resolves anchors and aliases before this runs, so the classic bypass
+ * (`x-evil: &a true` … `privileged: *a`) arrives here as a plain `privileged: true`, and
+ * flow style (`{privileged: true}`), quoting, and odd indentation all normalize away too.
+ *
+ * A document that fails to parse is NOT treated as safe — the regex pass still applies,
+ * which is the honest fallback for a Dockerfile (never valid YAML in the useful sense).
+ *
  * Exported so the Phase-F learned-override applier holds REPLAYED patch contents to this
  * same bar. An override is model-generated text that ORCA writes into a Dockerfile and
  * builds; that it arrived from disk rather than from this run's model is not a reason to
  * trust it more.
  */
 export function containsDangerousDirective(contents: string): boolean {
-  return DANGEROUS_PATCH_PATTERNS.some((pattern) => pattern.test(contents));
+  if (DANGEROUS_PATCH_PATTERNS.some((pattern) => pattern.test(contents))) return true;
+  try {
+    return hasDangerousNode(parseYaml(contents));
+  } catch {
+    // Not YAML (a Dockerfile, most likely). The regex pass above was the check.
+    return false;
+  }
 }
 
 /**
@@ -87,7 +167,8 @@ export function resolveAllowedPath(
 }
 
 /**
- * `resolveAllowedPath` plus a symlink check on the real filesystem.
+ * `resolveAllowedPath` plus symlink checks on the real filesystem — for the leaf AND for
+ * every directory above it.
  *
  * `resolve()` is purely LEXICAL — it cannot see that an allowed path is a symlink whose
  * target sits outside the workspace. Since this function guards where LLM-proposed
@@ -95,6 +176,14 @@ export function resolveAllowedPath(
  * would otherwise redirect a write out of the workspace. Rejecting symlinked targets
  * outright is safe here: every allowlisted path is a file ORCA itself generated, so a
  * symlink at that name is never legitimate.
+ *
+ * THE LEAF CHECK ALONE WAS NOT ENOUGH. `lstat` on the full path resolves every DIRECTORY
+ * component before it looks at the last one, so a repo shipping `sub/` as a symlink to
+ * somewhere outside the workspace passed cleanly whenever the generated file was
+ * `sub/Dockerfile` — the exact escape the leaf check was written to stop, one level up.
+ * The parent is therefore canonicalized with `realpath` and re-checked for containment
+ * against the canonicalized workspace, which also handles a workspace that is itself
+ * reached through a symlink (a macOS `/tmp` -> `/private/tmp` checkout).
  */
 export async function resolveAllowedRealPath(
   workspaceDir: string,
@@ -103,6 +192,20 @@ export async function resolveAllowedRealPath(
 ): Promise<string | null> {
   const abs = resolveAllowedPath(workspaceDir, file, allowlist);
   if (abs === null) return null;
+
+  // Canonicalize the PARENT (the leaf may legitimately not exist yet) and confirm the
+  // real location still sits inside the real workspace.
+  try {
+    const realRoot = await realpath(workspaceDir);
+    const realParent = await realpath(dirname(abs));
+    const rel = relative(realRoot, realParent);
+    if (rel !== '' && (rel.startsWith('..') || isAbsolute(rel))) return null;
+  } catch {
+    // The parent directory does not exist. Nothing can be written through it either, so
+    // let the write itself fail rather than inventing a verdict here.
+    return null;
+  }
+
   try {
     const stats = await lstat(abs);
     if (stats.isSymbolicLink()) return null;
