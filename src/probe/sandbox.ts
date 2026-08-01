@@ -39,8 +39,17 @@ export interface SandboxSpec {
   image: string;
   /** How long to let the process settle before reading the container's state. */
   settleMs: number;
-  /** Wall-clock cap for each docker call. */
+  /**
+   * Wall-clock cap for the WHOLE run, not per docker call.
+   *
+   * Per-call was the wrong unit: a probe issues a `run`, a settle, four reads and a
+   * `rm`, so a 60s "timeout" actually bounded the run at ~6 minutes, and a container
+   * that hung every call hung for all of them. The deadline is computed once here and
+   * every call gets whatever is left of it.
+   */
   timeoutMs: number;
+  /** Cancels the probe when the surrounding run is aborted. */
+  signal?: AbortSignal;
 }
 
 /** One isolated run. The only way probe code executes. */
@@ -97,6 +106,31 @@ const PORTS_COMMAND = 'cat /proc/net/tcp /proc/net/tcp6 2>/dev/null';
 const PROCS_COMMAND =
   'for p in /proc/[0-9]*; do tr "\\0" " " < "$p/cmdline" 2>/dev/null; echo; done';
 
+/**
+ * Teardown gets its own small budget, independent of the run's deadline. Removing the
+ * container is the one step that must still happen when everything else has been
+ * cancelled or has run out of time.
+ */
+const CLEANUP_TIMEOUT_MS = 10_000;
+
+/**
+ * Wait `ms`, or resolve early if `signal` aborts. Never rejects: an aborted settle just
+ * means "read the container's state now", and the caller's own abort handling decides
+ * what happens next.
+ */
+function settle(ms: number, signal?: AbortSignal): Promise<void> {
+  if (ms <= 0 || signal?.aborted === true) return Promise.resolve();
+  return new Promise((resolve) => {
+    const timer = setTimeout(finish, ms);
+    function finish(): void {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', finish);
+      resolve();
+    }
+    signal?.addEventListener('abort', finish, { once: true });
+  });
+}
+
 /** An empty reading — what every failure path returns. */
 function emptyReading(): ProbeReading {
   return { exitCode: null, timedOut: false, netTcp: '', processes: [], log: '' };
@@ -134,12 +168,23 @@ export function dockerProbeSandbox(settings: Settings = loadSettings()): ProbeSa
       // that could not be true, which is worse than no field at all: a caller reading it
       // would conclude the run completed when it may have been killed mid-flight.
       let timedOut = false;
-      const docker = (args: string[]): Promise<{ exitCode: number | null; stdout: string }> =>
-        execa('docker', args, {
+      // ONE deadline for the whole probe, shared by every call below.
+      const deadline = Date.now() + spec.timeoutMs;
+      const remaining = (): number => Math.max(0, deadline - Date.now());
+      const docker = (args: string[]): Promise<{ exitCode: number | null; stdout: string }> => {
+        const budget = remaining();
+        if (budget === 0) {
+          timedOut = true;
+          return Promise.resolve({ exitCode: null, stdout: '' });
+        }
+        return execa('docker', args, {
           reject: false,
-          timeout: spec.timeoutMs,
+          timeout: budget,
           env: {},
           extendEnv: false,
+          // Cancellation propagates: Ctrl-C during a probe kills the docker call rather
+          // than leaving the run waiting on it. The `finally` still removes the container.
+          ...(spec.signal !== undefined ? { cancelSignal: spec.signal } : {}),
         }).then(
           (r) => {
             if (r.timedOut === true) timedOut = true;
@@ -153,6 +198,7 @@ export function dockerProbeSandbox(settings: Settings = loadSettings()): ProbeSa
             return { exitCode: null, stdout: '' };
           }
         );
+      };
 
       try {
         // Detached, so the image's own command runs unmodified. `--rm` is deliberately
@@ -169,7 +215,7 @@ export function dockerProbeSandbox(settings: Settings = loadSettings()): ProbeSa
         ]);
         if (started.exitCode !== 0) return emptyReading();
 
-        await new Promise((resolve) => setTimeout(resolve, spec.settleMs));
+        await settle(Math.min(spec.settleMs, remaining()), spec.signal);
 
         // Both reads go through a shell INSIDE the container, so an image without one
         // (distroless) simply yields nothing here — the logs below still work, and a
@@ -203,7 +249,18 @@ export function dockerProbeSandbox(settings: Settings = loadSettings()): ProbeSa
       } finally {
         // Clause 4, unconditionally — including the paths where the container outlives
         // the client that started it.
-        await docker(['rm', '--force', name]);
+        //
+        // NOT through `docker()`: that call is bound to the run's deadline and to the
+        // caller's AbortSignal, and both are precisely the states in which cleanup matters
+        // most. A timed-out or Ctrl-C'd probe would otherwise skip its own teardown and
+        // leave the container running — ephemerality has to be the one thing that cannot
+        // be cancelled.
+        await execa('docker', ['rm', '--force', name], {
+          reject: false,
+          timeout: CLEANUP_TIMEOUT_MS,
+          env: {},
+          extendEnv: false,
+        }).catch(() => undefined);
       }
     },
   };
