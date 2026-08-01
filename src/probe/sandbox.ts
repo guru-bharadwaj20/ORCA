@@ -76,8 +76,13 @@ const MAX_PROCESS_LINES = 64;
 export function isolationArgs(settings: Settings): string[] {
   return [
     '--network',
-    'none',
-    '--read-only',
+    settings.probeNetwork,
+    // A read-only root is the strictest setting that still lets most images start, but it
+    // is also the one that most often stops them: plenty of real apps write a cache or a
+    // pid file at startup and die instantly under it, which yields an empty reading and
+    // looks like "the app binds nothing". Relaxing it is a deliberate, per-run choice —
+    // the DEFAULT stays locked down, and everything else in this list is unconditional.
+    ...(settings.probeReadOnlyRootfs ? ['--read-only'] : []),
     '--tmpfs',
     '/tmp:rw,noexec,nosuid,size=64m',
     '--cap-drop',
@@ -112,6 +117,9 @@ const PROCS_COMMAND =
  * cancelled or has run out of time.
  */
 const CLEANUP_TIMEOUT_MS = 10_000;
+
+/** Gap between readiness polls. Short enough to catch a fast starter, cheap to repeat. */
+const POLL_INTERVAL_MS = 250;
 
 /**
  * Wait `ms`, or resolve early if `signal` aborts. Never rejects: an aborted settle just
@@ -215,11 +223,34 @@ export function dockerProbeSandbox(settings: Settings = loadSettings()): ProbeSa
         ]);
         if (started.exitCode !== 0) return emptyReading();
 
-        await settle(Math.min(spec.settleMs, remaining()), spec.signal);
+        // POLL, don't sleep. A fixed settle is wrong in both directions: a fast app is
+        // ready in 200ms and the probe waited 3s anyway, while a slow one had not bound
+        // its port yet and the probe recorded "binds nothing" as though that were a fact.
+        // Stop as soon as the container is either listening or dead — there is nothing
+        // further to learn by waiting in either case.
+        const pollBudget = Math.min(spec.settleMs, remaining());
+        const pollDeadline = Date.now() + pollBudget;
+        let exited = false;
+        for (;;) {
+          const state = await docker([
+            'inspect',
+            '--format',
+            '{{.State.Status}} {{.State.ExitCode}}',
+            name,
+          ]);
+          exited = parseExitCode(state.stdout) !== null;
+          if (exited) break;
+          const listening = await docker(['exec', name, '/bin/sh', '-c', PORTS_COMMAND]);
+          if (listening.stdout.includes(' 0A ')) break;
+          if (Date.now() >= pollDeadline || spec.signal?.aborted === true) break;
+          await settle(Math.min(POLL_INTERVAL_MS, pollDeadline - Date.now()), spec.signal);
+        }
 
         // Both reads go through a shell INSIDE the container, so an image without one
         // (distroless) simply yields nothing here — the logs below still work, and a
-        // partial reading is honest where a fabricated one would not be.
+        // partial reading is honest where a fabricated one would not be. `docker logs`
+        // keeps working against an EXITED container, which is why a crashed app still
+        // produces the most useful half of the reading rather than nothing at all.
         const [ports, procs, logs, inspect] = await Promise.all([
           docker(['exec', name, '/bin/sh', '-c', PORTS_COMMAND]),
           docker(['exec', name, '/bin/sh', '-c', PROCS_COMMAND]),

@@ -34,6 +34,22 @@ export interface Settings {
   probeCpus: number;
   /** Process cap for a probe container — the fork-bomb guard. */
   probePidsLimit: number;
+  /**
+   * Docker network for a probe container. `none` by default and that is the point of the
+   * setting existing rather than the value being hardcoded: an app that cannot resolve
+   * its database dies before it binds anything, so a user debugging why a probe saw
+   * nothing has a supported way to widen this for one run instead of editing the
+   * isolation boundary. Anything other than `none` weakens contract clause 1 — it is an
+   * informed choice, not a default.
+   */
+  probeNetwork: string;
+  /**
+   * Whether the probe container gets a read-only root filesystem. True by default. Many
+   * real images write a cache or a pid file at startup and exit immediately without this
+   * relaxed, which reads as "the app binds no ports" when the truth is "the app never
+   * started".
+   */
+  probeReadOnlyRootfs: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -55,6 +71,8 @@ export const DEFAULT_SETTINGS: Settings = {
   probeMemory: '512m',
   probeCpus: 1,
   probePidsLimit: 256,
+  probeNetwork: 'none',
+  probeReadOnlyRootfs: true,
 };
 
 export const ENV_KEYS = {
@@ -78,6 +96,8 @@ export const ENV_KEYS = {
   probeMemory: 'ORCA_PROBE_MEMORY',
   probeCpus: 'ORCA_PROBE_CPUS',
   probePidsLimit: 'ORCA_PROBE_PIDS_LIMIT',
+  probeNetwork: 'ORCA_PROBE_NETWORK',
+  probeReadOnlyRootfs: 'ORCA_PROBE_READONLY',
 } as const;
 
 /**
@@ -87,6 +107,11 @@ export const ENV_KEYS = {
  */
 function asOptIn(value: string | undefined): boolean {
   return value === '1' || value?.toLowerCase() === 'true';
+}
+
+/** The mirror of `asOptIn`: only an explicit negative turns a default-on setting off. */
+function asOptOut(value: string | undefined): boolean {
+  return value === '0' || value?.toLowerCase() === 'false';
 }
 
 function asProvider(value: string | undefined): ProviderName | undefined {
@@ -139,5 +164,9 @@ export function loadSettings(env: NodeJS.ProcessEnv = process.env): Settings {
     probeMemory: env[ENV_KEYS.probeMemory] || DEFAULT_SETTINGS.probeMemory,
     probeCpus: asPositiveInt(env[ENV_KEYS.probeCpus]) ?? DEFAULT_SETTINGS.probeCpus,
     probePidsLimit: asPositiveInt(env[ENV_KEYS.probePidsLimit]) ?? DEFAULT_SETTINGS.probePidsLimit,
+    probeNetwork: env[ENV_KEYS.probeNetwork] || DEFAULT_SETTINGS.probeNetwork,
+    // Only an explicit opt-OUT relaxes the root filesystem, mirroring how the probing
+    // flag itself is parsed: a typo must leave the stricter setting in place.
+    probeReadOnlyRootfs: !asOptOut(env[ENV_KEYS.probeReadOnlyRootfs]),
   });
 }
