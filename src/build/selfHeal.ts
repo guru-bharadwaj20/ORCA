@@ -56,7 +56,13 @@ const DANGEROUS_PATCH_PATTERNS: readonly RegExp[] = [
   /^\s*-\s*["']?\/(?::|$)/m, // bind-mounting the host root filesystem
 ];
 
-function containsDangerousDirective(contents: string): boolean {
+/**
+ * Exported so the Phase-F learned-override applier holds REPLAYED patch contents to this
+ * same bar. An override is model-generated text that ORCA writes into a Dockerfile and
+ * builds; that it arrived from disk rather than from this run's model is not a reason to
+ * trust it more.
+ */
+export function containsDangerousDirective(contents: string): boolean {
   return DANGEROUS_PATCH_PATTERNS.some((pattern) => pattern.test(contents));
 }
 

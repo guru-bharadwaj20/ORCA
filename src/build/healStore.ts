@@ -27,7 +27,7 @@ import { join } from 'node:path';
 import { packageVersion } from '../cli/version.js';
 import type { GeneratedFile, RunContext } from '../core/context.js';
 import { readFileIfExists } from '../utils/fs.js';
-import { resolveAllowedRealPath } from './selfHeal.js';
+import { containsDangerousDirective, resolveAllowedRealPath } from './selfHeal.js';
 import type { RepoShape } from './repoSignature.js';
 
 /** Current on-disk schema version. Bumped only on a breaking record-shape change. */
@@ -71,6 +71,51 @@ export interface HealOverrideRecord {
 interface StoreFile {
   version: number;
   records: Record<string, HealOverrideRecord>;
+}
+
+/** Every element of `value` is a string. */
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((v) => typeof v === 'string');
+}
+
+/** One `OverrideFile` entry, shaped as `applyLearnedOverride` needs to consume it. */
+function isOverrideFile(value: unknown): value is OverrideFile {
+  if (typeof value !== 'object' || value === null) return false;
+  const f = value as Partial<OverrideFile>;
+  return (
+    typeof f.path === 'string' &&
+    f.path !== '' &&
+    typeof f.kind === 'string' &&
+    typeof f.original === 'string' &&
+    typeof f.healed === 'string'
+  );
+}
+
+/**
+ * A stored record, validated field by field before anything reads it.
+ *
+ * This exists because the store is a file on the user's disk that ORCA later trusts
+ * enough to write into a Dockerfile it then builds. Parsing it with `as
+ * HealOverrideRecord` asserted a shape that nothing had checked, so a hand-edited,
+ * partially-written, or version-skewed file became a crash (a missing array read for
+ * `.length`) rather than a miss. Only the fields ORCA actually consumes are required —
+ * this is a load-bearing guard, not a schema for its own sake.
+ */
+function isHealOverrideRecord(value: unknown): value is HealOverrideRecord {
+  if (typeof value !== 'object' || value === null) return false;
+  const r = value as Partial<HealOverrideRecord>;
+  return (
+    r.version === STORE_VERSION &&
+    typeof r.signature === 'string' &&
+    typeof r.repoId === 'string' &&
+    isStringArray(r.languages) &&
+    isStringArray(r.frameworks) &&
+    isStringArray(r.recipeFingerprint) &&
+    isStringArray(r.changedSteps) &&
+    typeof r.explanation === 'string' &&
+    Array.isArray(r.files) &&
+    r.files.every(isOverrideFile)
+  );
 }
 
 /** Resolve ORCA's home dir: `$ORCA_HOME` when set, else `~/.orca`. */
@@ -117,11 +162,25 @@ export class HealOverrideStore {
     const raw = await readFileIfExists(this.filePath);
     if (raw === null) return empty;
     try {
-      const parsed = JSON.parse(raw) as StoreFile;
+      const parsed: unknown = JSON.parse(raw);
+      if (typeof parsed !== 'object' || parsed === null) return empty;
+      const store = parsed as Partial<StoreFile>;
       // A version bump or a corrupt file resets rather than throwing — a stale cache must
       // never break a build.
-      if (parsed.version !== STORE_VERSION || typeof parsed.records !== 'object') return empty;
-      return { version: STORE_VERSION, records: parsed.records ?? {} };
+      if (store.version !== STORE_VERSION) return empty;
+      const records = store.records;
+      if (typeof records !== 'object' || records === null || Array.isArray(records)) return empty;
+
+      // EVERY RECORD IS VALIDATED, not just the file envelope. The envelope check alone
+      // was the bug: a syntactically valid file holding a record missing
+      // `recipeFingerprint` sailed through here, and `overrideMatchesShape` then read
+      // `.length` off undefined and threw — killing a run whose stack had ALREADY built.
+      // "A stale cache must never break a build" has to mean the records too.
+      const valid: Record<string, HealOverrideRecord> = {};
+      for (const [signature, record] of Object.entries(records)) {
+        if (isHealOverrideRecord(record)) valid[signature] = record;
+      }
+      return { version: STORE_VERSION, records: valid };
     } catch {
       return empty;
     }
@@ -177,8 +236,16 @@ export async function snapshotGeneratedFiles(ctx: RunContext): Promise<Map<strin
 
 /**
  * Overwrite the generated files with a stored override's healed contents. Reuses
- * `resolveAllowedPath` so an override can only ever touch ORCA-generated files. Returns
- * the paths actually applied.
+ * `resolveAllowedRealPath` so an override can only ever touch ORCA-generated files, and
+ * `containsDangerousDirective` so its CONTENTS are held to the same bar as a live patch.
+ * Returns the paths actually applied.
+ *
+ * The content check is the half that was missing. A live heal patch is scanned for
+ * privilege-escalating directives before it is written, but a stored override replayed
+ * the same kind of model-generated text straight onto a Dockerfile ORCA then builds —
+ * with the scan skipped, purely because the text arrived from disk rather than from the
+ * model this run. Time-of-storage is not a trust upgrade: the file is editable, and the
+ * content is untrusted either way.
  */
 export async function applyLearnedOverride(
   ctx: RunContext,
@@ -189,6 +256,13 @@ export async function applyLearnedOverride(
   for (const file of record.files) {
     const abs = await resolveAllowedRealPath(ctx.workspaceDir, file.path, allowlist);
     if (abs === null) continue; // silently skip anything not on the generated allowlist
+    if (containsDangerousDirective(file.healed)) {
+      ctx.logger.warn(
+        `Skipped a stored heal override for '${file.path}' — it contains a ` +
+          `privilege-escalating directive. The override is discarded rather than replayed.`
+      );
+      continue;
+    }
     await writeFile(abs, file.healed, 'utf8');
     applied.push(file.path);
   }
