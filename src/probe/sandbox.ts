@@ -103,6 +103,24 @@ function emptyReading(): ProbeReading {
 }
 
 /**
+ * The container's exit code, or null while it is still running.
+ *
+ * Takes `docker inspect --format '{{.State.Status}} {{.State.ExitCode}}'`. The status is
+ * what makes the number meaningful: Docker reports `ExitCode: 0` for a running container,
+ * so reading the code alone conflates "exited successfully" with "has not exited". Null
+ * is the honest answer for the latter, and `null` is exactly what the field's type already
+ * allowed for.
+ */
+export function parseExitCode(inspectOutput: string): number | null {
+  const [status, code] = inspectOutput.trim().split(/\s+/);
+  if (status === undefined || code === undefined) return null;
+  // `running`, `created`, `paused`, `restarting` have not produced an exit code yet.
+  if (status !== 'exited' && status !== 'dead') return null;
+  const parsed = Number.parseInt(code, 10);
+  return Number.isInteger(parsed) ? parsed : null;
+}
+
+/**
  * The Docker-backed sandbox. Creates one throwaway container per run, reads what it did,
  * and destroys it — including on the failure paths, which is why the `docker rm -f` sits
  * in a `finally` rather than after the read.
@@ -111,6 +129,11 @@ export function dockerProbeSandbox(settings: Settings = loadSettings()): ProbeSa
   return {
     async run(spec: SandboxSpec): Promise<ProbeReading> {
       const name = `orca-probe-${randomUUID()}`;
+      // Set by any docker call that hits its wall-clock cap, so `ProbeReading.timedOut`
+      // reports something real. It used to be hardcoded `false` on every path — a field
+      // that could not be true, which is worse than no field at all: a caller reading it
+      // would conclude the run completed when it may have been killed mid-flight.
+      let timedOut = false;
       const docker = (args: string[]): Promise<{ exitCode: number | null; stdout: string }> =>
         execa('docker', args, {
           reject: false,
@@ -118,11 +141,17 @@ export function dockerProbeSandbox(settings: Settings = loadSettings()): ProbeSa
           env: {},
           extendEnv: false,
         }).then(
-          (r) => ({
-            exitCode: typeof r.exitCode === 'number' ? r.exitCode : null,
-            stdout: typeof r.stdout === 'string' ? r.stdout : '',
-          }),
-          () => ({ exitCode: null, stdout: '' })
+          (r) => {
+            if (r.timedOut === true) timedOut = true;
+            return {
+              exitCode: typeof r.exitCode === 'number' ? r.exitCode : null,
+              stdout: typeof r.stdout === 'string' ? r.stdout : '',
+            };
+          },
+          (err: unknown) => {
+            if ((err as { timedOut?: boolean })?.timedOut === true) timedOut = true;
+            return { exitCode: null, stdout: '' };
+          }
         );
 
       try {
@@ -149,13 +178,16 @@ export function dockerProbeSandbox(settings: Settings = loadSettings()): ProbeSa
           docker(['exec', name, '/bin/sh', '-c', PORTS_COMMAND]),
           docker(['exec', name, '/bin/sh', '-c', PROCS_COMMAND]),
           docker(['logs', '--tail', '200', name]),
-          docker(['inspect', '--format', '{{.State.ExitCode}}', name]),
+          // Status AND exit code together. `.State.ExitCode` alone reads 0 for a container
+          // that is still RUNNING, which is indistinguishable from one that exited
+          // cleanly — so `exitCode: 0` used to mean either "finished fine" or "has not
+          // finished", and a caller could not tell which.
+          docker(['inspect', '--format', '{{.State.Status}} {{.State.ExitCode}}', name]),
         ]);
 
-        const exitCode = Number.parseInt(inspect.stdout.trim(), 10);
         return {
-          exitCode: Number.isInteger(exitCode) ? exitCode : null,
-          timedOut: false,
+          exitCode: parseExitCode(inspect.stdout),
+          timedOut,
           netTcp: ports.stdout,
           processes: procs.stdout
             .split('\n')
