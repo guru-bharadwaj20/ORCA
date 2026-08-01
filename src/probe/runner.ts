@@ -43,6 +43,8 @@ export interface ProbeRequest {
   /** The already-built image to observe. */
   image: string;
   gate: ProbeGate;
+  /** Cancels the probe when the surrounding run is aborted. */
+  signal?: AbortSignal;
   /** Injected for tests; defaults to the real Docker-backed sandbox. */
   sandbox?: ProbeSandbox;
   probers?: readonly Prober[];
@@ -100,6 +102,7 @@ export async function runProbers(request: ProbeRequest): Promise<ProbeOutcome> {
     image: request.image,
     settleMs: settings.probeSettleMs,
     timeoutMs: settings.probeTimeoutMs,
+    ...(request.signal !== undefined ? { signal: request.signal } : {}),
   });
 
   const ctx: ProbeContext = {

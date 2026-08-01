@@ -406,6 +406,7 @@ async function probeRunningStack(ctx: RunContext): Promise<void> {
         image,
         gate: { enabled: settings.enableProbing, approved: ctx.approved },
         settings,
+        ...(ctx.options.signal !== undefined ? { signal: ctx.options.signal } : {}),
       });
       if (outcome.skipped !== null) {
         ctx.logger.info(`Probe skipped for ${node.id}: ${outcome.skipped}.`);
