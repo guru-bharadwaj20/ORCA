@@ -189,7 +189,7 @@ const BARE_PYTHON_RECIPE: BuildRecipe = (() => {
  * are not runnable (a workspace root, a library) are excluded downstream by the role
  * detectors, not here — this list answers "how would this build", not "should it run".
  */
-export const BARE_RUNTIME_RECIPES = [
+const BARE_RUNTIME_RECIPES = [
   {
     matcher: { runtime: 'node' as const, anyFile: ['package.json'] },
     // NOTE the empty `startCommand`, and that it differs from `BARE_NODE_RECIPE` above.

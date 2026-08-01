@@ -47,7 +47,7 @@ import { declaredPorts } from '../ports.js';
  * Background-processing libraries. A dependency on one is suggestive but never
  * sufficient on its own — a web app can enqueue jobs without being a worker.
  */
-export const WORKER_DEPENDENCIES = [
+const WORKER_DEPENDENCIES = [
   // Python
   'celery',
   'rq',

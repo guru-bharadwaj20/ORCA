@@ -31,7 +31,7 @@ import { DEFAULT_SOURCE_WEIGHTS } from './signalSources.js';
 import { analyzeCi } from './ci.js';
 import { analyzeCircleCi } from './circleci.js';
 import { detectComponentRole } from './componentRole.js';
-import { analyzeDockerfiles, runtimeFromBaseImage } from './dockerfile.js';
+import { analyzeDockerfiles, runtimeFromBaseImage, hasContainerFile } from './dockerfile.js';
 import { analyzeGitlabCi } from './gitlabCi.js';
 import { defaultDetectorRegistry } from './detectors/index.js';
 import type { RuntimeFact } from './detectors/facts.js';
@@ -104,18 +104,9 @@ async function hasDotnetProject(dir: string): Promise<boolean> {
 }
 
 async function hasDockerfile(dir: string): Promise<boolean> {
-  let entries;
-  try {
-    entries = await readdir(dir, { withFileTypes: true });
-  } catch {
-    return false;
-  }
-  for (const entry of entries) {
-    if (entry.isFile() && /^(?:dockerfile|containerfile)(?:\..+)?$/i.test(entry.name)) {
-      return true;
-    }
-  }
-  return false;
+  // Delegates rather than re-deriving the name pattern: `nestedComponentDirs` asks the
+  // same question when scoping a port scan, and the two answers must never diverge.
+  return hasContainerFile(dir);
 }
 
 async function hasCandidateSignal(dir: string): Promise<boolean> {
