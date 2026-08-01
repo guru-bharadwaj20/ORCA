@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, writeFile, symlink } from 'node:fs/promises';
+﻿import { mkdtemp, mkdir, rm, writeFile, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -9,6 +9,26 @@ import { walk, MAX_WALK_DEPTH, MAX_WALK_ENTRIES } from '../../src/utils/fs.js';
 async function fixture(): Promise<string> {
   return mkdtemp(join(tmpdir(), 'orca-walk-'));
 }
+
+/**
+ * Symlink creation requires elevation (or Developer Mode) on Windows. A test that the
+ * platform cannot run should SKIP, not fail: a red suite that is red for environmental
+ * reasons trains people to ignore red suites, and hides the failures that matter.
+ */
+async function canSymlink(): Promise<boolean> {
+  const dir = await mkdtemp(join(tmpdir(), 'orca-symcheck-'));
+  try {
+    await mkdir(join(dir, 'target'));
+    await symlink(join(dir, 'target'), join(dir, 'link'), 'dir');
+    return true;
+  } catch {
+    return false;
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+const symlinksAvailable = await canSymlink();
 
 describe('walk', () => {
   it('lists files recursively and deterministically', async () => {
@@ -45,13 +65,13 @@ describe('walk', () => {
     await writeFile(join(root, 'skipme', 'x.txt'), '');
     await writeFile(join(root, 'y.txt'), '');
 
-    // The pre-caps call shape must keep working — callers pass a bare array.
+    // The pre-caps call shape must keep working â€” callers pass a bare array.
     const files = await walk(root, ['skipme']);
 
     expect(files.map((f) => f.slice(root.length + 1))).toEqual(['y.txt']);
   });
 
-  it('does not follow symlinks, so a cycle terminates', async () => {
+  it.runIf(symlinksAvailable)('does not follow symlinks, so a cycle terminates', async () => {
     const root = await fixture();
     await mkdir(join(root, 'a'), { recursive: true });
     await writeFile(join(root, 'a', 'f.txt'), '');
@@ -66,7 +86,7 @@ describe('walk', () => {
 
   it('truncates at maxDepth instead of recursing without bound', async () => {
     const root = await fixture();
-    // root/d1/d2/d3/deep.txt — four levels below the root.
+    // root/d1/d2/d3/deep.txt â€” four levels below the root.
     await mkdir(join(root, 'd1', 'd2', 'd3'), { recursive: true });
     await writeFile(join(root, 'top.txt'), '');
     await writeFile(join(root, 'd1', 'd2', 'd3', 'deep.txt'), '');
