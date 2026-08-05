@@ -174,7 +174,14 @@ approval gate tells you probing is on before you approve anything.
 
 Relaxing `ORCA_PROBE_NETWORK` or `ORCA_PROBE_READONLY` is supported, since a container
 whose database is unreachable may die before it binds anything, but both defaults exist
-for a reason. Loosen them only for a repo you trust.
+for a reason. Loosen them only for a repo you trust. Note that the memory, CPU and process
+caps still apply when you do, but the 64 MB limit covers `/tmp` only — with a writable root
+the container's own layer is bounded by your disk, not by ORCA.
+
+The container runs as whatever user its image specifies, which is usually root. That is
+deliberate: with capabilities dropped, privilege escalation blocked, no network, and **no
+host path mounted at all**, there is nothing for container-root to act on, and forcing a
+different user would break images that legitimately write as root.
 
 ## Safety
 
