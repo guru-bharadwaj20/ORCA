@@ -132,6 +132,17 @@ never DOWNGRADE its build (a framework the detector can name but
 build step), and a blank `startCommand` is allow-listed to the recipes where blank
 genuinely means "ask the repo".
 
+### Audit — what the grader made of the leftovers
+
+One further finding, from the tail of the workspace-root work above.
+
+| Fix                                         | What was wrong                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| :------------------------------------------ | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A library graded as a dropped component** | Suppressing the phantom left a warning behind: a root nothing was placed for still got `unplaced-component`, and `assessUnderstanding` grades every one of those as "the generated stack is incomplete". So a monorepo ORCA understood COMPLETELY — every real component placed, the parents correctly recognized as libraries — came out `partial` with `shouldEscalate: true` and spent a tier-3 inference call on a `{ private, workspaces }` file. **Every monorepo fixture in the suite did this**, from the day the suppression landed, because their tests assert PLACEMENT and placement was right the whole time. Those roots are recorded in `insights.unrunnableRoots` and surface as `library-component` instead; `unplaced-component` keeps its meaning and keeps escalating. |
+
+The lesson worth keeping: **"placed nothing" and "could not place" are different
+outcomes**, and any signal that collapses them will eventually be graded as a failure.
+
 ### Architectural debt — verified, prioritized
 
 These are **confirmed** findings from a codebase review (not speculative improvements):
