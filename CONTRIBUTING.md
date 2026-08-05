@@ -19,6 +19,13 @@ ESM-only TypeScript with `NodeNext` resolution; intra-project imports use explic
 extensions. The repo is an npm-workspaces monorepo — the root package is the publishable
 `orca-agent-cli`, and `vscode-extension/` consumes it through its subpath exports.
 
+**TypeScript is pinned below 7 by a peer dependency, not by choice.** `npm outdated`
+reports TypeScript 7.x as available, but `@typescript-eslint/*` — including its newest
+release — declares `typescript: ">=4.8.4 <6.1.0"`, so npm correctly resolves back to 5.9.x.
+Forcing 7 with `--legacy-peer-deps` would leave linting on an untested parser/compiler
+pair. Revisit when typescript-eslint ships TS 7 support; until then this row in
+`npm outdated` is expected, not neglected.
+
 ## Ground rules
 
 - **Green before every push.** `typecheck`, `lint`, `format:check`, and the full test
@@ -30,6 +37,13 @@ extensions. The repo is an npm-workspaces monorepo — the root package is the p
 - **Adding a stack is adding data, not editing an enum.** New frameworks/ecosystems land
   as a `BuildRecipe` + matcher + test, never as new control flow. See
   [`docs/universal-understanding-plan.md`](docs/universal-understanding-plan.md).
+- **Test the JOIN, not just the halves.** Every defect found in this repo so far has sat
+  between two things that were each covered: port scoping and role detection, placement
+  and grading, the container's isolation and the host's handling of its output. Both sides
+  were green the whole time. So when your change makes A depend on B, the test that earns
+  its place asserts the thing that is only true when A and B are combined — and it drives
+  the real code path, because a test that mocks the seam it is checking passes before the
+  fix as happily as after. See the audit sections below for what each of these cost.
 - **Commit messages:** short (4–6 words), a conventional prefix
   (`feat:`/`fix:`/`chore:`/`test:`/`refactor:`/`docs:`), written like an engineer wrote
   them.
@@ -142,6 +156,28 @@ One further finding, from the tail of the workspace-root work above.
 
 The lesson worth keeping: **"placed nothing" and "could not place" are different
 outcomes**, and any signal that collapses them will eventually be graded as a failure.
+
+### Audit — tier-4 probing (`src/probe/`)
+
+Probing is the only feature that deliberately executes repo-controlled code, and it was
+the only security-sensitive area that had never had an adversarial pass. `sandbox.test.ts`
+covered the CONTAINER's side of the boundary thoroughly — `isolationArgs` is asserted flag
+by flag. Every finding below is on the HOST's side of it, which nothing asserted.
+
+| Fix                                                     | What was wrong                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| :------------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Log caps bounded what was KEPT, not what was READ**   | `MAX_LOG_BYTES` (8 KiB) and `MAX_PROCESS_LINES` (64) slice a string that has already been read fully into memory, and execa buffers an unbounded child stdout by default — **measured: a 20 MB single line is collected in full, no error**. `docker logs --tail 200` caps lines, not bytes. So one container printing one enormous line made ORCA allocate all of it before the slice discarded it: a memory-exhaustion DoS delivered by the one feature that runs untrusted code, against the machine analysing it. The comment on those constants claimed exactly the protection they did not provide. Fixed with `maxBuffer`, which under `reject: false` truncates and flags rather than throwing — so a flooding container yields the useful prefix instead of an empty reading. |
+| **The probe and the build talked to different daemons** | `sandbox.ts` ran `docker` with `env: {}` + `extendEnv: false` while `build/docker.ts` runs with `extendEnv: true`. The intent was right (don't hand a subprocess the whole host environment) but it also stripped `DOCKER_HOST`, `DOCKER_CONTEXT`, and `HOME` — and `HOME` is how the CLI finds `~/.docker/config.json`, hence the active context. On any setup whose daemon is not the default local socket (rootless Docker, Docker Desktop, an SSH or TLS context) the BUILD would reach the real daemon while every probe silently reached another and returned an empty reading — which the user cannot tell apart from "the app binds nothing". Now an explicit allowlist: the client variables travel, ambient secrets still do not.                                            |
+| **The image name could have been an isolation flag**    | `docker run <isolation flags> IMAGE` with no `--` separator. Docker's parser accepts flags after positionals, so an image string beginning with `-` is read as an option — beside a flag list whose entire purpose is to constrain the container. No path today produces such a name (compose derives it and rejects a leading dash), which is precisely why it was worth pinning rather than arguing about: the cost is one token.                                                                                                                                                                                                                                                                                                                                                    |
+
+**Accepted, not fixed** — recorded so they are decisions rather than oversights. The
+container runs as the image's own user, usually root: with `--cap-drop ALL`,
+`--security-opt no-new-privileges`, `--read-only`, `--network none`, and **no host path
+mounted at all**, container-root has nothing to escalate against, so `--user` would break
+images that legitimately write as root for no security gain. And relaxing
+`ORCA_PROBE_READONLY` leaves the container's writable layer unbounded — the tmpfs cap only
+covers `/tmp` — so that knob trades disk exhaustion for compatibility. Both are documented
+in the README's Probing section.
 
 ### Not a bug: an ecosystem `library` is placed on purpose
 
