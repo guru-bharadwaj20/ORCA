@@ -263,6 +263,18 @@ export interface RepoInsights {
     startCommand?: string;
   }[];
   /**
+   * Candidate roots deliberately NOT placed because their role says nothing there runs —
+   * a workspace root, a shared package imported by its siblings.
+   *
+   * Recorded so a consumer can tell "ORCA saw this and could not place it" (a gap worth
+   * escalating over) from "ORCA saw this and correctly placed nothing" (a resolved
+   * outcome). Without the distinction every workspace root produced an
+   * `unplaced-component` warning, `assessUnderstanding` graded it as an incomplete stack,
+   * and a fully-understood monorepo escalated to tier-3 inference over a directory whose
+   * only content is `{ private, workspaces }`.
+   */
+  unrunnableRoots: string[];
+  /**
    * The build/run shape recovered from every source that declares one — CI (GitHub
    * Actions plus every `ciProviders` entry), task runners, README/shell scripts — ranked
    * with provenance, or null when nothing declared anything actionable.
