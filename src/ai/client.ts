@@ -8,7 +8,7 @@ export { createAnthropicClient, estimateUsd } from './providers/anthropic.js';
 export interface AIFacade {
   complete<Output, Input = Output>(
     prompt: RouterPrompt,
-    schema: z.ZodType<Output, z.ZodTypeDef, Input>,
+    schema: z.ZodType<Output, Input>,
     ledger: CostLedger,
     options?: RouterCallOptions
   ): Promise<Output>;
