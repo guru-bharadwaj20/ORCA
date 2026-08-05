@@ -155,6 +155,27 @@ describe('partial placement', () => {
     expect(assessUnderstanding(detection()).level).toBe('confident');
   });
 
+  it('does not grade a deliberately unplaced library as a dropped component', () => {
+    // A workspace root or a shared package is not a MISS — detection resolved its role and
+    // correctly containerized nothing for it. Reporting it as `unplaced-component` made
+    // every monorepo fixture in the suite grade `partial` and escalate to tier-3 inference
+    // over a `{ private, workspaces }` file, so those roots carry their own code now.
+    const u = assessUnderstanding(
+      detection({
+        warnings: [
+          {
+            code: 'library-component',
+            message: "'.' is imported rather than run…",
+            detector: 'index',
+          },
+        ],
+      })
+    );
+
+    expect(u.level).toBe('confident');
+    expect(u.shouldEscalate).toBe(false);
+  });
+
   it('ignores the coarser unrecognized-component warning', () => {
     // `unrecognized-component` fires whenever the SEED path can't classify a root — even
     // for roots the ecosystem path then placed successfully. Grading on it would report
