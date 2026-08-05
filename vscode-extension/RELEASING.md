@@ -1,13 +1,18 @@
 # Releasing the ORCA VS Code extension
 
-The extension is a thin front end that loads the `orca-agent-cli` engine at runtime. Today it
-depends on the core via `"orca-agent-cli": "file:.."` (a workspace symlink), which is perfect
-for local development and CI but **cannot ship in a `.vsix`** — the packaged extension
-would have no `orca-agent-cli` to import.
+The extension is a thin front end that loads the `orca-agent-cli` engine at runtime, and
+depends on the core by **published version range** (`"orca-agent-cli": "^0.2.0"`). Inside the
+repo, npm workspaces still satisfy that range with the local symlink, so day-to-day
+development is unaffected.
+
+Do **not** change it to `"file:.."`. That works in the repo and breaks packaging, which is
+an easy trap: `scripts/package-vsix.mjs` copies the extension into a temp directory and runs
+`npm install` there, so `..` re-resolves against `/tmp` and npm links `node_modules/orca-agent-cli`
+to a directory that is not the core. `vsce` then fails with `not a file`. That regression
+reached CI once — the symptom appears in the packaging step, nowhere near the edit.
 
 So a _distributable_ build has one hard prerequisite: **`orca-agent-cli` must be published to
-npm first** (Stage 0). Until then, `npm run package` produces a structurally-valid
-`.vsix` (bundle + media + docs) that is not yet runnable once installed.
+npm first** (Stage 0), because the staged install pulls the core from the registry.
 
 ## Release checklist
 
