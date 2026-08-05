@@ -85,6 +85,7 @@ orca run <repo> --dry-run --auto-approve
 | `--model <id>`            | Pick a model. Anything starting `claude` routes to Anthropic, `qwen` to Qwen. |
 | `--cost-cap <usd>`        | Hard ceiling on what the run may spend on LLM calls.                          |
 | `--max-heal-attempts <n>` | How many repair attempts before giving up. Defaults to 3.                     |
+| `--verbose`               | Verbose debug logging.                                                        |
 
 Settings resolve as flag first, then `ORCA_*` environment variables, then the default.
 
@@ -94,7 +95,7 @@ approval gate, and `1` for everything else.
 
 ## What it can run
 
-ORCA started out handling three stacks. It now covers 40 build recipes across eight
+ORCA started out handling three stacks. It now covers 56 build recipes across eight
 ecosystems, and adding another one is a data change rather than new code.
 
 | Ecosystem | Covered                                                                                                    |
@@ -130,6 +131,9 @@ CI configs, Makefiles, and README commands, and only then AI inference, which is
 so it can never outrank something ORCA read directly from a file. If the deterministic
 layers already explain the project, no API call happens at all.
 
+There is a fourth layer that actually runs the project to see what it does, but it is off
+unless you ask for it. See [Probing](#probing-off-by-default) below.
+
 Nothing touches your disk before you approve. ORCA renders the planned service graph as a
 diagram plus a table, and waits.
 
@@ -138,6 +142,39 @@ what it changed and why on each attempt. It can only edit files ORCA generated i
 Your repo is never modified.
 
 More detail lives in [`docs/architecture.md`](docs/architecture.md).
+
+## Probing (off by default)
+
+Everything above reads the project without running it. Probing is the exception: it starts
+the container ORCA planned and reads what actually happened, which settles questions
+static analysis can only guess at, like whether the app really binds the port it appears
+to.
+
+It is **off unless you turn it on**, because it is the only part of ORCA that executes code
+from the repo:
+
+```bash
+export ORCA_ENABLE_PROBING=true
+```
+
+When enabled, a probe container is locked down: no network, a read-only root filesystem,
+512 MB of memory, one CPU, 256 processes, and a 60 second ceiling per Docker call. The
+approval gate tells you probing is on before you approve anything.
+
+| Variable                | Default | What it controls                 |
+| :---------------------- | :------ | :------------------------------- |
+| `ORCA_ENABLE_PROBING`   | `false` | Whether probing runs at all      |
+| `ORCA_PROBE_NETWORK`    | `none`  | Network for the probe container  |
+| `ORCA_PROBE_READONLY`   | `true`  | Read-only root filesystem        |
+| `ORCA_PROBE_MEMORY`     | `512m`  | Memory cap                       |
+| `ORCA_PROBE_CPUS`       | `1`     | CPU cap                          |
+| `ORCA_PROBE_PIDS_LIMIT` | `256`   | Process cap, the fork-bomb guard |
+| `ORCA_PROBE_TIMEOUT_MS` | `60000` | Wall clock per Docker call       |
+| `ORCA_PROBE_SETTLE_MS`  | `3000`  | Settle time before reading state |
+
+Relaxing `ORCA_PROBE_NETWORK` or `ORCA_PROBE_READONLY` is supported, since a container
+whose database is unreachable may die before it binds anything, but both defaults exist
+for a reason. Loosen them only for a repo you trust.
 
 ## Safety
 
@@ -148,6 +185,10 @@ The repair loop is restricted to files ORCA created, enforced in code rather tha
 for in a prompt. Anything an LLM proposes, base images, build commands, file paths, is
 checked against an allowlist before it can reach a Dockerfile. Generated `.env` files are
 written `0600` because that's where real credentials end up.
+
+Nothing executes code from the repo unless you set `ORCA_ENABLE_PROBING`, and a build you
+approve is still a build: `docker build` runs the project's own Dockerfile instructions.
+Read a plan before approving it.
 
 Full detail in [`SECURITY.md`](SECURITY.md).
 
