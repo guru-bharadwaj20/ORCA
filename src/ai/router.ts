@@ -96,7 +96,7 @@ export class AIRouter {
 
   async completeValidated<Output, Input = Output>(
     prompt: RouterPrompt,
-    schema: z.ZodType<Output, z.ZodTypeDef, Input>,
+    schema: z.ZodType<Output, Input>,
     ledger: CostLedger,
     options: RouterCallOptions = {}
   ): Promise<Output> {

@@ -295,7 +295,7 @@ export function parseModelJson(raw: unknown): unknown {
  * must never propagate into a plan or a Dockerfile.
  */
 export function validateAgainst<Output, Input = Output>(
-  schema: z.ZodType<Output, z.ZodTypeDef, Input>,
+  schema: z.ZodType<Output, Input>,
   raw: unknown
 ): Output {
   const candidate = parseModelJson(raw);
