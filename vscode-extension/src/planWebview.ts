@@ -1,8 +1,8 @@
-import type { ReviewOutcome, ServiceNode, ServicePlan } from 'orca-repo-agent/plan';
+import type { ReviewOutcome, ServiceNode, ServicePlan } from 'orca-agent-cli/plan';
 import * as vscode from 'vscode';
 
 const loadDiagram = async (): Promise<(plan: ServicePlan) => string> =>
-  (await import('orca-repo-agent/plan')).renderDiagram;
+  (await import('orca-agent-cli/plan')).renderDiagram;
 
 interface DecisionMessage {
   type: 'approve' | 'reject';

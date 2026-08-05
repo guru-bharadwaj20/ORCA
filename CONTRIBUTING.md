@@ -17,7 +17,7 @@ npm run format:check
 
 ESM-only TypeScript with `NodeNext` resolution; intra-project imports use explicit `.js`
 extensions. The repo is an npm-workspaces monorepo — the root package is the publishable
-`orca-repo-agent`, and `vscode-extension/` consumes it through its subpath exports.
+`orca-agent-cli`, and `vscode-extension/` consumes it through its subpath exports.
 
 ## Ground rules
 

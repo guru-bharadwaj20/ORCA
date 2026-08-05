@@ -44,7 +44,7 @@ vscode-extension/ the VS Code front end (workspace member)
 docs/             architecture, supported stacks, demo
 ```
 
-The package entry point is `src/core/index.ts` (`orca-repo-agent`); `plan/`, `config/`,
+The package entry point is `src/core/index.ts` (`orca-agent-cli`); `plan/`, `config/`,
 and `ai/` each expose a barrel for their subpath export.
 
 ## Data contracts (stable up front)
