@@ -329,8 +329,27 @@ async function detectStackScoped(repoPath: string): Promise<DetectionResult> {
     ...insights.ecosystemComponents.map((e) => e.rootDir),
     ...insights.dockerfiles.map((d) => d.rootDir),
   ]);
+  //
+  // A root whose ROLE says nothing there runs is excluded: `unrunnableRoots` holds the
+  // directories detection deliberately placed nothing for (a workspace root, a shared
+  // package), and reporting those as unplaced conflates a resolved outcome with a miss.
+  // `assessUnderstanding` grades every `unplaced-component` as an incomplete stack, so a
+  // monorepo ORCA understood COMPLETELY — every real component placed, the parents
+  // correctly recognized as libraries — still came out `partial` with `shouldEscalate`,
+  // spending a tier-3 inference call on a `{ private, workspaces }` file. They still
+  // surface as `library-component`, which says what is true without claiming something
+  // is missing.
+  const unrunnable = new Set(insights.unrunnableRoots);
   for (const c of candidates) {
     if (placedRoots.has(c.rootDir)) continue;
+    if (unrunnable.has(c.rootDir)) {
+      warnings.push({
+        code: 'library-component',
+        message: `'${c.rootDir}' is imported rather than run (no bin, no start script, no entry module) — nothing is containerized for it.`,
+        detector: 'index',
+      });
+      continue;
+    }
     warnings.push({
       code: 'unplaced-component',
       message: `'${c.rootDir}' declares a manifest but nothing was placed for it — it will be missing from the generated stack.`,
@@ -484,6 +503,7 @@ async function gatherInsights(
   const taskCommands: RepoInsights['taskCommands'] = [];
   const seenTask = new Set<string>();
   const ecosystemComponents: RepoInsights['ecosystemComponents'] = [];
+  const unrunnableRoots: string[] = [];
   const dockerfiles: RepoInsights['dockerfiles'] = [];
   const seenDockerfile = new Set<string>();
 
@@ -635,7 +655,11 @@ async function gatherInsights(
         // and nothing else. A FRAMEWORK recipe is different — matching one needs real
         // dependencies, so it outweighs the negative evidence and still places.
         const unrunnable = BARE_RUNTIME_RECIPE_IDS.has(recipe.id) && detected?.role === 'library';
-        if (!unrunnable) {
+        // Recorded, not merely skipped: placing nothing here is a DECISION backed by the
+        // role, and the caller has no other way to tell it apart from a root ORCA failed
+        // to understand. See `RepoInsights.unrunnableRoots`.
+        if (unrunnable) unrunnableRoots.push(rootDir);
+        else {
           ecosystemComponents.push({
             rootDir,
             runtime: 'node',
@@ -716,6 +740,7 @@ async function gatherInsights(
     taskCommands,
     scriptSources,
     ecosystemComponents,
+    unrunnableRoots,
     recoveredBuild: null,
     recoveredRuntimes:
       recoveredRuntimesClaim === null
