@@ -101,7 +101,7 @@
     "vscode:prepublish": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --external:orca-agent-cli --external:orca-agent-cli/plan --external:orca-agent-cli/config --external:orca-agent-cli/ai --outfile=dist/extension.js --minify && node scripts/copy-media.mjs"
   },
   "dependencies": {
-    "orca-agent-cli": "^0.2.0"
+    "orca-agent-cli": "^0.3.0"
   },
   "devDependencies": {
     "@types/vscode": "^1.90.0",
