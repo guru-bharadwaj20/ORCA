@@ -4,7 +4,7 @@
 A CLI that takes a repo you've never seen before and gets it running in Docker.</p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/orca-agent-cli"><img alt="npm" src="https://img.shields.io/npm/v/orca-agent-cli.svg"></a>
+  <a href="https://www.npmjs.com/package/orca-repo-agent"><img alt="npm" src="https://img.shields.io/npm/v/orca-repo-agent.svg"></a>
   <a href="https://github.com/VivianSobers/ORCA/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/VivianSobers/ORCA/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
 </p>
@@ -31,7 +31,7 @@ whether it read that from a Dockerfile, a source file, or a guess.
 ## Quick start
 
 ```bash
-npm install -g orca-agent-cli
+npm install -g orca-repo-agent
 orca
 ```
 
@@ -180,7 +180,7 @@ npm run typecheck
 
 ESM only TypeScript on `NodeNext` resolution, so intra project imports carry explicit
 `.js` extensions. It's an npm workspaces monorepo: the root package is the publishable
-`orca-agent-cli`, and the extension consumes it through subpath exports.
+`orca-repo-agent`, and the extension consumes it through subpath exports.
 
 [`CONTRIBUTING.md`](CONTRIBUTING.md) has the setup, the ground rules, and a roadmap
 showing what's done and what's free to pick up. The design document behind the detection

@@ -9,25 +9,25 @@ import * as config from '../../src/config/index.js';
 import * as ai from '../../src/ai/index.js';
 
 describe('library surface (subpath exports)', () => {
-  it('orca-agent-cli exposes the pipeline + context contract', () => {
+  it('orca-repo-agent exposes the pipeline + context contract', () => {
     expect(typeof root.runPipeline).toBe('function');
     expect(typeof root.createRunContext).toBe('function');
     expect(root.DEFAULT_RUN_OPTIONS).toMatchObject({ dryRun: false });
   });
 
-  it('orca-agent-cli/plan exposes the diagram + plan model + review gate', () => {
+  it('orca-repo-agent/plan exposes the diagram + plan model + review gate', () => {
     expect(typeof plan.renderDiagram).toBe('function');
     expect(typeof plan.buildServicePlan).toBe('function');
     expect(typeof plan.reviewPlan).toBe('function');
   });
 
-  it('orca-agent-cli/config exposes settings + the key-resolver seam', () => {
+  it('orca-repo-agent/config exposes settings + the key-resolver seam', () => {
     expect(typeof config.loadSettings).toBe('function');
     expect(typeof config.envKeyResolver).toBe('function');
     expect(config.ENV_KEYS.qwenApiKey).toBe('QWEN_API_KEY');
   });
 
-  it('orca-agent-cli/ai exposes the facade + router', () => {
+  it('orca-repo-agent/ai exposes the facade + router', () => {
     expect(typeof ai.aiFor).toBe('function');
     expect(typeof ai.AIRouter).toBe('function');
     expect(typeof ai.defaultProviderFactories).toBe('function');
