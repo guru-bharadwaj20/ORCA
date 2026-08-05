@@ -55,7 +55,7 @@ Local paths work too, so `orca run .` is fine.
 
 ## What you need
 
-Node 20 or newer, and Docker if you want ORCA to actually build and start things. An API
+Node 22.12 or newer, and Docker if you want ORCA to actually build and start things. An API
 key is optional. Without one ORCA falls back to its deterministic templates and the run
 still completes; with one it can fill in gaps and repair failed builds.
 
