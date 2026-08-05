@@ -4,12 +4,37 @@ import { ENV_KEYS, envKeyResolver, loadSettings, type KeyResolver } from '../../
 import { OrcaError } from '../../utils/errors.js';
 import type { AIProvider, CompletionOptions, ProviderCompletion } from './types.js';
 
+/**
+ * Published per-million-token rates, by model id. Anything a user can select with
+ * `--model` / `ORCA_MODEL` belongs here — see `FALLBACK_PRICING` for why.
+ */
 const MODEL_PRICING: Record<string, { inputPerMTok: number; outputPerMTok: number }> = {
+  'claude-fable-5': { inputPerMTok: 10, outputPerMTok: 50 },
+  'claude-mythos-5': { inputPerMTok: 10, outputPerMTok: 50 },
+  'claude-opus-5': { inputPerMTok: 5, outputPerMTok: 25 },
   'claude-opus-4-8': { inputPerMTok: 5, outputPerMTok: 25 },
+  'claude-opus-4-7': { inputPerMTok: 5, outputPerMTok: 25 },
+  'claude-opus-4-6': { inputPerMTok: 5, outputPerMTok: 25 },
   'claude-sonnet-5': { inputPerMTok: 3, outputPerMTok: 15 },
+  'claude-sonnet-4-6': { inputPerMTok: 3, outputPerMTok: 15 },
   'claude-haiku-4-5': { inputPerMTok: 1, outputPerMTok: 5 },
 };
-const FALLBACK_PRICING = MODEL_PRICING['claude-opus-4-8']!;
+
+/**
+ * What an UNKNOWN model costs — the most expensive rate we know of, not a mid-tier guess.
+ *
+ * THIS ESTIMATE IS A SAFETY CONTROL, not a display value: `estimateUsd` feeds the ledger
+ * that enforces `--cost-cap` (`router.ts`), so an estimate that is too LOW lets a run
+ * overspend its ceiling, while one that is too high only trips the cap early. The two
+ * errors are not symmetric, so an unrecognized model must be assumed expensive.
+ *
+ * This was previously the Opus rate, which under-counted every model above that tier:
+ * `--model claude-fable-5 --cost-cap 1.00` bills at $10/$50 and was estimated at $5/$25,
+ * so the run could spend $2.00 against a $1.00 cap before the ledger noticed. Pricing
+ * moves and new models ship between ORCA releases, so a fallback is always reachable —
+ * it just must not be a cheap one.
+ */
+const FALLBACK_PRICING = { inputPerMTok: 10, outputPerMTok: 50 };
 
 export function estimateUsd(model: string, inputTokens: number, outputTokens: number): number {
   const pricing = MODEL_PRICING[model] ?? FALLBACK_PRICING;
