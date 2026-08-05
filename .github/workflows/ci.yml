@@ -18,7 +18,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ['20', '22']
+        # Lower bound is the `engines` floor, upper bound is current LTS. Node 20 was
+        # dropped at its April 2026 EOL: execa, chalk and commander all now require >=22,
+        # and the failure is an import-time crash, not a soft degradation.
+        node: ['22', '24']
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
