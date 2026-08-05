@@ -64,6 +64,59 @@ const MAX_LOG_BYTES = 8192;
 const MAX_PROCESS_LINES = 64;
 
 /**
+ * Byte cap on what a single `docker` call may BUFFER, as opposed to what we keep.
+ *
+ * `MAX_LOG_BYTES` and `MAX_PROCESS_LINES` above bound what is RETAINED — they slice a
+ * string that has already been read fully into memory, so on their own they bound nothing
+ * that matters here. execa buffers an unbounded child stdout by default (measured: a 20 MB
+ * single line is collected in full, no error), and `docker logs --tail 200` caps lines, not
+ * bytes — so one container printing one enormous line made ORCA allocate it all before the
+ * slice threw it away. That is a memory-exhaustion DoS delivered by the one feature that
+ * runs untrusted code, against the machine analysing it.
+ *
+ * With `reject: false`, exceeding this truncates the output and flags the result rather
+ * than throwing, so a hostile container yields the useful PREFIX of its logs instead of
+ * either an empty reading or an OOM. 256 KiB is far above any honest reading (the largest
+ * is `/proc/net/tcp`, itself bounded by `--pids-limit`) and far below unbounded.
+ */
+const MAX_DOCKER_OUTPUT_BYTES = 256 * 1024;
+
+/**
+ * Environment passed to the `docker` CLI — the client's own configuration, and nothing
+ * else.
+ *
+ * NOT `extendEnv: false` with an empty env, which is what this used to be. The intent
+ * (don't hand the host's whole environment to a subprocess) was right, but it also stripped
+ * `DOCKER_HOST`, `DOCKER_CONTEXT`, and `HOME` — and `HOME` is how the CLI finds
+ * `~/.docker/config.json`, hence the user's active context. `src/build/docker.ts` runs with
+ * `extendEnv: true`, so on any setup whose daemon is not the default local socket (rootless
+ * Docker, Docker Desktop, an SSH or TLS context) the BUILD would succeed against the real
+ * daemon while every probe silently talked to a different one and returned an empty
+ * reading — indistinguishable, to the user, from "the app binds nothing".
+ *
+ * Passing the client variables through explicitly keeps the narrow surface and makes
+ * probing work wherever building already works.
+ */
+export function dockerClientEnv(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  const passthrough = [
+    'HOME',
+    'PATH',
+    'DOCKER_HOST',
+    'DOCKER_CONTEXT',
+    'DOCKER_CONFIG',
+    'DOCKER_CERT_PATH',
+    'DOCKER_TLS_VERIFY',
+    'XDG_RUNTIME_DIR',
+  ];
+  const passed: Record<string, string> = {};
+  for (const key of passthrough) {
+    const value = env[key];
+    if (value !== undefined) passed[key] = value;
+  }
+  return passed;
+}
+
+/**
  * The flags that make a container safe to run untrusted code in. Exported so the tests can
  * assert the contract flag-by-flag: this list IS clause 1, and a change that quietly drops
  * `--network none` is a security regression, not a style change.
@@ -188,7 +241,8 @@ export function dockerProbeSandbox(settings: Settings = loadSettings()): ProbeSa
         return execa('docker', args, {
           reject: false,
           timeout: budget,
-          env: {},
+          maxBuffer: MAX_DOCKER_OUTPUT_BYTES,
+          env: dockerClientEnv(),
           extendEnv: false,
           // Cancellation propagates: Ctrl-C during a probe kills the docker call rather
           // than leaving the run waiting on it. The `finally` still removes the container.
@@ -219,6 +273,13 @@ export function dockerProbeSandbox(settings: Settings = loadSettings()): ProbeSa
           '--name',
           name,
           ...isolationArgs(settings),
+          // `--` ends flag parsing, so the image name can never be read as an option.
+          // Docker's parser allows flags after positionals, so without this an image
+          // string beginning with `-` would be parsed as one — `--privileged` being the
+          // interesting case. No path today produces such a name (compose derives it and
+          // rejects a leading dash), which is exactly why this is worth pinning: the
+          // isolation flags above would be silently joined by one that undoes them.
+          '--',
           spec.image,
         ]);
         if (started.exitCode !== 0) return emptyReading();
@@ -289,7 +350,8 @@ export function dockerProbeSandbox(settings: Settings = loadSettings()): ProbeSa
         await execa('docker', ['rm', '--force', name], {
           reject: false,
           timeout: CLEANUP_TIMEOUT_MS,
-          env: {},
+          maxBuffer: MAX_DOCKER_OUTPUT_BYTES,
+          env: dockerClientEnv(),
           extendEnv: false,
         }).catch(() => undefined);
       }
