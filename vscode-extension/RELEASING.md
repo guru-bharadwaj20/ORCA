@@ -1,25 +1,25 @@
 # Releasing the ORCA VS Code extension
 
-The extension is a thin front end that loads the `orca-agent-cli` engine at runtime. Today it
-depends on the core via `"orca-agent-cli": "file:.."` (a workspace symlink), which is perfect
+The extension is a thin front end that loads the `orca-repo-agent` engine at runtime. Today it
+depends on the core via `"orca-repo-agent": "file:.."` (a workspace symlink), which is perfect
 for local development and CI but **cannot ship in a `.vsix`** — the packaged extension
-would have no `orca-agent-cli` to import.
+would have no `orca-repo-agent` to import.
 
-So a _distributable_ build has one hard prerequisite: **`orca-agent-cli` must be published to
+So a _distributable_ build has one hard prerequisite: **`orca-repo-agent` must be published to
 npm first** (Stage 0). Until then, `npm run package` produces a structurally-valid
 `.vsix` (bundle + media + docs) that is not yet runnable once installed.
 
 ## Release checklist
 
-1. **Publish `orca-agent-cli`** (from the repo root):
+1. **Publish `orca-repo-agent`** (from the repo root):
 
    ```bash
-   npm publish            # publishes the root orca-agent-cli package
+   npm publish            # publishes the root orca-repo-agent package
    git tag v<version> && git push --tags
    ```
 
 2. **Point the extension at the published core.** In `vscode-extension/package.json`,
-   set the dependency to `"orca-agent-cli": "^<published version>"`, then run
+   set the dependency to `"orca-repo-agent": "^<published version>"`, then run
    `npm install` to update the lockfile. Note: inside the repo, npm workspaces will
    still satisfy this with the local symlink — which is why packaging goes through
    `scripts/package-vsix.mjs` (staged outside the workspace so the real registry
@@ -49,7 +49,7 @@ npm first** (Stage 0). Until then, `npm run package` produces a structurally-val
 
 ## Notes
 
-- The `esbuild --external:orca-agent-cli*` flags stay as-is — `orca-agent-cli` is always loaded from
+- The `esbuild --external:orca-repo-agent*` flags stay as-is — `orca-repo-agent` is always loaded from
   node_modules at runtime (never bundled), because its ESM template loader relies on
   `import.meta.url`, which is empty in a CJS bundle.
 - `mermaid.min.js` is copied into `media/` at build time and shipped in the `.vsix`

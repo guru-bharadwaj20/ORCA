@@ -3,7 +3,7 @@
   "tasks": [
     {
       "label": "orca: build extension",
-      "detail": "Build orca-agent-cli (dist) then bundle the extension so F5 has fresh output.",
+      "detail": "Build orca-repo-agent (dist) then bundle the extension so F5 has fresh output.",
       "dependsOrder": "sequence",
       "dependsOn": ["orca: build core", "orca: bundle extension"],
       "group": "build",
@@ -11,7 +11,7 @@
     },
     {
       "label": "orca: build core",
-      "detail": "Compile orca-agent-cli to dist/ (the extension imports it at runtime).",
+      "detail": "Compile orca-repo-agent to dist/ (the extension imports it at runtime).",
       "type": "npm",
       "script": "build",
       "options": { "cwd": "${workspaceFolder}" },

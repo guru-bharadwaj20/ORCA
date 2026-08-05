@@ -1,5 +1,5 @@
 {
-  "name": "orca-agent-cli",
+  "name": "orca-repo-agent",
   "version": "0.2.0",
   "description": "An AI agent CLI that clones a messy student/hackathon repo, detects its stack, generates Docker + docker-compose configs, shows a service-graph diagram for human approval before running anything, then builds/runs the containers with a self-healing retry loop that explains each fix in plain English.",
   "type": "module",

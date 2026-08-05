@@ -5,7 +5,7 @@ ORCA detects a repo's stack, generates Docker + docker-compose configs, shows yo
 planned service graph **for approval before anything runs**, then builds and starts the
 containers with a self-healing retry loop that explains each fix in plain English.
 
-This extension is a thin front end over the [`orca-agent-cli`](../README.md) engine — all the
+This extension is a thin front end over the [`orca-repo-agent`](../README.md) engine — all the
 real work (detection, planning, build, self-heal) lives in the core.
 
 ## Features
