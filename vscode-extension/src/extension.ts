@@ -1,6 +1,6 @@
 import { Writable } from 'node:stream';
 
-import type { Logger, RunContext } from 'orca-repo-agent';
+import type { Logger, RunContext } from 'orca-agent-cli';
 import * as vscode from 'vscode';
 
 import { approvePlanViaWebview } from './planWebview.js';
@@ -12,9 +12,9 @@ import {
   setApiKey,
 } from './settings.js';
 
-type OrcaCli = typeof import('orca-repo-agent');
-const loadOrca = (): Promise<OrcaCli> => import('orca-repo-agent');
-const loadOrcaAi = (): Promise<typeof import('orca-repo-agent/ai')> => import('orca-repo-agent/ai');
+type OrcaCli = typeof import('orca-agent-cli');
+const loadOrca = (): Promise<OrcaCli> => import('orca-agent-cli');
+const loadOrcaAi = (): Promise<typeof import('orca-agent-cli/ai')> => import('orca-agent-cli/ai');
 
 const PREVIEW_COMMAND = 'orca.previewRepo';
 const RUN_COMMAND = 'orca.runRepo';
